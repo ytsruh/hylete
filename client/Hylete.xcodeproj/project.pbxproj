@@ -135,7 +135,7 @@
 		B11CABAB8BE2BFE1B215AF22 /* ActionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionCard.swift; sourceTree = "<group>"; };
 		B2F1EC4D2E3CD110C918BBBF /* BrandColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandColors.swift; sourceTree = "<group>"; };
 		B7A41DEC5C42E5BD5D58CA45 /* WeekCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekCalendarView.swift; sourceTree = "<group>"; };
-		B82B52BAE7C2D0AB223EBF3A /* Hylete.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Hylete.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B82B52BAE7C2D0AB223EBF3A /* Hylete.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Hylete.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B960BFF7F588BB237F4B93CD /* WeightComparisonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeightComparisonView.swift; sourceTree = "<group>"; };
 		B9D23DC1E6C6A140D0B6EC20 /* ImageViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewer.swift; sourceTree = "<group>"; };
 		BCB591A97788FF962986EB02 /* ExerciseListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseListView.swift; sourceTree = "<group>"; };
@@ -454,8 +454,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = 6F23098230E11564D35DDC6F /* Build configuration list for PBXProject "Hylete" */;
 			developmentRegion = en;
@@ -651,6 +649,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 48NM36DJ8F;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Hylete/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -686,6 +685,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 48NM36DJ8F;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Hylete/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
