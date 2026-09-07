@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // ErrUserNotFound is returned by the admin user actions when the

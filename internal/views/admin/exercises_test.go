@@ -8,8 +8,8 @@ import (
 
 	"github.com/a-h/templ"
 
-	"stren/internal/models"
-	"stren/internal/utils"
+	"hylete/internal/models"
+	"hylete/internal/utils"
 )
 
 // renderToString renders a templ component to a string for assertions.

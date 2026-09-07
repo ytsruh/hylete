@@ -1,4 +1,4 @@
-module stren
+module hylete
 
 go 1.25.3
 

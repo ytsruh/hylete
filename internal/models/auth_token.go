@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"stren/internal/db"
+	"hylete/internal/db"
 )
 
 // AuthTokenPurpose enumerates the kinds of one-time credential the

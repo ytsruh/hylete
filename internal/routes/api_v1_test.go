@@ -13,9 +13,9 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"stren/internal/controllers"
-	"stren/internal/models"
-	"stren/internal/utils"
+	"hylete/internal/controllers"
+	"hylete/internal/models"
+	"hylete/internal/utils"
 )
 
 // --- Test helpers ---

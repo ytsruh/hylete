@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // mockGoalRepository is an in-memory implementation of

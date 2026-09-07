@@ -10,8 +10,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"stren/internal/models"
-	"stren/internal/utils"
+	"hylete/internal/models"
+	"hylete/internal/utils"
 )
 
 // WelcomeSender is the narrow contract AuthController depends on
@@ -32,7 +32,7 @@ type AuthController struct {
 
 // NewAuthController creates a new AuthController instance. The
 // welcomeSender is the email service used to send the
-// "welcome to Stren" message after a successful Register. The
+// "welcome to Hylete" message after a successful Register. The
 // controller is designed to be tolerant of a nil welcomeSender
 // (so existing tests that pre-date the email feature keep
 // working) — Register skips the send when the sender is nil.

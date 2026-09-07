@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // ErrGoalNotFound is returned when the supplied goal ID does not

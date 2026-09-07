@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // --- Test doubles for the orchestrator's dependencies ---

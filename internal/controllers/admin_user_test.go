@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // mockAdminUserRepository is an in-memory AdminUserRepo. GetUserByID

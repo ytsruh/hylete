@@ -20,8 +20,8 @@ import (
 	"log"
 	"time"
 
-	"stren/internal/email"
-	"stren/internal/models"
+	"hylete/internal/email"
+	"hylete/internal/models"
 )
 
 // ReminderRepo is the data-access surface the UserReminder needs to

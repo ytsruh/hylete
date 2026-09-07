@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 type mockAdminRepository struct {

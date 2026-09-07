@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"stren/internal/db"
+	"hylete/internal/db"
 )
 
 func setupTestRepo(t *testing.T) (*ExerciseRepository, *UserRepository, *db.DB, string) {

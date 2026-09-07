@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"stren/internal/db"
+	"hylete/internal/db"
 )
 
 // UserAdminRepository provides admin-only user operations.

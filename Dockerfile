@@ -17,7 +17,7 @@ COPY . .
 RUN go install github.com/a-h/templ/cmd/templ@v0.3.1001
 RUN templ generate
 RUN ./tailwindcss -i ./styles/input.css -o ./public/css/styles.css --minify
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o stren ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o hylete ./cmd/main.go
 
 FROM debian:bookworm-slim
 
@@ -26,8 +26,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
 WORKDIR /app
 
-COPY --from=builder /app/stren .
+COPY --from=builder /app/hylete .
 COPY --from=builder /app/public ./public
 
 EXPOSE 8080
-ENTRYPOINT ["/app/stren"]
+ENTRYPOINT ["/app/hylete"]

@@ -551,13 +551,13 @@ func TestBuildMIME_SubjectEncodedForNonAscii(t *testing.T) {
 func TestBuildMIME_AsciiSubjectUnchanged(t *testing.T) {
 	body, err := buildMIME("from@example.com", Message{
 		To:      "to@example.com",
-		Subject: "Welcome to Stren",
+		Subject: "Welcome to Hylete",
 		HTML:    "<p>hi</p>",
 	})
 	if err != nil {
 		t.Fatalf("buildMIME: %v", err)
 	}
-	if !strings.Contains(string(body), "Subject: Welcome to Stren\r\n") {
+	if !strings.Contains(string(body), "Subject: Welcome to Hylete\r\n") {
 		t.Errorf("ASCII subject not preserved verbatim: %q", body)
 	}
 }

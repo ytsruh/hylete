@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"stren/internal/db"
+	"hylete/internal/db"
 )
 
 // UserRepository provides CRUD operations for users.

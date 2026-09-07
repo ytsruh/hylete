@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // BuildExerciseEntriesZip writes a zip archive to w containing the

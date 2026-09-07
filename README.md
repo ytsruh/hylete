@@ -1,4 +1,4 @@
-# Stren - The Fitness Tracker
+# Hylete - The Fitness Tracker
 
 A simple fitness tracking application built with Go, Echo, htmx, Tailwind CSS + Basecoat CSS, and SQLite/Turso. HTMX and Basecoat give a simple, clean semantic view layer for the web interface & SwiftUI is used for the iOS app. Built using an MVC architecture and focused on using as few dependencies as possible.
 
@@ -20,7 +20,7 @@ This web app is a limited companion surface:
 Images are displayed through ratio-enforced components on both surfaces —
 `BannerImage` / `LandscapeImage` / `PortraitImage` / `SquareImage` in
 `internal/views/components/image.templ` (web) and
-`client/Stren/DesignSystem/Image.swift` (iOS). Upload images already in the
+`client/Hylete/DesignSystem/Image.swift` (iOS). Upload images already in the
 ratio of the component that displays them so nothing important is cropped:
 
 - Exercise images — **3:1** (e.g. **3000x1000**), the same ratio on web and

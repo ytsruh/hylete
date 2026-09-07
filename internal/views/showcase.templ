@@ -1,10 +1,10 @@
 package views
 
-import "stren/internal/views/components"
+import "hylete/internal/views/components"
 
 // Showcase renders the public bento-grid showcase page at "/showcase".
 templ Showcase() {
-	@Layout(PageData{Title: "Showcase | Stren"}) {
+	@Layout(PageData{Title: "Showcase | Hylete"}) {
 		// Page intro — tighter than landing hero, editorial headline + sub.
 		<section class="mx-auto flex max-w-5xl flex-col items-center gap-5 py-10 text-center sm:py-14">
 			<span class="badge bg-primary text-primary-foreground border-primary px-3 py-1 text-sm h-auto">
@@ -14,7 +14,7 @@ templ Showcase() {
 				Every set, every weigh-in, every win — in one place.
 			</h1>
 			<p class="max-w-2xl text-pretty text-base leading-7 text-muted-foreground sm:text-[17px]">
-				A quick tour of Stren on iPhone. The bento below mixes real app screenshots
+				A quick tour of Hylete on iPhone. The bento below mixes real app screenshots
 				with placeholders you can swap for final art — same grid, same rhythm.
 			</p>
 			<div class="flex flex-wrap items-center justify-center gap-3 pt-1">
@@ -42,7 +42,7 @@ templ Showcase() {
 					<div class="relative overflow-hidden">
 						<img
 							src="/img/showcase/dashboard.png"
-							alt="Stren dashboard showing recent exercise entries and 7-day history"
+							alt="Hylete dashboard showing recent exercise entries and 7-day history"
 							class="aspect-4/5 w-full bg-white object-cover object-top transition duration-300 group-hover:scale-[1.02]"
 							loading="eager"
 							decoding="async"
@@ -239,7 +239,7 @@ templ Showcase() {
 							</div>
 							<h2 class="text-xl font-semibold tracking-tight text-black dark:text-white sm:text-2xl">Log your journey on your phone, wherever you are.</h2>
 							<p class="text-sm leading-6 text-black/70 dark:text-white/70 sm:text-[15px]">
-								Stren is free. Log between sets on your phone — review history, charts, and progress.
+								Hylete is free. Log between sets on your phone — review history, charts, and progress.
 							</p>
 						</div>
 					</div>
@@ -262,11 +262,11 @@ templ Showcase() {
 			<div class="relative mx-auto flex max-w-xl flex-col items-center gap-4">
 				<h2 class="text-2xl font-semibold tracking-tight text-white sm:text-[1.7rem]">Ready to see what you're capable of?</h2>
 				<p class="max-w-xl text-[15px] leading-6 text-white/80 sm:text-base">
-					Stren is free. Sign up for the beta for iPhone today, or explore your dashboard on the web.
+					Hylete is free. Sign up for the beta for iPhone today, or explore your dashboard on the web.
 				</p>
 				<div class="flex flex-wrap items-center justify-center gap-3 pt-1">
 					<a href="/register" class="btn">
-						Get Stren for iPhone
+						Get Hylete for iPhone
 					</a>
 					<a href="/login" class="btn border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white hover:text-black" data-variant="outline">
 						Log in

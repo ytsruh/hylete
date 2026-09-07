@@ -7,7 +7,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	viewsexport "stren/internal/views/export"
+	viewsexport "hylete/internal/views/export"
 )
 
 // DataExportPage renders the Data Export page, the single home for

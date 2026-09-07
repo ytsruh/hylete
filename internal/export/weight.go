@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // PhotoGetter is the read-side of the object store, abstracted so the

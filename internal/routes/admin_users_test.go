@@ -12,9 +12,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/controllers"
-	"stren/internal/models"
-	"stren/internal/utils"
+	"hylete/internal/controllers"
+	"hylete/internal/models"
+	"hylete/internal/utils"
 )
 
 // mockAdminResetSender is a PasswordResetSender fake for the admin

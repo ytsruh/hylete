@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"stren/internal/db"
+	"hylete/internal/db"
 )
 
 type Feedback struct {

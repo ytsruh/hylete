@@ -12,6 +12,7 @@ internal/email/templates/**/*_templ.go
 public/css/styles.css
 
 # Binaries
+/hylete
 /stren
 main
 *.exe

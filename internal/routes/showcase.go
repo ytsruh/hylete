@@ -6,7 +6,7 @@ package routes
 import (
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/views"
+	"hylete/internal/views"
 )
 
 // Showcase renders the public bento-grid showcase page at "/showcase".

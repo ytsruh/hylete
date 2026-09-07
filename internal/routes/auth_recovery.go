@@ -6,9 +6,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/controllers"
-	"stren/internal/models"
-	"stren/internal/views/auth"
+	"hylete/internal/controllers"
+	"hylete/internal/models"
+	"hylete/internal/views/auth"
 )
 
 // ForgotPasswordForm renders the GET /forgot page. Always

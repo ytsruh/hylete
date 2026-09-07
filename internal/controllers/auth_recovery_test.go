@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // memoryAuthTokenRepo is a fully in-memory AuthTokenRepo used

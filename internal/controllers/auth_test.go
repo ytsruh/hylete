@@ -9,8 +9,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"stren/internal/models"
-	"stren/internal/utils"
+	"hylete/internal/models"
+	"hylete/internal/utils"
 )
 
 // timeAfter is a one-line helper to keep the test above readable.

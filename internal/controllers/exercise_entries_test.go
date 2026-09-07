@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 type mockRepository struct {

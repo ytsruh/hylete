@@ -7,8 +7,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/models"
-	"stren/internal/views/profile"
+	"hylete/internal/models"
+	"hylete/internal/views/profile"
 )
 
 // profileInput represents the parsed and validated form data for profile updates.

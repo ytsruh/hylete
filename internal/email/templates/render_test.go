@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // testBaseURL is the base URL the render tests thread into
@@ -17,20 +17,20 @@ import (
 // failure caused by accidentally hard-coding the production
 // URL (e.g. an old `PublicBaseURL` constant) would show up
 // in both packages.
-const testBaseURL = "https://stren.test.local"
+const testBaseURL = "https://hylete.test.local"
 
 // TestRenderWelcome_ContainsEssentials guards the basic shape
 // of the welcome email. It must contain the user's name
 // (rendered into both the HTML and the text), the dashboard
-// link, and the Stren wordmark.
+// link, and the Hylete wordmark.
 func TestRenderWelcome_ContainsEssentials(t *testing.T) {
 	html, text := RenderWelcome("Alice", testBaseURL)
 
 	for _, want := range []string{
 		"Alice",
-		"Welcome to Stren",
+		"Welcome to Hylete",
 		testBaseURL + "/",
-		"Stren",
+		"Hylete",
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("HTML missing %q", want)
@@ -39,7 +39,7 @@ func TestRenderWelcome_ContainsEssentials(t *testing.T) {
 
 	for _, want := range []string{
 		"Alice",
-		"Welcome to Stren",
+		"Welcome to Hylete",
 		testBaseURL + "/",
 	} {
 		if !strings.Contains(text, want) {
@@ -53,8 +53,8 @@ func TestRenderWelcome_UsesProvidedBaseURL(t *testing.T) {
 	// itself, not at production. Render with two different
 	// base URLs and assert each one ends up in the body.
 	cases := []string{
-		"https://stren.ytsruh.com",
-		"https://staging.stren.example",
+		"https://www.hyleteapp.com",
+		"https://staging.hylete.example",
 		"http://localhost:8080",
 	}
 	for _, baseURL := range cases {
@@ -108,7 +108,7 @@ func TestRenderPasswordReset_ContainsEssentials(t *testing.T) {
 		"Bob",
 		"/reset?token=abc123",
 		"1 hour",
-		"Stren",
+		"Hylete",
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("HTML missing %q", want)

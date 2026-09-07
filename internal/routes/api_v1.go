@@ -14,8 +14,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/controllers"
-	"stren/internal/models"
+	"hylete/internal/controllers"
+	"hylete/internal/models"
 )
 
 // --- Auth ---

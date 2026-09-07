@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // TestBuildExerciseEntriesZip_EmptyInput ensures a user with no

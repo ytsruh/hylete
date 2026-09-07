@@ -8,7 +8,7 @@ package components
 // important gets cropped away:
 //
 //   - BannerImage:    3:1  (e.g. 3000x1000) — exercise hero
-//     banners, mirrored on iOS in client/Stren/DesignSystem/Image.swift
+//     banners, mirrored on iOS in client/Hylete/DesignSystem/Image.swift
 //   - LandscapeImage: 16:9 (e.g. 1920x1080)
 //   - PortraitImage:  3:4  (e.g. 1080x1440)
 //   - SquareImage:    1:1  (e.g. 1080x1080)
@@ -17,7 +17,7 @@ package components
 // centre-cropped to fill the frame (object-fit: cover) — it is
 // never stretched or distorted. The same contract applies to the
 // iOS mirror of these components in
-// client/Stren/DesignSystem/Image.swift.
+// client/Hylete/DesignSystem/Image.swift.
 type ImageProps struct {
 	// Src is the image URL — usually an R2 public URL built
 	// with utils.PublicURLFor. Converted to a templ.SafeURL

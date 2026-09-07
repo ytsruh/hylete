@@ -9,8 +9,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/models"
-	"stren/internal/utils"
+	"hylete/internal/models"
+	"hylete/internal/utils"
 )
 
 func TestIsPublicRoute(t *testing.T) {

@@ -6,9 +6,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/controllers"
-	"stren/internal/views/admin"
-	"stren/internal/views/feedback"
+	"hylete/internal/controllers"
+	"hylete/internal/views/admin"
+	"hylete/internal/views/feedback"
 )
 
 // FeedbackForm renders the user-facing GET /feedback page. The

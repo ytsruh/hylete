@@ -12,9 +12,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/imaging"
-	"stren/internal/utils"
-	"stren/internal/views"
+	"hylete/internal/imaging"
+	"hylete/internal/utils"
+	"hylete/internal/views"
 )
 
 // ExerciseImageConfig controls the two image variants the admin
@@ -22,7 +22,7 @@ import (
 // upload (a single source image goes in) and share the same 3:1
 // banner aspect ratio, matching the ratio-enforced display
 // components on both surfaces (components.BannerImage on the web,
-// BannerImage in client/Stren/DesignSystem/Image.swift) so an
+// BannerImage in client/Hylete/DesignSystem/Image.swift) so an
 // upload in the expected ratio survives the whole pipeline
 // untouched. Uploads are expected to already be 3:1 (e.g.
 // 3000x1000) — anything else is centre-cropped to fit.

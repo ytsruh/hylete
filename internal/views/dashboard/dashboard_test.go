@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"stren/internal/models"
-	"stren/internal/views/components"
+	"hylete/internal/models"
+	"hylete/internal/views/components"
 
 	"github.com/a-h/templ"
 )

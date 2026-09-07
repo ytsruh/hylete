@@ -12,8 +12,8 @@ templ EmailHeader() {
 	<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f54900;">
 		<tr>
 			<td align="left" style="padding:16px 24px;">
-				<span style="display:inline-block;width:28px;height:28px;line-height:28px;background-color:#ffffff;color:#f54900;text-align:center;font-weight:700;font-size:16px;border-radius:6px;vertical-align:middle;font-family:Inter,Helvetica,Arial,sans-serif;">S</span>
-				<span style="display:inline-block;margin-left:8px;color:#ffffff;font-weight:600;font-size:16px;vertical-align:middle;font-family:Inter,Helvetica,Arial,sans-serif;">Stren</span>
+				<span style="display:inline-block;width:28px;height:28px;line-height:28px;background-color:#ffffff;color:#f54900;text-align:center;font-weight:700;font-size:16px;border-radius:6px;vertical-align:middle;font-family:Inter,Helvetica,Arial,sans-serif;">H</span>
+				<span style="display:inline-block;margin-left:8px;color:#ffffff;font-weight:600;font-size:16px;vertical-align:middle;font-family:Inter,Helvetica,Arial,sans-serif;">Hylete</span>
 			</td>
 		</tr>
 	</table>
@@ -91,7 +91,7 @@ templ EmailDivider() {
 templ EmailFooter(year int, baseURL string) {
 	<div style="padding:16px 24px 24px 24px;text-align:center;">
 		<p style="margin:0;padding:0;font-size:12px;line-height:18px;color:#71717a;font-family:Inter,Helvetica,Arial,sans-serif;">
-			© { year } Stren
+			© { year } Hylete
 		</p>
 		<p style="margin:8px 0 0 0;padding:0;font-size:12px;line-height:18px;color:#71717a;font-family:Inter,Helvetica,Arial,sans-serif;">
 			<a href={ templ.SafeURL(baseURL) } target="_blank" rel="noopener noreferrer" style="color:#71717a;text-decoration:underline;">{ baseURL }</a>

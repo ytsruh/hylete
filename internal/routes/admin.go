@@ -6,10 +6,10 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/controllers"
-	"stren/internal/models"
-	"stren/internal/utils"
-	"stren/internal/views/admin"
+	"hylete/internal/controllers"
+	"hylete/internal/models"
+	"hylete/internal/utils"
+	"hylete/internal/views/admin"
 )
 
 // --- Admin User Handlers ---

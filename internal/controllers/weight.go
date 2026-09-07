@@ -8,9 +8,9 @@ import (
 	"sort"
 	"time"
 
-	"stren/internal/export"
-	"stren/internal/models"
-	"stren/internal/utils"
+	"hylete/internal/export"
+	"hylete/internal/models"
+	"hylete/internal/utils"
 )
 
 // WeightController handles body weight entry business logic.
@@ -117,7 +117,7 @@ func (wc *WeightController) DeleteWeightEntry(id, userID string) error {
 // user's weight export zip. Exposed so the route layer (and tests)
 // don't need to know the format.
 func SuggestedExportFilename(now time.Time) string {
-	return "stren-weight-export-" + now.UTC().Format("2006-01-02") + ".zip"
+	return "hylete-weight-export-" + now.UTC().Format("2006-01-02") + ".zip"
 }
 
 // ExportWeightZip builds a streaming zip archive of the user's weight

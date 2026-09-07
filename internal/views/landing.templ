@@ -1,10 +1,10 @@
 package views
 
-import "stren/internal/views/components"
+import "hylete/internal/views/components"
 
 // Landing renders the public marketing page at "/".
 templ Landing() {
-	@Layout(PageData{Title: "iPhone Fitness App | Stren"}) {
+	@Layout(PageData{Title: "iPhone Fitness App | Hylete"}) {
 		// Hero — full-bleed background image, dark overlay, centred copy over the top.
 		<section class="relative left-1/2 flex min-h-[72vh] w-screen -translate-x-1/2 -mt-4 items-center justify-center overflow-hidden px-4 py-16 text-center sm:min-h-[78vh] sm:py-20 md:-mt-8 lg:min-h-[82vh]">
 			<div aria-hidden="true" class="absolute inset-0">
@@ -26,7 +26,7 @@ templ Landing() {
 					Track your fitness. See your progress. Own your data.
 				</h1>
 				<p class="max-w-2xl text-base leading-relaxed text-white/80 sm:text-lg">
-					Stren is a free fitness training tracker for iPhone that keeps logging
+					Hylete is a free fitness training tracker for iPhone that keeps logging
 					simple and your data private.
 				</p>
 				<div class="flex flex-wrap items-center justify-center gap-3">
@@ -51,13 +51,13 @@ templ Landing() {
 			</p>
 			<div aria-hidden="true" class="h-px w-12 bg-border"></div>
 			<p class="max-w-3xl text-base leading-7 text-muted-foreground sm:max-w-4xl sm:text-[17px] sm:leading-7">
-				Stren makes it effortless to log every set, then turns your training into clear,
+				Hylete makes it effortless to log every set, then turns your training into clear,
 				encouraging progress you can actually see. No clutter, no noise — just you, your
 				workouts, and the numbers moving in the right direction.
 			</p>
 			<div aria-hidden="true" class="h-px w-12 bg-border"></div>
 			<p class="text-[15px] leading-6 text-muted-foreground sm:text-base">
-				Logging happens in the Stren iOS app — the web keeps your history readable from anywhere.
+				Logging happens in the Hylete iOS app — the web keeps your history readable from anywhere.
 			</p>
 			<div class="flex flex-wrap items-center justify-center gap-3 pt-1">
 				<a href="/showcase" class="btn">
@@ -83,7 +83,7 @@ templ Landing() {
 							<h3 class="text-xl font-semibold tracking-tight sm:text-2xl">Log every set in seconds</h3>
 							<p class="text-base leading-7 text-muted-foreground sm:text-[17px] sm:leading-7">
 								Reps, weight, rest time, notes. Add a whole set of sets in one go, right between exercises.
-								Logging shouldn't get in the way of your workout — with Stren, it doesn't.
+								Logging shouldn't get in the way of your workout — with Hylete, it doesn't.
 							</p>
 						</div>
 						<div class="mx-auto w-full max-w-70 sm:max-w-[320px] overflow-hidden rounded-xl border bg-card shadow-sm lg:col-span-1 lg:mx-0 lg:max-w-none">
@@ -151,7 +151,7 @@ templ Landing() {
 					<span class="badge w-fit bg-primary text-primary-foreground border-primary px-3 py-1 text-sm h-auto">Privacy</span>
 					<h2 class="text-2xl font-semibold tracking-tight sm:text-3xl">Your data stays yours</h2>
 					<p class="text-[15px] leading-6 text-muted-foreground sm:text-base">
-						Privacy isn't a feature we bolted on. It's how Stren is built.
+						Privacy isn't a feature we bolted on. It's how Hylete is built.
 					</p>
 				</div>
 				<ul class="flex flex-col gap-8">
@@ -210,11 +210,11 @@ templ Landing() {
 			<div class="relative mx-auto flex max-w-xl flex-col items-center gap-4">
 				<h2 class="text-2xl font-semibold tracking-tight text-white sm:text-[1.7rem]">Ready to see what you're capable of?</h2>
 				<p class="max-w-xl text-[15px] leading-6 text-white/80 sm:text-base">
-					Stren is free. Sign up for the beta for iPhone today, or explore your dashboard on the web.
+					Hylete is free. Sign up for the beta for iPhone today, or explore your dashboard on the web.
 				</p>
 				<div class="flex flex-wrap items-center justify-center gap-3 pt-1">
 					<a href="/register" class="btn">
-						Get Stren for iPhone
+						Get Hylete for iPhone
 					</a>
 					<a href="/login" class="btn border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white hover:text-black" data-variant="outline">
 						Log in

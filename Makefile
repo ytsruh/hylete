@@ -1,8 +1,8 @@
-# Strength Tracker Makefile
+# Hylete Makefile
 # Usage: make [target]
 
 # Variables
-APP_NAME=stren
+APP_NAME=hylete
 DB_FILE=strength_tracker.db
 PORT=8080
 
@@ -16,7 +16,7 @@ endif
 # Default target
 .PHONY: help
 help:
-	@echo "Strength Tracker - Available commands:"
+	@echo "Hylete - Available commands:"
 	@echo ""
 	@echo "  make build           - Build the application (includes CSS)"
 	@echo "  make css-build       - Build CSS with Tailwind CLI"

@@ -9,8 +9,8 @@ import (
 	"math"
 	"time"
 
-	"stren/internal/export"
-	"stren/internal/models"
+	"hylete/internal/export"
+	"hylete/internal/models"
 )
 
 // Sentinel errors returned by ValidateExerciseSetInput so callers (the JSON
@@ -296,7 +296,7 @@ func (ec *ExerciseEntryController) GetAllExerciseEntriesForChart(exerciseID, use
 // for a user's exercise entries export zip. Exposed so the route layer
 // (and tests) don't need to know the format.
 func SuggestedExerciseEntriesExportFilename(now time.Time) string {
-	return "stren-exercise-entries-export-" + now.UTC().Format("2006-01-02") + ".zip"
+	return "hylete-exercise-entries-export-" + now.UTC().Format("2006-01-02") + ".zip"
 }
 
 // ExportExerciseEntriesZip builds a streaming zip archive of the user's

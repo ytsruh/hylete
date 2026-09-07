@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // PasswordResetSender is the narrow contract AuthRecoveryController

@@ -8,15 +8,15 @@ import (
 	"testing"
 	"time"
 
-	emailtmpl "stren/internal/email/templates"
-	"stren/internal/models"
+	emailtmpl "hylete/internal/email/templates"
+	"hylete/internal/models"
 )
 
 // testBaseURL is the base URL the Service tests thread into
 // every NewService call. Picked once here so the test bodies
 // stay short and the URL format is consistent across the
 // suite.
-const testBaseURL = "https://stren.test.local"
+const testBaseURL = "https://hylete.test.local"
 
 // recordingSender captures every Message that the Service hands
 // to it, for the test to assert on. Thread-safe so a parallel
@@ -97,10 +97,10 @@ func TestNewService_ValidatesBaseURL(t *testing.T) {
 		baseURL string
 	}{
 		{"empty", ""},
-		{"no scheme", "stren.test.local"},
-		{"ftp scheme", "ftp://stren.test.local"},
+		{"no scheme", "hylete.test.local"},
+		{"ftp scheme", "ftp://hylete.test.local"},
 		{"no host", "https://"},
-		{"trailing slash", "https://stren.test.local/"},
+		{"trailing slash", "https://hylete.test.local/"},
 		{"garbage", "https://not a url"},
 	}
 	for _, tc := range cases {
@@ -138,8 +138,8 @@ func TestService_SendWelcome_HappyPath(t *testing.T) {
 	if got.To != "alice@example.com" {
 		t.Errorf("To = %q, want alice@example.com", got.To)
 	}
-	if got.Subject != "Welcome to Stren" {
-		t.Errorf("Subject = %q, want %q", got.Subject, "Welcome to Stren")
+	if got.Subject != "Welcome to Hylete" {
+		t.Errorf("Subject = %q, want %q", got.Subject, "Welcome to Hylete")
 	}
 	if !strings.Contains(got.HTML, "Alice") {
 		t.Errorf("HTML missing user name: %q", got.HTML)

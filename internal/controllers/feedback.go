@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 const (

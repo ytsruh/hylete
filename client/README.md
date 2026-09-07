@@ -1,6 +1,6 @@
-# Stren iOS
+# Hylete iOS
 
-Minimal SwiftUI client for the Stren strength tracker. Talks to the
+Minimal SwiftUI client for the Hylete strength tracker. Talks to the
 existing Go server's `/api/v1` JSON namespace using the same JWT the
 web app uses (sent as `Authorization: Bearer <token>`).
 
@@ -8,27 +8,27 @@ web app uses (sent as `Authorization: Bearer <token>`).
 
 - macOS with **Xcode 15+** (provides the iOS 17 SDK and Simulator)
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
-- A running Stren server (the parent `../` directory) reachable from
+- A running Hylete server (the parent `../` directory) reachable from
   the simulator
 
 ## First-time setup
 
 ```bash
 # from this directory (client/)
-make gen           # generates Stren.xcodeproj from project.yml
-open Stren.xcodeproj   # optional — only needed for the debugger
+make gen           # generates Hylete.xcodeproj from project.yml
+open Hylete.xcodeproj   # optional — only needed for the debugger
 ```
 
-Edit `Stren/Configs/*.xcconfig` to change the server a build talks
+Edit `Hylete/Configs/*.xcconfig` to change the server a build talks
 to. Defaults are already wired up:
 
 | Scheme | Config | API URL | Bundle ID |
 |---|---|---|---|
-| **Dev** (daily driver) | Debug | `http://localhost:8080/api/v1` | `com.ytsruh.stren.dev` |
-| **Prod** (ship lane) | Release | `https://stren.ytsruh.com/api/v1` | `com.ytsruh.stren` |
+| **Dev** (daily driver) | Debug | `http://localhost:8080/api/v1` | `com.hyleteapp.hylete.dev` |
+| **Prod** (ship lane) | Release | `https://www.hyleteapp.com/api/v1` | `com.hyleteapp.hylete` |
 
-The two bundle IDs mean a dev install ("Stren Dev") and a production
-install ("Stren") can coexist side-by-side on the same device or
+The two bundle IDs mean a dev install ("Hylete Dev") and a production
+install ("Hylete") can coexist side-by-side on the same device or
 simulator, with independent logins. Select the scheme in Xcode's
 scheme picker, or override the server per build in scheme editor →
 Run → Arguments → Environment Variables.
@@ -37,7 +37,7 @@ Run → Arguments → Environment Variables.
 
 | Command | What it does |
 |---|---|
-| `make gen`     | Regenerate `Stren.xcodeproj` after editing `project.yml` or moving files |
+| `make gen`     | Regenerate `Hylete.xcodeproj` after editing `project.yml` or moving files |
 | `make build`   | Compile the app for the booted iOS simulator (no run) |
 | `make boot`    | Open the first available iPhone simulator (no-op if one is already running) |
 | `make run`     | Build, install, and launch on the booted simulator — **auto-boots one if nothing is running** |

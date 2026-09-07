@@ -8,7 +8,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/views"
+	"hylete/internal/views"
 )
 
 // Home renders the public marketing landing page at "/".

@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/utils"
+	"hylete/internal/utils"
 )
 
 // photoUploadRequest is the JSON body sent by the client (iOS app or

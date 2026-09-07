@@ -1,6 +1,6 @@
 {
-	"name": "Stren",
-	"short_name": "Stren",
+	"name": "Hylete",
+	"short_name": "Hylete",
 	"description": "A simple strength training tracker",
 	"start_url": "/dashboard",
 	"display": "standalone",

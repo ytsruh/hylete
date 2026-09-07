@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // ErrNotFound is returned when an exercise is not found.

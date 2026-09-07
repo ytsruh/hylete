@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"strings"
 
-	emailtmpl "stren/internal/email/templates"
-	"stren/internal/models"
+	emailtmpl "hylete/internal/email/templates"
+	"hylete/internal/models"
 )
 
 // Sender is the narrow contract Service depends on for delivering
@@ -29,7 +29,7 @@ type Sender interface {
 //
 // baseURL is the absolute origin the email is being sent from
 // (typically the value of the PUBLIC_URL env var, e.g.
-// "https://stren.ytsruh.com" in production). It is threaded into
+// "https://www.hyleteapp.com" in production). It is threaded into
 // every link the email contains (dashboard button, password-reset
 // link, footer "view on the web" link) so a staging deployment
 // sends email that points at itself, not at production.
@@ -85,7 +85,7 @@ func validateBaseURL(baseURL string) error {
 	return nil
 }
 
-// SendWelcome delivers the "welcome to Stren" email to the user.
+// SendWelcome delivers the "welcome to Hylete" email to the user.
 // Render is deterministic and the only inputs are the user's
 // name and email address, so this method has no error path other
 // than the underlying SMTP send.
@@ -104,7 +104,7 @@ func (s *Service) SendWelcome(ctx context.Context, user *models.User) error {
 	html, text := emailtmpl.RenderWelcome(user.Name, s.baseURL)
 	return s.sender.Send(ctx, Message{
 		To:      user.Email,
-		Subject: "Welcome to Stren",
+		Subject: "Welcome to Hylete",
 		HTML:    html,
 		Text:    text,
 	})
@@ -198,7 +198,7 @@ func (s *Service) SendPasswordReset(ctx context.Context, tokenRepo models.AuthTo
 	html, text := emailtmpl.RenderPasswordReset(user.Name, rawToken, s.baseURL, emailtmpl.PasswordResetTTL)
 	if err := s.sender.Send(ctx, Message{
 		To:      user.Email,
-		Subject: "Reset your Stren password",
+		Subject: "Reset your Hylete password",
 		HTML:    html,
 		Text:    text,
 	}); err != nil {

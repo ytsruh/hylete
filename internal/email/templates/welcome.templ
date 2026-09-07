@@ -1,13 +1,13 @@
 package emailtmpl
 
-// WelcomeEmail is the HTML body of the "welcome to Stren" email
+// WelcomeEmail is the HTML body of the "welcome to Hylete" email
 // sent right after a user registers. The preheader ("Welcome —
 // let's get you started.") is the first thing a recipient sees
 // in the inbox, before they open the email, so it should give a
 // hint of what the email is about without repeating the subject.
 //
 // The baseURL parameter is the absolute origin the email is
-// being sent from (e.g. "https://stren.ytsruh.com" in
+// being sent from (e.g. "https://www.hyleteapp.com" in
 // production). It is threaded through into the dashboard link
 // and the footer's "view on the web" link so a staging
 // deployment can send email that points at itself, not at
@@ -19,9 +19,9 @@ templ WelcomeEmail(name string, baseURL string) {
 	@EmailLayout("Welcome — let's get you started.") {
 		@EmailHeader()
 		<div style="padding:24px 0 8px 0;">
-			@EmailTitle("Welcome to Stren")
+			@EmailTitle("Welcome to Hylete")
 			@EmailParagraph("Hi " + name + ", thanks for signing up.")
-			@EmailParagraph("Stren helps you log every set, watch your numbers climb, and keep your training consistent. Head to the dashboard any time to log your first set.")
+			@EmailParagraph("Hylete helps you log every set, watch your numbers climb, and keep your training consistent. Head to the dashboard any time to log your first set.")
 			@EmailButton(baseURL+"/dashboard", "Go to your dashboard")
 		</div>
 		@EmailDivider()

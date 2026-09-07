@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"stren/internal/db"
+	"hylete/internal/db"
 )
 
 // userTestHarness returns a connected in-memory DB plus a UserRepository.

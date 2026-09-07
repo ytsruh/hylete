@@ -10,9 +10,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/controllers"
-	"stren/internal/models"
-	"stren/internal/utils"
+	"hylete/internal/controllers"
+	"hylete/internal/models"
+	"hylete/internal/utils"
 )
 
 // profileTestHarness wires a Handler with the minimum

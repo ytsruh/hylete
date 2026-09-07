@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"stren/internal/db"
+	"hylete/internal/db"
 )
 
 // authTokenTestHarness returns a connected in-memory DB plus a

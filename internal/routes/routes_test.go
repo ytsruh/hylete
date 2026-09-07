@@ -23,9 +23,9 @@ import (
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
 
-	"stren/internal/controllers"
-	"stren/internal/models"
-	"stren/internal/utils"
+	"hylete/internal/controllers"
+	"hylete/internal/models"
+	"hylete/internal/utils"
 )
 
 type mockRepository struct {
@@ -1869,8 +1869,8 @@ func TestExportWeightZip_StreamsZip(t *testing.T) {
 		t.Errorf("Content-Type = %q, want application/zip", got)
 	}
 	cd := rec.Header().Get("Content-Disposition")
-	if !strings.Contains(cd, "attachment") || !strings.Contains(cd, "stren-weight-export-") {
-		t.Errorf("Content-Disposition = %q, want attachment with stren-weight-export-*", cd)
+	if !strings.Contains(cd, "attachment") || !strings.Contains(cd, "hylete-weight-export-") {
+		t.Errorf("Content-Disposition = %q, want attachment with hylete-weight-export-*", cd)
 	}
 
 	// Validate the body is a real zip with the expected files.
@@ -1950,8 +1950,8 @@ func TestExportExerciseEntriesZip_StreamsZip(t *testing.T) {
 		t.Errorf("Content-Type = %q, want application/zip", got)
 	}
 	cd := rec.Header().Get("Content-Disposition")
-	if !strings.Contains(cd, "attachment") || !strings.Contains(cd, "stren-exercise-entries-export-") {
-		t.Errorf("Content-Disposition = %q, want attachment with stren-exercise-entries-export-*", cd)
+	if !strings.Contains(cd, "attachment") || !strings.Contains(cd, "hylete-exercise-entries-export-") {
+		t.Errorf("Content-Disposition = %q, want attachment with hylete-exercise-entries-export-*", cd)
 	}
 
 	// Validate the body is a real zip with exactly the expected files.

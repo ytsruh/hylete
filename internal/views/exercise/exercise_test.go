@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 
 	"github.com/a-h/templ"
 )

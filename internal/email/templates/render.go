@@ -34,7 +34,7 @@ import (
 	"net/url"
 	"time"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // PasswordResetTTL is how long a freshly-minted password-reset
@@ -180,9 +180,9 @@ func buildResetURL(rawToken, baseURL string) string {
 func welcomeText(name, baseURL string) string {
 	return fmt.Sprintf(
 		"Hi %s,\n\n"+
-			"Welcome to Stren. Stren helps you log every set, watch your numbers climb, and keep your training consistent.\n\n"+
+			"Welcome to Hylete. Hylete helps you log every set, watch your numbers climb, and keep your training consistent.\n\n"+
 			"Head to your dashboard to log your first set:\n%s\n\n"+
-			"— The Stren team\n",
+			"— The Hylete team\n",
 		name, baseURL+"/dashboard",
 	)
 }
@@ -213,7 +213,7 @@ func weightReminderText(name, baseURL, subject, header string) string {
 		"Hi %s,\n\n"+
 			"%s\n\n"+
 			"%s\n%s\n\n"+
-			"— The Stren team\n",
+			"— The Hylete team\n",
 		name, header, body, baseURL+"/weight/new",
 	)
 }
@@ -224,10 +224,10 @@ func weightReminderText(name, baseURL, subject, header string) string {
 func passwordResetText(name, resetURL string, ttl time.Duration) string {
 	return fmt.Sprintf(
 		"Hi %s,\n\n"+
-			"We received a request to reset the password on your Stren account.\n\n"+
+			"We received a request to reset the password on your Hylete account.\n\n"+
 			"Open the link below within %s to choose a new password:\n%s\n\n"+
 			"If you didn't ask for this, you can safely ignore this email — your password will not change until you open the link and pick a new one.\n\n"+
-			"— The Stren team\n",
+			"— The Hylete team\n",
 		name, humanizeTTL(ttl), resetURL,
 	)
 }

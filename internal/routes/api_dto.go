@@ -9,8 +9,8 @@ package routes
 import (
 	"time"
 
-	"stren/internal/models"
-	"stren/internal/utils"
+	"hylete/internal/models"
+	"hylete/internal/utils"
 )
 
 // APIError is the body returned for every non-2xx response from

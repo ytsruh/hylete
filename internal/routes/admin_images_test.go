@@ -20,7 +20,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/imaging"
+	"hylete/internal/imaging"
 )
 
 // fakeUploader records every PutObject call. Tests assert against

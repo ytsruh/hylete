@@ -13,9 +13,9 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
-	"stren/internal/controllers"
-	"stren/internal/models"
-	"stren/internal/utils"
+	"hylete/internal/controllers"
+	"hylete/internal/models"
+	"hylete/internal/utils"
 )
 
 // Handler holds dependencies for HTTP route handlers.

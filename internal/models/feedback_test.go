@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"stren/internal/db"
+	"hylete/internal/db"
 )
 
 func setupFeedbackTestRepo(t *testing.T) (*FeedbackRepo, *UserRepository, *db.DB, string) {

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 type mockFeedbackRepository struct {

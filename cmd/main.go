@@ -11,16 +11,16 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/controllers"
-	"stren/internal/db"
-	"stren/internal/email"
-	"stren/internal/export"
-	"stren/internal/imaging"
-	"stren/internal/models"
-	"stren/internal/reminders"
-	"stren/internal/routes"
-	"stren/internal/utils"
-	"stren/internal/views"
+	"hylete/internal/controllers"
+	"hylete/internal/db"
+	"hylete/internal/email"
+	"hylete/internal/export"
+	"hylete/internal/imaging"
+	"hylete/internal/models"
+	"hylete/internal/reminders"
+	"hylete/internal/routes"
+	"hylete/internal/utils"
+	"hylete/internal/views"
 )
 
 // weightReminderCronSpec is the cron expression for the

@@ -3,9 +3,9 @@ package dashboard
 import (
 	"fmt"
 	"sort"
-	"stren/internal/models"
-	"stren/internal/views"
-	"stren/internal/views/components"
+	"hylete/internal/models"
+	"hylete/internal/views"
+	"hylete/internal/views/components"
 )
 
 // Dashboard renders the main dashboard page. The web app is a
@@ -34,7 +34,7 @@ templ Dashboard(exerciseEntries []models.ExerciseEntry, userName string, isAuthe
 	}
 }
 
-// iosAppBanner renders the "Stren is on iPhone" promo banner at
+// iosAppBanner renders the "Hylete is on iPhone" promo banner at
 // the top of the dashboard (both the empty and populated states).
 // Exercise logging happens in the iOS client — the web is a
 // read-only companion — so the banner invites web users to get
@@ -42,8 +42,8 @@ templ Dashboard(exerciseEntries []models.ExerciseEntry, userName string, isAuthe
 // Submissions land in the admin feedback inbox.
 templ iosAppBanner() {
 	@components.Banner(components.BannerProps{
-		Title:       "Stren is on iPhone",
-		Description: "Logging your sets happens in the Stren iOS app. Want access? Get in touch and we'll set you up.",
+		Title:       "Hylete is on iPhone",
+		Description: "Logging your sets happens in the Hylete iOS app. Want access? Get in touch and we'll set you up.",
 		LinkHref:    "/feedback",
 		LinkLabel:   "Get in touch",
 		IconName:    "smartphone",

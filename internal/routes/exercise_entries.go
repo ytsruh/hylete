@@ -7,9 +7,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/models"
-	"stren/internal/views/dashboard"
-	exerciseviews "stren/internal/views/exercise"
+	"hylete/internal/models"
+	"hylete/internal/views/dashboard"
+	exerciseviews "hylete/internal/views/exercise"
 )
 
 // --- Exercise Entry Handlers ---

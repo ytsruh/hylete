@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"stren/internal/db"
+	"hylete/internal/db"
 
 	"github.com/google/uuid"
 )

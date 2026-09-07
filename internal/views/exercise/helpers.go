@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // chartDay holds one aggregated value for a single calendar day, used by

@@ -1,11 +1,11 @@
-# Stren iOS Makefile
+# Hylete iOS Makefile
 # Drives XcodeGen + xcodebuild. All real work happens in
 # Xcode/CommandLineTools — this file is just a thin wrapper so
 # the day-to-day commands are short and memorable.
 
 # Schemes are defined in project.yml and generated into the
 # xcodeproj by `make gen`. `Dev` runs the Debug configuration
-# (localhost dev server, com.ytsruh.stren.dev bundle ID); `Prod`
+# (localhost dev server, com.hyleteapp.hylete.dev bundle ID); `Prod`
 # is the ship lane (Release config, production server). All
 # day-to-day targets below build Debug via the Dev scheme; the
 # `release` target archives through the Prod scheme.
@@ -18,12 +18,12 @@ RELEASE_SCHEME = Prod
 # picks a real simulator UUID via `xcrun simctl` after the
 # build finishes.
 DESTINATION ?= generic/platform=iOS Simulator
-XCODEPROJ = Stren.xcodeproj
+XCODEPROJ = Hylete.xcodeproj
 # Bundle ID of the DEBUG build (see Configs/Debug.xcconfig).
 # `run` installs and launches that one, so `simctl launch`
-# must use the `.dev` identifier — the plain com.ytsruh.stren
+# must use the `.dev` identifier — the plain com.hyleteapp.hylete
 # belongs to Release/production installs.
-BUNDLE_ID = com.ytsruh.stren.dev
+BUNDLE_ID = com.hyleteapp.hylete.dev
 
 # A regex that matches a simulator UUID. Used by `boot` and
 # `run` to extract a usable device id from the (somewhat
@@ -42,7 +42,7 @@ SIMULATOR_APP = $(shell xcode-select -p)/Applications/Simulator.app
 .PHONY: help gen build test boot run clean release
 
 help:
-	@echo "Stren iOS — available targets:"
+	@echo "Hylete iOS — available targets:"
 	@echo ""
 	@echo "  make gen      Regenerate $(XCODEPROJ) from project.yml"
 	@echo "  make build    Compile for the booted simulator"
@@ -181,7 +181,7 @@ run: build
 	xcrun simctl install "$$DEVICE" "$$APP_PATH" && \
 	PID=$$(xcrun simctl launch "$$DEVICE" $(BUNDLE_ID) | awk '{print $$NF}') && \
 	echo "" && \
-	echo "✓ Stren is running on $$DEVICE (pid $$PID)" && \
+	echo "✓ Hylete is running on $$DEVICE (pid $$PID)" && \
 	echo "  The Simulator window should be on screen. If not, run: open \"$(SIMULATOR_APP)\""
 
 clean:
@@ -197,9 +197,9 @@ clean:
 # iPhone to install. It drives the Prod scheme (whose
 # archive action is the Release configuration) and passes
 # `-configuration Release` explicitly anyway, so the result
-# is unambiguous: production bundle ID, "Stren" display
-# name, and the base URL from Stren/Configs/Release.xcconfig
-# (https://stren.ytsruh.com/api/v1).
+# is unambiguous: production bundle ID, "Hylete" display
+# name, and the base URL from Hylete/Configs/Release.xcconfig
+# (https://www.hyleteapp.com/api/v1).
 #
 # Signing is automatic via Xcode's personal-team
 # provisioning. On first run Xcode will prompt for your
@@ -214,7 +214,7 @@ clean:
 # trailing `\` would break the continuation chain. All
 # explanatory comments live above the recipe, not inside.
 release:
-	@ARCHIVE_DIR=$$(pwd)/build/Stren.xcarchive; \
+	@ARCHIVE_DIR=$$(pwd)/build/Hylete.xcarchive; \
 	mkdir -p build && \
 	xcodebuild \
 	-project $(XCODEPROJ) \

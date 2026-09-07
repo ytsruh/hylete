@@ -8,7 +8,7 @@ import (
 func TestBanner_RendersAllParts(t *testing.T) {
 	html := renderToString(t, Banner(BannerProps{
 		ID:          "ios-banner",
-		Title:       "Stren is on iPhone",
+		Title:       "Hylete is on iPhone",
 		Description: "Get in touch for iOS access.",
 		LinkHref:    "/feedback",
 		LinkLabel:   "Get in touch",
@@ -17,7 +17,7 @@ func TestBanner_RendersAllParts(t *testing.T) {
 
 	for _, want := range []string{
 		`id="ios-banner"`,
-		"Stren is on iPhone",
+		"Hylete is on iPhone",
 		"Get in touch for iOS access.",
 		`href="/feedback"`,
 		"lucide-smartphone",

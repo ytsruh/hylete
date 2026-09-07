@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"stren/internal/utils"
+	"hylete/internal/utils"
 )
 
 // TestHome_AnonymousGetsLandingPage confirms the root path serves
@@ -96,7 +96,7 @@ func TestDashboardRoute_RendersForAuthenticatedUser(t *testing.T) {
 		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "Stren") || !strings.Contains(body, "Logout") {
+	if !strings.Contains(body, "Hylete") || !strings.Contains(body, "Logout") {
 		t.Error("expected authenticated app chrome on /dashboard")
 	}
 }

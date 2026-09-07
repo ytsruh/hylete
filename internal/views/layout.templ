@@ -1,7 +1,7 @@
 package views
 
-import "stren/internal/models"
-import "stren/internal/views/components"
+import "hylete/internal/models"
+import "hylete/internal/views/components"
 
 type PageData struct {
 	Title           string
@@ -24,13 +24,13 @@ templ Layout(data PageData) {
 			<meta name="theme-color" content="#4a5568"/>
 			<meta name="apple-mobile-web-app-capable" content="yes"/>
 			<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-			<meta name="apple-mobile-web-app-title" content="Stren"/>
+			<meta name="apple-mobile-web-app-title" content="Hylete"/>
 			<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"/>
 			<link rel="icon" type="image/png" href="/icons/favicon-96x96.png" sizes="96x96"/>
 			<link rel="icon" type="image/svg+xml" href="/icons/favicon.svg"/>
 			<link rel="shortcut icon" href="/favicon.ico"/>
 			<link rel="manifest" href="/manifest.json"/>
-			<title>{ data.Title } - Strength Tracker</title>
+			<title>{ data.Title } - Hylete</title>
 			<script>
 				(() => {
 					try {
@@ -74,8 +74,8 @@ templ Layout(data PageData) {
 					<nav aria-label="Sidebar navigation">
 						<header class="border-sidebar-border">
 							<div class="flex items-center px-2 gap-2">
-								<div class="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-lg font-bold">S</div>
-								<span class="font-semibold text-sidebar-foreground truncate">Stren</span>
+								<div class="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-lg font-bold">H</div>
+								<span class="font-semibold text-sidebar-foreground truncate">Hylete</span>
 							</div>
 						</header>
 						<section class="flex flex-col gap-y-5 py-5 pl-2 pr-3">
@@ -217,7 +217,7 @@ templ Layout(data PageData) {
 											@components.Icon(components.IconProps{Name: "menu", Size: 20})
 										</button>
 									</li>
-									<a href="/dashboard"><li class="flex lg:hidden text-primary">Stren</li></a>
+									<a href="/dashboard"><li class="flex lg:hidden text-primary">Hylete</li></a>
 								</div>
 								<div class="flex items-center gap-2">
 									<button
@@ -237,8 +237,8 @@ templ Layout(data PageData) {
 							} else {
 								<div class="w-full flex items-center justify-between gap-2">
 									<a class="flex items-center px-2 gap-2" href="/">
-										<div class="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-lg font-bold">S</div>
-										<span class="font-bold text-sidebar-foreground truncate">Stren</span>
+										<div class="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-lg font-bold">H</div>
+										<span class="font-bold text-sidebar-foreground truncate">Hylete</span>
 									</a>
 									// Desktop: full inline nav (md+). Keeps existing desktop look 1:1.
 									<div class="hidden md:flex items-center gap-2">
@@ -303,8 +303,8 @@ templ Layout(data PageData) {
 				<footer class="border-t">
 					<div class="container mx-auto max-w-5xl px-3 md:px-4 py-4 md:py-6 flex flex-col items-center gap-2 md:gap-3 text-sm md:flex-row md:justify-between">
 						<div class="flex items-center gap-2 text-muted-foreground">
-							<div class="bg-primary text-primary-foreground flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-bold">S</div>
-							<span>© 2026 Stren</span>
+							<div class="bg-primary text-primary-foreground flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-bold">H</div>
+							<span>© 2026 Hylete</span>
 						</div>
 						<nav class="flex items-center gap-4 md:gap-5 text-muted-foreground">
 							<a href="/" class="hover:text-foreground transition-colors py-1">Home</a>
@@ -515,7 +515,7 @@ templ EmptyState() {
 				@components.Icon(components.IconProps{Name: "dumbbell", Size: 24})
 			</div>
 			<h3 class="text-lg font-semibold">No workouts in the last 7 days</h3>
-			<p class="text-muted-foreground text-sm">Log a session with the Stren app to keep your streak going.</p>
+			<p class="text-muted-foreground text-sm">Log a session with the Hylete app to keep your streak going.</p>
 		</header>
 	</div>
 }

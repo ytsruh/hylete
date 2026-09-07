@@ -9,9 +9,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"stren/internal/controllers"
-	"stren/internal/models"
-	"stren/internal/utils"
+	"hylete/internal/controllers"
+	"hylete/internal/models"
+	"hylete/internal/utils"
 )
 
 // setupFeedbackHandler wires a Handler with its own feedback mock
@@ -187,7 +187,7 @@ func TestDashboard_ShowsIOSBanner(t *testing.T) {
 		t.Fatalf("Dashboard failed: %v", err)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Stren is on iPhone", `href="/feedback"`} {
+	for _, want := range []string{"Hylete is on iPhone", `href="/feedback"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("expected dashboard to contain banner text %q", want)
 		}
@@ -206,7 +206,7 @@ func TestDashboard_EmptyState_ShowsIOSBanner(t *testing.T) {
 		t.Fatalf("Dashboard failed: %v", err)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "Stren is on iPhone") {
+	if !strings.Contains(body, "Hylete is on iPhone") {
 		t.Error("expected banner on empty dashboard too")
 	}
 	if !strings.Contains(body, "No workouts in the last 7 days") {

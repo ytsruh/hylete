@@ -1,8 +1,8 @@
 package auth
 
 import (
-	"stren/internal/views"
-	"stren/internal/views/components"
+	"hylete/internal/views"
+	"hylete/internal/views/components"
 )
 
 // LoginPage renders the login form. On md+ screens it renders a
@@ -31,7 +31,7 @@ templ LoginPage(errorMsg string) {
 			// are nested here rather than direct children of .card.
 			<div class="flex flex-col justify-center gap-6 px-6 py-6 md:w-1/2">
 				@components.CardHeader(components.CardHeaderProps{}) {
-					<h2 class="text-2xl font-medium text-center">Login to <span class="text-primary">Stren</span></h2>
+					<h2 class="text-2xl font-medium text-center">Login to <span class="text-primary">Hylete</span></h2>
 				}
 				@components.CardSection(components.CardSectionProps{}) {
 					<form
@@ -198,7 +198,7 @@ templ RegisterPage(errorMsg string) {
 			</div>
 			<div class="flex flex-col justify-center gap-6 px-6 py-6 md:w-1/2">
 				@components.CardHeader(components.CardHeaderProps{}) {
-					<h2 class="text-2xl font-medium text-center">Sign up for a free <span class="text-primary">Stren</span> account</h2>
+					<h2 class="text-2xl font-medium text-center">Sign up for a free <span class="text-primary">Hylete</span> account</h2>
 				}
 				@components.CardSection(components.CardSectionProps{}) {
 					<form

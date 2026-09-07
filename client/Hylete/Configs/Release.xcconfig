@@ -1,0 +1,28 @@
+// Release build configuration. Used for on-device installs,
+// TestFlight, and App Store builds. HYLETE_API_SCHEME +
+// HYLETE_API_HOST + HYLETE_API_PATH resolves to the production
+// HTTPS server at www.hyleteapp.com.
+//
+// HTTPS is allowed by Apple's App Transport Security by
+// default, so no NSExceptionDomains entry is required for
+// this host. The existing localhost exception in Info.plist
+// only covers the Debug build's dev server.
+//
+// To set up code signing for personal-team distribution,
+// either configure your team in Xcode (Signing &
+// Capabilities) or set DEVELOPMENT_TEAM here, e.g.:
+//   DEVELOPMENT_TEAM = ABC123XYZ
+//
+// See Debug.xcconfig for why this URL is split across three
+// variables instead of a single HYLETE_API_BASE_URL.
+HYLETE_API_SCHEME = https
+HYLETE_API_HOST = www.hyleteapp.com
+HYLETE_API_PATH = /api/v1
+
+// The Release configuration is the real app: production bundle
+// ID and display name. The `.dev` suffix / "Hylete Dev" name used
+// by the Debug configuration lives in Debug.xcconfig so both
+// builds can be installed side-by-side. See Debug.xcconfig for
+// why these are defined in xcconfig files rather than project.yml.
+PRODUCT_BUNDLE_IDENTIFIER = com.hyleteapp.hylete
+HYLETE_DISPLAY_NAME = Hylete

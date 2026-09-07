@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"stren/internal/models"
+	"hylete/internal/models"
 )
 
 // fakePhotos is a PhotoGetter backed by an in-memory map. missing
