@@ -38,7 +38,7 @@ type EnvVar struct {
 	// have the "Email Sending: Edit" permission.
 	CLOUDFLARE_EMAIL_TOKEN string `env:"CLOUDFLARE_EMAIL_TOKEN"`
 	// PUBLIC_URL is the absolute origin the app is served
-	// from, e.g. "https://hylete.ytsruh.com". Used by the
+	// from, e.g. "https://www.hyleteapp.com". Used by the
 	// email subsystem to build links in transactional
 	// emails (password-reset URL, welcome dashboard link).
 	// Required: startup hard-fails if empty. Must be a

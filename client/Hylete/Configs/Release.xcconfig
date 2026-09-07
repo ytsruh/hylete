@@ -1,7 +1,7 @@
 // Release build configuration. Used for on-device installs,
 // TestFlight, and App Store builds. HYLETE_API_SCHEME +
 // HYLETE_API_HOST + HYLETE_API_PATH resolves to the production
-// HTTPS server at hylete.ytsruh.com.
+// HTTPS server at www.hyleteapp.com.
 //
 // HTTPS is allowed by Apple's App Transport Security by
 // default, so no NSExceptionDomains entry is required for
@@ -16,7 +16,7 @@
 // See Debug.xcconfig for why this URL is split across three
 // variables instead of a single HYLETE_API_BASE_URL.
 HYLETE_API_SCHEME = https
-HYLETE_API_HOST = hylete.ytsruh.com
+HYLETE_API_HOST = www.hyleteapp.com
 HYLETE_API_PATH = /api/v1
 
 // The Release configuration is the real app: production bundle
@@ -24,5 +24,5 @@ HYLETE_API_PATH = /api/v1
 // by the Debug configuration lives in Debug.xcconfig so both
 // builds can be installed side-by-side. See Debug.xcconfig for
 // why these are defined in xcconfig files rather than project.yml.
-PRODUCT_BUNDLE_IDENTIFIER = com.ytsruh.hylete
+PRODUCT_BUNDLE_IDENTIFIER = com.hyleteapp.hylete
 HYLETE_DISPLAY_NAME = Hylete

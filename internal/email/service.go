@@ -29,7 +29,7 @@ type Sender interface {
 //
 // baseURL is the absolute origin the email is being sent from
 // (typically the value of the PUBLIC_URL env var, e.g.
-// "https://hylete.ytsruh.com" in production). It is threaded into
+// "https://www.hyleteapp.com" in production). It is threaded into
 // every link the email contains (dashboard button, password-reset
 // link, footer "view on the web" link) so a staging deployment
 // sends email that points at itself, not at production.

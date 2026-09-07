@@ -1,6 +1,6 @@
 name: Hylete
 options:
-  bundleIdPrefix: com.ytsruh
+  bundleIdPrefix: com.hyleteapp
   deploymentTarget:
     iOS: "17.0"
   developmentLanguage: en
@@ -90,8 +90,8 @@ targets:
         # NOTE: PRODUCT_BUNDLE_IDENTIFIER is intentionally NOT
         # set here. Direct target build settings override
         # xcconfig files, so pinning it here would defeat the
-        # per-configuration split (com.ytsruh.hylete.dev in
-        # Debug vs com.ytsruh.hylete in Release) defined in
+        # per-configuration split (com.hyleteapp.hylete.dev in
+        # Debug vs com.hyleteapp.hylete in Release) defined in
         # Hylete/Configs/{Debug,Release}.xcconfig.
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: NO
@@ -118,10 +118,10 @@ targets:
 #
 #   Dev  — the daily driver. Run/Test use Debug, which pulls
 #          Hylete/Configs/Debug.xcconfig: localhost dev server,
-#          com.ytsruh.hylete.dev bundle ID, "Hylete Dev" name.
+#          com.hyleteapp.hylete.dev bundle ID, "Hylete Dev" name.
 #   Prod — the ship lane. Run/Profile/Archive use Release
 #          (Configs/Release.xcconfig): production HTTPS server,
-#          com.ytsruh.hylete, "Hylete". Run = Release here means
+#          com.hyleteapp.hylete, "Hylete". Run = Release here means
 #          you can smoke-test against the live API on a
 #          simulator before archiving.
 #
@@ -159,7 +159,7 @@ schemes:
         HyleteTests: [test]
     run:
       # Release config → production server. Lets you launch
-      # the real app against hylete.ytsruh.com without going
+      # the real app against www.hyleteapp.com without going
       # through an archive + device install first.
       config: Release
     test:

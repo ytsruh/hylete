@@ -53,7 +53,7 @@ func TestRenderWelcome_UsesProvidedBaseURL(t *testing.T) {
 	// itself, not at production. Render with two different
 	// base URLs and assert each one ends up in the body.
 	cases := []string{
-		"https://hylete.ytsruh.com",
+		"https://www.hyleteapp.com",
 		"https://staging.hylete.example",
 		"http://localhost:8080",
 	}

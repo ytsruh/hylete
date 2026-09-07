@@ -36,14 +36,14 @@ const (
 	smtpUser        = "api_token"
 	// defaultFrom is the from address used when ClientConfig.FromAddress
 	// is empty. Pinned here per project policy: the sender domain is
-	// ytsruh.com (the same domain the app is deployed on), so any
+	// hyleteapp.com (the same domain the app is deployed on), so any
 	// future change to the From address is a code change, not a config
 	// change.
-	defaultFrom = "hylete@ytsruh.com"
+	defaultFrom = "noreply@hyleteapp.com"
 	// ehloIdentity is the hostname used in the EHLO greeting. SMTP
 	// RFC 5321 §4.1.1.1 says it should be the client's FQDN. We
 	// advertise the app's own hostname; some servers log it.
-	ehloIdentity = "hylete.ytsruh.com"
+	ehloIdentity = "www.hyleteapp.com"
 
 	defaultDialTimeout = 30 * time.Second
 )
@@ -81,7 +81,7 @@ type ClientConfig struct {
 	APIToken string
 
 	// FromAddress is the envelope-from / From header. Defaults to
-	// "hylete@ytsruh.com" when empty.
+	// "noreply@hyleteapp.com" when empty.
 	FromAddress string
 
 	// Host is the SMTP server. Defaults to

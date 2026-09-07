@@ -24,8 +24,8 @@ to. Defaults are already wired up:
 
 | Scheme | Config | API URL | Bundle ID |
 |---|---|---|---|
-| **Dev** (daily driver) | Debug | `http://localhost:8080/api/v1` | `com.ytsruh.hylete.dev` |
-| **Prod** (ship lane) | Release | `https://hylete.ytsruh.com/api/v1` | `com.ytsruh.hylete` |
+| **Dev** (daily driver) | Debug | `http://localhost:8080/api/v1` | `com.hyleteapp.hylete.dev` |
+| **Prod** (ship lane) | Release | `https://www.hyleteapp.com/api/v1` | `com.hyleteapp.hylete` |
 
 The two bundle IDs mean a dev install ("Hylete Dev") and a production
 install ("Hylete") can coexist side-by-side on the same device or

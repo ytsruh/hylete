@@ -5,7 +5,7 @@
 
 # Schemes are defined in project.yml and generated into the
 # xcodeproj by `make gen`. `Dev` runs the Debug configuration
-# (localhost dev server, com.ytsruh.hylete.dev bundle ID); `Prod`
+# (localhost dev server, com.hyleteapp.hylete.dev bundle ID); `Prod`
 # is the ship lane (Release config, production server). All
 # day-to-day targets below build Debug via the Dev scheme; the
 # `release` target archives through the Prod scheme.
@@ -21,9 +21,9 @@ DESTINATION ?= generic/platform=iOS Simulator
 XCODEPROJ = Hylete.xcodeproj
 # Bundle ID of the DEBUG build (see Configs/Debug.xcconfig).
 # `run` installs and launches that one, so `simctl launch`
-# must use the `.dev` identifier — the plain com.ytsruh.hylete
+# must use the `.dev` identifier — the plain com.hyleteapp.hylete
 # belongs to Release/production installs.
-BUNDLE_ID = com.ytsruh.hylete.dev
+BUNDLE_ID = com.hyleteapp.hylete.dev
 
 # A regex that matches a simulator UUID. Used by `boot` and
 # `run` to extract a usable device id from the (somewhat
@@ -199,7 +199,7 @@ clean:
 # `-configuration Release` explicitly anyway, so the result
 # is unambiguous: production bundle ID, "Hylete" display
 # name, and the base URL from Hylete/Configs/Release.xcconfig
-# (https://hylete.ytsruh.com/api/v1).
+# (https://www.hyleteapp.com/api/v1).
 #
 # Signing is automatic via Xcode's personal-team
 # provisioning. On first run Xcode will prompt for your

@@ -31,5 +31,5 @@ HYLETE_API_PATH = /api/v1
 // settings — direct build settings in the pbxproj take precedence
 // over xcconfig files, which would pin every configuration to a
 // single value.
-PRODUCT_BUNDLE_IDENTIFIER = com.ytsruh.hylete.dev
+PRODUCT_BUNDLE_IDENTIFIER = com.hyleteapp.hylete.dev
 HYLETE_DISPLAY_NAME = Hylete Dev

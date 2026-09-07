@@ -672,7 +672,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.ytsruh.HyleteTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hyleteapp.HyleteTests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Hylete.app/Hylete";
@@ -767,7 +767,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.ytsruh.HyleteTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hyleteapp.HyleteTests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Hylete.app/Hylete";
