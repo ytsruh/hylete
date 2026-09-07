@@ -73,6 +73,14 @@ struct SplashView: View {
 struct MainTabView: View {
     @EnvironmentObject private var env: AppEnvironment
 
+    /// Master beta opt-in (mirrors `ProfileView`'s toggle).
+    /// Read here so the Health tab itself is only *present*
+    /// when opted in — wrapping a `tabItem` in `BetaFeature`
+    /// would still leave an empty tab, so the tab is gated by
+    /// this flag AND its content is wrapped in `BetaFeature`
+    /// for defense-in-depth.
+    @AppStorage("betaFeaturesEnabled") private var betaFeaturesEnabled: Bool = false
+
     @StateObject private var goalStore: GoalStore
     @StateObject private var weightStore: WeightStore
 
@@ -103,6 +111,16 @@ struct MainTabView: View {
 
             GoalsListView(store: goalStore)
                 .tabItem { Label("Goals", systemImage: Icons.goals) }
+
+            if betaFeaturesEnabled {
+                BetaFeature {
+                    HealthView(
+                        weightUnit: env.authStore.currentUser?.weightUnit ?? "kg",
+                        distanceUnit: env.authStore.currentUser?.distanceUnit ?? "km"
+                    )
+                }
+                .tabItem { Label("Health", systemImage: "heart.text.square") }
+            }
 
             ProfileView()
                 .tabItem { Label("Profile", systemImage: "person.crop.circle") }

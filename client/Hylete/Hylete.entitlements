@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Read-only Apple Health vitals (display-only, no workouts).
+	     NOTE: keep this key — without it HealthKit authorization
+	     throws at runtime and the Health link silently fails.
+	     If Xcode's Signing & Capabilities editor ever drops it,
+	     re-add the HealthKit capability there (it writes here). -->
+	<key>com.apple.developer.healthkit</key>
+	<true/>
+</dict>
+</plist>

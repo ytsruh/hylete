@@ -48,6 +48,11 @@ struct ProfileView: View {
                     headerSection(user: user)
                     accountSection(user: user)
                     preferencesSection(user: user)
+                    BetaFeature {
+                        Section("Connected Accounts") {
+                            HealthConnectRow()
+                        }
+                    }
                     appearanceSection
                     betaSection
                 }

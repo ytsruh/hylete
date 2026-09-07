@@ -39,9 +39,17 @@ targets:
           - "DesignSystem/Fonts/Inter/static/**/Inter_18pt-Black*"
           - "DesignSystem/Fonts/Inter/OFL.txt"
           - "DesignSystem/Fonts/Inter/README.txt"
+    entitlements:
+      path: Hylete/Hylete.entitlements
     info:
       path: Hylete/Info.plist
       properties:
+        # Read-only Apple Health vitals (display-only, no workouts).
+        # Only the share (read) key is declared — there is no
+        # NSHealthUpdateUsageDescription because the app never
+        # writes to HealthKit. Wrapped behind BetaFeature until
+        # validated.
+        NSHealthShareUsageDescription: Hylete reads steps, heart rate, and body measurements from Apple Health to show your daily activity alongside your workouts.
         # Resolved per build configuration from the xcconfig
         # files (Hylete/Configs/*.xcconfig): "Hylete Dev" in
         # Debug, "Hylete" in Release — so dev and prod installs
