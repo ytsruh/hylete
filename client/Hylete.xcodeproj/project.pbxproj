@@ -81,6 +81,7 @@
 		E57C00D503258D37091625FB /* CalendarMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 575E706878CD3C450A02DB92 /* CalendarMathTests.swift */; };
 		E639AAEFDCBE97E5F1F1D197 /* WeightPhotoUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29C72F28FA82941B5B23217F /* WeightPhotoUploader.swift */; };
 		F1BE81929FA1F50FD60F99E6 /* EMOMView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F47C298B620130555D668A82 /* EMOMView.swift */; };
+		F64349C65841574C694A14EF /* DashboardHealthSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4FB2E3A9B31AE38A6436EFB /* DashboardHealthSummary.swift */; };
 		F8645B3C3F4FBE9380D03B8C /* WeightListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4171D4E7BDB15323D60A07F /* WeightListView.swift */; };
 /* End PBXBuildFile section */
 
@@ -161,6 +162,7 @@
 		B9D23DC1E6C6A140D0B6EC20 /* ImageViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageViewer.swift; sourceTree = "<group>"; };
 		BCB591A97788FF962986EB02 /* ExerciseListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseListView.swift; sourceTree = "<group>"; };
 		C365DC87132594CB25BA50E2 /* TextFieldStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextFieldStyles.swift; sourceTree = "<group>"; };
+		C4FB2E3A9B31AE38A6436EFB /* DashboardHealthSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHealthSummary.swift; sourceTree = "<group>"; };
 		CDE8F827F41017B9CF43EEC7 /* WeightEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeightEditorView.swift; sourceTree = "<group>"; };
 		CF6C1C2D8F865F60305BEF60 /* GoalsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalsListView.swift; sourceTree = "<group>"; };
 		D14D4C2D22C970BE6A342688 /* Spacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Spacing.swift; sourceTree = "<group>"; };
@@ -315,6 +317,7 @@
 			isa = PBXGroup;
 			children = (
 				B11CABAB8BE2BFE1B215AF22 /* ActionCard.swift */,
+				C4FB2E3A9B31AE38A6436EFB /* DashboardHealthSummary.swift */,
 				F278869D4CDE719FAD73DEB5 /* DashboardView.swift */,
 				3C6B7DF46A78BD78F7410F52 /* DonutChart.swift */,
 				94FDECDB7EC8962A9EFDFEE4 /* PopularExercises.swift */,
@@ -584,6 +587,7 @@
 				36B2268DBDC5D34EF64A7A5F /* Colors.swift in Sources */,
 				68E11844795A43D485B7C34F /* CountdownTimerView.swift in Sources */,
 				0307710BF237733F1ECFFE05 /* DTOs.swift in Sources */,
+				F64349C65841574C694A14EF /* DashboardHealthSummary.swift in Sources */,
 				D58AFD243E39D5EBD89ABD51 /* DashboardView.swift in Sources */,
 				7B7F289AB0A5E320A13A264D /* DonutChart.swift in Sources */,
 				F1BE81929FA1F50FD60F99E6 /* EMOMView.swift in Sources */,

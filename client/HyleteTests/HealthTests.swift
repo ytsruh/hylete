@@ -511,6 +511,87 @@ final class HealthTests: XCTestCase {
         }
         await body()
     }
+
+    // MARK: - Dashboard health summary
+
+    /// The dashboard contract: exactly steps, distance,
+    /// active energy, resting (basal) energy, heart rate,
+    /// resting heart rate — in that order.
+    func testDashboardSummaryMetrics() {
+        XCTAssertEqual(
+            DashboardHealthSummary.metrics,
+            [.steps, .distance, .activeEnergy, .basalEnergy, .heartRate, .restingHeartRate]
+        )
+    }
+
+    /// Every summary metric renders a real value (never "—")
+    /// from a connected store with data.
+    @MainActor
+    func testDashboardSummaryMetricsRenderValues() async {
+        await withConnectFlag(true) {
+            let vm = HealthViewModel(provider: MockHealthStore(
+                status: .granted,
+                readings: [
+                    .steps: HealthSample(value: 8_432, date: Date()),
+                    .distance: HealthSample(value: 5_200, date: Date()),
+                    .activeEnergy: HealthSample(value: 420, date: Date()),
+                    .basalEnergy: HealthSample(value: 1_650, date: Date()),
+                    .heartRate: HealthSample(value: 72, date: Date()),
+                    .restingHeartRate: HealthSample(value: 58, date: Date()),
+                ]
+            ))
+            await vm.refresh()
+            XCTAssertEqual(vm.status, .loaded)
+            for metric in DashboardHealthSummary.metrics {
+                XCTAssertNotEqual(vm.text(for: metric), "—", "\(metric) rendered no value")
+            }
+        }
+    }
+
+    /// Distance honours the dashboard model's profile unit:
+    /// one mile of metres renders as miles vs kilometres.
+    @MainActor
+    func testDashboardSummaryDistanceUnit() async {
+        let readings: [HealthMetric: HealthSample] = [.distance: HealthSample(value: 1_609.344, date: Date())]
+        let km = HealthViewModel(
+            provider: MockHealthStore(status: .granted, readings: readings),
+            distanceUnit: "km"
+        )
+        let mi = HealthViewModel(
+            provider: MockHealthStore(status: .granted, readings: readings),
+            distanceUnit: "mi"
+        )
+        await km.refresh()
+        await mi.refresh()
+        XCTAssertEqual(km.text(for: .distance), "1.61 km")
+        XCTAssertEqual(mi.text(for: .distance), "1.00 mi")
+    }
+
+    /// Hidden-states contract: never-connected, denied, and
+    /// unavailable links never reach `.loaded`, so the
+    /// dashboard section stays hidden for all of them.
+    @MainActor
+    func testDashboardSummaryHiddenStates() async {
+        await withConnectFlag(false) {
+            for status in [HealthAuthStatus.notRequested, .denied, .unavailable] as [HealthAuthStatus] {
+                let vm = HealthViewModel(provider: MockHealthStore(status: status))
+                await vm.refresh()
+                XCTAssertNotEqual(vm.status, .loaded, "\(status) must not load")
+            }
+        }
+    }
+
+    /// Refresh rule truth table: only opted-in users with a
+    /// live link refresh vitals from the dashboard.
+    func testDashboardSummaryRefreshRule() {
+        XCTAssertFalse(DashboardHealthSummary.shouldRefresh(status: .loaded, betaEnabled: false))
+        XCTAssertFalse(DashboardHealthSummary.shouldRefresh(status: .loading, betaEnabled: false))
+        XCTAssertFalse(DashboardHealthSummary.shouldRefresh(status: .notRequested, betaEnabled: true))
+        XCTAssertFalse(DashboardHealthSummary.shouldRefresh(status: .denied, betaEnabled: true))
+        XCTAssertFalse(DashboardHealthSummary.shouldRefresh(status: .unavailable, betaEnabled: true))
+        XCTAssertTrue(DashboardHealthSummary.shouldRefresh(status: .loading, betaEnabled: true))
+        XCTAssertTrue(DashboardHealthSummary.shouldRefresh(status: .loaded, betaEnabled: true))
+    }
 }
 
 /// Stub whose authorization always throws, simulating a

@@ -100,7 +100,7 @@ struct MainTabView: View {
 
     var body: some View {
         TabView {
-            DashboardView()
+            DashboardView(distanceUnit: env.authStore.currentUser?.distanceUnit ?? "km")
                 .tabItem { Label("Dashboard", systemImage: "house") }
 
             ExerciseListView()
