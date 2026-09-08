@@ -217,3 +217,23 @@ func TestAdminExerciseForm_PreviewAspectMatchesCard(t *testing.T) {
 		})
 	}
 }
+
+func TestAdminExerciseList_TypeFilter(t *testing.T) {
+	exercises := []models.Exercise{
+		{ID: "ex-1", Name: "Squat", Type: models.ExerciseTypeStrength},
+		{ID: "ex-2", Name: "Run", Type: models.ExerciseTypeCardio},
+	}
+	html := renderToString(t, AdminExerciseList(exercises, "Admin", true, true))
+
+	if !strings.Contains(html, `id="exercise-type-filter"`) {
+		t.Error("expected type filter dropdown with id exercise-type-filter")
+	}
+	for _, want := range []string{`data-type="strength"`, `data-type="cardio"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("expected exercise row with %s", want)
+		}
+	}
+	if !strings.Contains(html, `typeFilter.addEventListener('change', applyFilters)`) {
+		t.Error("expected type filter change listener combining search + type")
+	}
+}

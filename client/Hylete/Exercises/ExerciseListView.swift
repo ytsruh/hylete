@@ -15,6 +15,7 @@ struct ExerciseListView: View {
     @State private var isLoading: Bool = true
     @State private var errorMessage: String?
     @State private var search: String = ""
+    @State private var typeFilter: ExerciseTypeFilter = .all
 
     var body: some View {
         NavigationStack {
@@ -45,16 +46,22 @@ struct ExerciseListView: View {
             .padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            List {
-                ForEach(filtered) { exercise in
-                    NavigationLink(value: exercise) {
-                        ExerciseRow(exercise: exercise)
+            VStack(spacing: 0) {
+                ExerciseTypeFilterView(selection: $typeFilter)
+                    .padding(.horizontal)
+                    .padding(.top, DSSpacing.sm)
+                    .padding(.bottom, DSSpacing.xs)
+                List {
+                    ForEach(filtered) { exercise in
+                        NavigationLink(value: exercise) {
+                            ExerciseRow(exercise: exercise)
+                        }
+                        .listRowSeparator(.hidden)
                     }
-                    .listRowSeparator(.hidden)
                 }
+                .listStyle(.insetGrouped)
+                .listRowSeparator(.hidden)
             }
-            .listStyle(.insetGrouped)
-            .listRowSeparator(.hidden)
             .navigationDestination(for: ExerciseDTO.self) { exercise in
                 ExerciseHistoryView(exercise: exercise)
             }
@@ -62,9 +69,7 @@ struct ExerciseListView: View {
     }
 
     private var filtered: [ExerciseDTO] {
-        let q = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if q.isEmpty { return exercises }
-        return exercises.filter { $0.name.lowercased().contains(q) }
+        filterExercises(exercises, search: search, typeFilter: typeFilter)
     }
 
     private func load() async {

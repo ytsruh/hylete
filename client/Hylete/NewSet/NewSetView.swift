@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The "log an entry" sheet. Picker for the exercise, then
-/// type-appropriate entry rows — strength mode offers a repeatable
+/// The "log an entry" sheet. Searchable exercise picker sheet
+/// (search + All/Strength/Cardio/Other filter, mirroring the web
+/// exercise list), then type-appropriate entry rows — strength mode offers a repeatable
 /// list of set rows (reps/weight/rest); cardio mode shows exactly one
 /// fixed session row (duration/distance + optional HR/calories),
 /// because a cardio workout is logged as a single session rather than
@@ -41,6 +42,7 @@ struct NewSetView: View {
     @State private var isLoadingExercises: Bool = true
     @State private var isSaving: Bool = false
     @State private var errorMessage: String?
+    @State private var showingExercisePicker: Bool = false
 
     init(initialExerciseID: String? = nil) {
         self.initialExerciseID = initialExerciseID
@@ -120,19 +122,34 @@ struct NewSetView: View {
                 Text("No exercises available. Ask an admin to add some.")
                     .foregroundStyle(DSColors.textSecondary)
             } else {
-                Picker("Exercise", selection: $selectedExerciseID) {
-                    Text("Select…").tag(String?.none)
-                    ForEach(exercises) { exercise in
-                        Text(exercise.name).tag(String?.some(exercise.id))
+                Button {
+                    showingExercisePicker = true
+                } label: {
+                    HStack {
+                        if let selectedExercise {
+                            Text(selectedExercise.name)
+                                .foregroundStyle(DSColors.text)
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            ExerciseTypeChip(type: selectedExercise.type)
+                        } else {
+                            Text("Select…")
+                                .foregroundStyle(DSColors.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption)
+                            .foregroundStyle(DSColors.textSecondary)
                     }
                 }
-                .pickerStyle(.menu)
-                // Menu pickers default to the accent tint
-                // (brand orange in this app). Override to
-                // the default text colour so the selected
-                // exercise name reads as neutral body text
-                // instead of a coloured chip.
-                .tint(DSColors.text)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Choose exercise")
+                .sheet(isPresented: $showingExercisePicker) {
+                    ExercisePickerSheet(
+                        exercises: exercises,
+                        selectedExerciseID: $selectedExerciseID
+                    )
+                }
             }
         }
     }
