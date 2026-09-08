@@ -7,9 +7,9 @@ import XCTest
 /// filter, mirroring the web exercise list behaviour.
 final class ExerciseFilterTests: XCTestCase {
 
-    private func makeExercise(id: String, name: String, type: String) -> ExerciseDTO {
+    private func makeExercise(id: String, name: String, type: String, aliases: String = "") -> ExerciseDTO {
         ExerciseDTO(
-            id: id, name: name, description: "", videoURL: "",
+            id: id, name: name, aliases: aliases, description: "", videoURL: "",
             imgURL: "", imageURL: "", type: type
         )
     }
@@ -60,5 +60,31 @@ final class ExerciseFilterTests: XCTestCase {
         let mixed = [makeExercise(id: "9", name: "Cycle", type: "Cardio")]
         let result = filterExercises(mixed, search: "", typeFilter: .cardio)
         XCTAssertEqual(result.map(\.id), ["9"])
+    }
+
+    func testSearchMatchesAliases() {
+        let exercises = [
+            makeExercise(id: "1", name: "Bent-Over Row", type: "strength", aliases: "barbell row,seated row"),
+            makeExercise(id: "2", name: "Running", type: "cardio"),
+        ]
+        // Full alias and substring both match, case-insensitively.
+        XCTAssertEqual(filterExercises(exercises, search: "seated row", typeFilter: .all).map(\.id), ["1"])
+        XCTAssertEqual(filterExercises(exercises, search: "BARBELL", typeFilter: .all).map(\.id), ["1"])
+        // Name matching still works alongside aliases.
+        XCTAssertEqual(filterExercises(exercises, search: "bent-over", typeFilter: .all).map(\.id), ["1"])
+        // Alias matching combines with the type filter.
+        XCTAssertTrue(filterExercises(exercises, search: "row", typeFilter: .cardio).isEmpty)
+        XCTAssertEqual(filterExercises(exercises, search: "row", typeFilter: .strength).map(\.id), ["1"])
+    }
+
+    func testDecodingWithoutAliasesDefaultsToEmpty() throws {
+        // Older server builds omit the key entirely; decoding must
+        // not fail so cached responses keep working.
+        let json = """
+        {"id":"1","name":"Squat","description":"","video_url":"","img_url":"","image_url":"","type":"strength"}
+        """.data(using: .utf8)!
+        let exercise = try JSONDecoder().decode(ExerciseDTO.self, from: json)
+        XCTAssertEqual(exercise.aliases, "")
+        XCTAssertEqual(filterExercises([exercise], search: "squat", typeFilter: .all).map(\.id), ["1"])
     }
 }

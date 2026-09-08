@@ -46,6 +46,7 @@ templ ExercisesList(exercises []models.Exercise, userName string, isAuthenticate
 						<tr
 							class="exercise-row cursor-pointer hover:bg-muted/50"
 							data-name={ strings.ToLower(exercise.Name) }
+							data-aliases={ strings.ToLower(exercise.Aliases) }
 							data-type={ strings.ToLower(string(exercise.Type)) }
 							data-href={ templ.SafeURL(fmt.Sprintf("/exercises/%s", exercise.ID)) }
 						>
@@ -80,8 +81,9 @@ templ ExercisesList(exercises []models.Exercise, userName string, isAuthenticate
 
 					rows.forEach(function(row) {
 						const name = row.getAttribute('data-name');
+						const aliases = row.getAttribute('data-aliases') || '';
 						const type = row.getAttribute('data-type');
-						const matchesQuery = name.includes(query);
+						const matchesQuery = name.includes(query) || aliases.includes(query);
 						const matchesType = selectedType === 'all' || type === selectedType;
 						if (matchesQuery && matchesType) {
 							row.classList.remove('hidden');

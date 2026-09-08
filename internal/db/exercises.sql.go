@@ -11,14 +11,15 @@ import (
 )
 
 const create = `-- name: Create :one
-INSERT INTO exercises (id, name, description, video_url, img_url, img_url_original, type)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO exercises (id, name, aliases, description, video_url, img_url, img_url_original, type)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id
 `
 
 type CreateParams struct {
 	ID             string
 	Name           string
+	Aliases        string
 	Description    sql.NullString
 	VideoUrl       sql.NullString
 	ImgUrl         sql.NullString
@@ -30,6 +31,7 @@ func (q *Queries) Create(ctx context.Context, arg CreateParams) (string, error) 
 	row := q.db.QueryRowContext(ctx, create,
 		arg.ID,
 		arg.Name,
+		arg.Aliases,
 		arg.Description,
 		arg.VideoUrl,
 		arg.ImgUrl,
@@ -42,7 +44,7 @@ func (q *Queries) Create(ctx context.Context, arg CreateParams) (string, error) 
 }
 
 const getByID = `-- name: GetByID :one
-SELECT id, name, description, video_url, img_url, img_url_original, type
+SELECT id, name, aliases, description, video_url, img_url, img_url_original, type
 FROM exercises
 WHERE id = ?
 `
@@ -53,6 +55,7 @@ func (q *Queries) GetByID(ctx context.Context, id string) (Exercise, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.Aliases,
 		&i.Description,
 		&i.VideoUrl,
 		&i.ImgUrl,
@@ -63,7 +66,7 @@ func (q *Queries) GetByID(ctx context.Context, id string) (Exercise, error) {
 }
 
 const getByName = `-- name: GetByName :one
-SELECT id, name, description, video_url, img_url, img_url_original, type
+SELECT id, name, aliases, description, video_url, img_url, img_url_original, type
 FROM exercises
 WHERE name = ?
 `
@@ -74,6 +77,7 @@ func (q *Queries) GetByName(ctx context.Context, name string) (Exercise, error) 
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.Aliases,
 		&i.Description,
 		&i.VideoUrl,
 		&i.ImgUrl,
@@ -84,7 +88,7 @@ func (q *Queries) GetByName(ctx context.Context, name string) (Exercise, error) 
 }
 
 const list = `-- name: List :many
-SELECT id, name, description, video_url, img_url, img_url_original, type
+SELECT id, name, aliases, description, video_url, img_url, img_url_original, type
 FROM exercises
 ORDER BY name
 `
@@ -101,6 +105,7 @@ func (q *Queries) List(ctx context.Context) ([]Exercise, error) {
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.Aliases,
 			&i.Description,
 			&i.VideoUrl,
 			&i.ImgUrl,
@@ -122,13 +127,14 @@ func (q *Queries) List(ctx context.Context) ([]Exercise, error) {
 
 const update = `-- name: Update :one
 UPDATE exercises
-SET name = ?, description = ?, video_url = ?, img_url = ?, img_url_original = ?, type = ?
+SET name = ?, aliases = ?, description = ?, video_url = ?, img_url = ?, img_url_original = ?, type = ?
 WHERE id = ?
-RETURNING id, name, description, video_url, img_url, img_url_original, type
+RETURNING id, name, aliases, description, video_url, img_url, img_url_original, type
 `
 
 type UpdateParams struct {
 	Name           string
+	Aliases        string
 	Description    sql.NullString
 	VideoUrl       sql.NullString
 	ImgUrl         sql.NullString
@@ -140,6 +146,7 @@ type UpdateParams struct {
 func (q *Queries) Update(ctx context.Context, arg UpdateParams) (Exercise, error) {
 	row := q.db.QueryRowContext(ctx, update,
 		arg.Name,
+		arg.Aliases,
 		arg.Description,
 		arg.VideoUrl,
 		arg.ImgUrl,
@@ -151,6 +158,7 @@ func (q *Queries) Update(ctx context.Context, arg UpdateParams) (Exercise, error
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.Aliases,
 		&i.Description,
 		&i.VideoUrl,
 		&i.ImgUrl,

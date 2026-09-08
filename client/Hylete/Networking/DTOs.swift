@@ -144,6 +144,10 @@ public struct UpdateMeRequest: Encodable, Equatable {
 public struct ExerciseDTO: Codable, Equatable, Identifiable, Hashable {
     public let id: String
     public let name: String
+    /// Comma-separated alternate names. Never displayed; only used for
+    /// client-side search filtering (mirrors the web `data-aliases` attr).
+    /// Defaults to "" when the key is absent (older server builds).
+    public let aliases: String
     public let description: String
     public let videoURL: String
     public let imgURL: String
@@ -158,6 +162,7 @@ public struct ExerciseDTO: Codable, Equatable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id
         case name
+        case aliases
         case description
         case videoURL = "video_url"
         case imgURL = "img_url"
@@ -169,6 +174,7 @@ public struct ExerciseDTO: Codable, Equatable, Identifiable, Hashable {
     public init(
         id: String,
         name: String,
+        aliases: String = "",
         description: String,
         videoURL: String,
         imgURL: String,
@@ -178,12 +184,26 @@ public struct ExerciseDTO: Codable, Equatable, Identifiable, Hashable {
     ) {
         self.id = id
         self.name = name
+        self.aliases = aliases
         self.description = description
         self.videoURL = videoURL
         self.imgURL = imgURL
         self.imageURL = imageURL
         self.imageURLOriginal = imageURLOriginal
         self.type = type
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        aliases = try container.decodeIfPresent(String.self, forKey: .aliases) ?? ""
+        description = try container.decode(String.self, forKey: .description)
+        videoURL = try container.decode(String.self, forKey: .videoURL)
+        imgURL = try container.decode(String.self, forKey: .imgURL)
+        imageURL = try container.decode(String.self, forKey: .imageURL)
+        imageURLOriginal = try container.decodeIfPresent(String.self, forKey: .imageURLOriginal)
+        type = try container.decode(String.self, forKey: .type)
     }
 
     /// `true` when the exercise has a renderable image. The

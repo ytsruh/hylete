@@ -1,6 +1,7 @@
 CREATE TABLE exercises (
     id TEXT PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
+    aliases TEXT NOT NULL DEFAULT '',
     description TEXT,
     video_url TEXT,
     img_url TEXT,

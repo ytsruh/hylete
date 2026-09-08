@@ -22,6 +22,7 @@ type AuthToken struct {
 type Exercise struct {
 	ID             string
 	Name           string
+	Aliases        string
 	Description    sql.NullString
 	VideoUrl       sql.NullString
 	ImgUrl         sql.NullString

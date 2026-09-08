@@ -49,7 +49,7 @@ templ AdminExerciseList(exercises []models.Exercise, userName string, isAuthenti
 				</thead>
 				<tbody>
 					for _, e := range exercises {
-						<tr class="exercise-row" data-name={ strings.ToLower(e.Name) } data-type={ strings.ToLower(string(e.Type)) }>
+						<tr class="exercise-row" data-name={ strings.ToLower(e.Name) } data-aliases={ strings.ToLower(e.Aliases) } data-type={ strings.ToLower(string(e.Type)) }>
 							<td>{ e.Name }</td>
 							<td>
 								@components.ExerciseTypeBadge(string(e.Type))
@@ -88,8 +88,9 @@ templ AdminExerciseList(exercises []models.Exercise, userName string, isAuthenti
 
 					rows.forEach(function(row) {
 						const name = row.getAttribute('data-name');
+						const aliases = row.getAttribute('data-aliases') || '';
 						const type = row.getAttribute('data-type');
-						const matchesQuery = name.includes(query);
+						const matchesQuery = name.includes(query) || aliases.includes(query);
 						const matchesType = selectedType === 'all' || type === selectedType;
 						if (matchesQuery && matchesType) {
 							row.classList.remove('hidden');
@@ -146,6 +147,18 @@ templ AdminExerciseForm(data AdminExerciseFormData, userName string, isAuthentic
 							value={ data.Exercise.Name }
 							required
 						/>
+					</div>
+					<div class="grid gap-2">
+						<label for="aliases">Aliases</label>
+						<input
+							class="input"
+							type="text"
+							id="aliases"
+							name="aliases"
+							placeholder="e.g. chest press, push-up"
+							value={ data.Exercise.Aliases }
+						/>
+						<p class="text-sm text-muted-foreground">Comma-separated alternate names. Used for search only, never shown.</p>
 					</div>
 					<div class="grid gap-2">
 						<label for="type">Type</label>
@@ -224,6 +237,17 @@ templ AdminExerciseForm(data AdminExerciseFormData, userName string, isAuthentic
 							placeholder="e.g. Bench Press"
 							required
 						/>
+					</div>
+					<div class="grid gap-2">
+						<label for="aliases">Aliases</label>
+						<input
+							class="input"
+							type="text"
+							id="aliases"
+							name="aliases"
+							placeholder="e.g. chest press, push-up"
+						/>
+						<p class="text-sm text-muted-foreground">Comma-separated alternate names. Used for search only, never shown.</p>
 					</div>
 					<div class="grid gap-2">
 						<label for="type">Type</label>

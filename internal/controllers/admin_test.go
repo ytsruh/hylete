@@ -62,6 +62,7 @@ func (m *mockAdminRepository) Update(id string, params models.UpdateExercisePara
 	for i, e := range m.exercises {
 		if e.ID == id {
 			m.exercises[i].Name = params.Name
+			m.exercises[i].Aliases = params.Aliases
 			m.exercises[i].Description = params.Description
 			m.exercises[i].VideoURL = params.VideoURL
 			m.exercises[i].ImgURL = params.ImgURL
@@ -86,7 +87,7 @@ func (m *mockAdminRepository) CreateNoTx(params models.CreateExerciseParams) (st
 		}
 	}
 	id := "mock-id-" + params.Name
-	m.exercises = append(m.exercises, models.Exercise{ID: id, Name: params.Name, Description: params.Description, VideoURL: params.VideoURL, ImgURL: params.ImgURL, ImgURLOriginal: params.ImgURLOriginal, Type: params.Type})
+	m.exercises = append(m.exercises, models.Exercise{ID: id, Name: params.Name, Aliases: params.Aliases, Description: params.Description, VideoURL: params.VideoURL, ImgURL: params.ImgURL, ImgURLOriginal: params.ImgURLOriginal, Type: params.Type})
 	return id, nil
 }
 
@@ -324,6 +325,7 @@ func TestAdminController_Create_Validation(t *testing.T) {
 	t.Run("all fields are set on returned exercise", func(t *testing.T) {
 		params := models.CreateExerciseParams{
 			Name:           "Full Exercise",
+			Aliases:        "chest press,push-up",
 			Description:    "A description",
 			VideoURL:       "https://example.com/video.mp4",
 			ImgURL:         "exercises/abc.jpg",
@@ -336,6 +338,9 @@ func TestAdminController_Create_Validation(t *testing.T) {
 		}
 		if ex.Name != params.Name {
 			t.Errorf("Name = %q, want %q", ex.Name, params.Name)
+		}
+		if ex.Aliases != params.Aliases {
+			t.Errorf("Aliases = %q, want %q", ex.Aliases, params.Aliases)
 		}
 		if ex.Description != params.Description {
 			t.Errorf("Description = %q, want %q", ex.Description, params.Description)
@@ -381,4 +386,26 @@ func TestAdminController_Update_Validation(t *testing.T) {
 			t.Fatal("expected error for invalid video URL, got nil")
 		}
 	})
+}
+
+func TestAdminController_AliasesNormalized(t *testing.T) {
+	mock := newMockAdminRepository()
+	ctrl := NewAdminController(mock)
+
+	ex, err := ctrl.Create(models.CreateExerciseParams{Name: "Row", Aliases: " seated row ,,CABLE row, seated ROW "})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ex.Aliases != "seated row,CABLE row" {
+		t.Errorf("Create Aliases = %q, want normalized %q", ex.Aliases, "seated row,CABLE row")
+	}
+
+	mock.exercises = []models.Exercise{{ID: "ex-1", Name: "Row"}}
+	updated, err := ctrl.Update("ex-1", models.UpdateExerciseParams{Name: "Row", Aliases: "low row, ,low ROW"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if updated.Aliases != "low row" {
+		t.Errorf("Update Aliases = %q, want %q", updated.Aliases, "low row")
+	}
 }

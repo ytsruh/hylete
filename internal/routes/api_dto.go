@@ -123,9 +123,14 @@ type UpdateMeRequest struct {
 // original, so older clients never see an empty-URL key. The iOS
 // full-screen image viewer prefers it for sharper pinch-zoom,
 // falling back to `ImageURL` on older server builds.
+//
+// `Aliases` is the comma-separated alternate-name list (never rendered
+// visibly). The iOS picker uses it for client-side search filtering
+// the same way the web lists use their `data-aliases` attribute.
 type ExerciseDTO struct {
 	ID               string `json:"id"`
 	Name             string `json:"name"`
+	Aliases          string `json:"aliases"`
 	Description      string `json:"description"`
 	VideoURL         string `json:"video_url"`
 	ImgURL           string `json:"img_url"`
@@ -139,6 +144,7 @@ func ExerciseFromModel(e models.Exercise) ExerciseDTO {
 	dto := ExerciseDTO{
 		ID:          e.ID,
 		Name:        e.Name,
+		Aliases:     e.Aliases,
 		Description: e.Description,
 		VideoURL:    e.VideoURL,
 		ImgURL:      e.ImgURL,

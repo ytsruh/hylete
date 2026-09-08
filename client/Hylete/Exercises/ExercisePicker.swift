@@ -23,7 +23,7 @@ enum ExerciseTypeFilter: String, CaseIterable, Identifiable {
     }
 }
 
-/// Pure exercise catalogue filter — name search (case-insensitive,
+/// Pure exercise catalogue filter — name + alias search (case-insensitive,
 /// trimmed) combined with the type filter. Extracted from the views so
 /// it can be unit-tested without hosting SwiftUI.
 func filterExercises(
@@ -33,7 +33,9 @@ func filterExercises(
 ) -> [ExerciseDTO] {
     let query = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     return exercises.filter { exercise in
-        let matchesQuery = query.isEmpty || exercise.name.lowercased().contains(query)
+        let matchesQuery = query.isEmpty
+            || exercise.name.lowercased().contains(query)
+            || exercise.aliases.lowercased().contains(query)
         let matchesType = typeFilter == .all || exercise.type.lowercased() == typeFilter.rawValue
         return matchesQuery && matchesType
     }

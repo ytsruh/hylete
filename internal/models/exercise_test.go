@@ -639,3 +639,104 @@ func TestExerciseRepository_GetExerciseEntriesByDateRange(t *testing.T) {
 		t.Fatalf("expected 2 exercise entries in range, got %d", len(exerciseEntries))
 	}
 }
+
+func TestNormalizeAliases(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "empty", raw: "", want: ""},
+		{name: "only commas and spaces", raw: " , , ", want: ""},
+		{name: "trims and drops empties", raw: " seated row ,,cable row ", want: "seated row,cable row"},
+		{name: "dedupes case-insensitively keeping first", raw: "Row, row, ROW ", want: "Row"},
+		{name: "preserves order", raw: "b,a,b", want: "b,a"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := NormalizeAliases(tc.raw); got != tc.want {
+				t.Errorf("NormalizeAliases(%q) = %q, want %q", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestExerciseRepository_AliasesRoundTrip(t *testing.T) {
+	// Aliases must round-trip through CreateNoTx, GetByID,
+	// GetByName, List, and Update like the other metadata columns.
+	repo, _, database, _ := setupTestRepo(t)
+	defer database.Close()
+
+	id, err := repo.CreateNoTx(CreateExerciseParams{
+		Name:    "Alias Test",
+		Aliases: "seated row,cable row",
+		Type:    ExerciseTypeStrength,
+	})
+	if err != nil {
+		t.Fatalf("CreateNoTx: %v", err)
+	}
+
+	got, err := repo.GetByID(id)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got == nil || got.Aliases != "seated row,cable row" {
+		t.Fatalf("GetByID returned %+v, want aliases set", got)
+	}
+
+	byName, err := repo.GetByName("Alias Test")
+	if err != nil {
+		t.Fatalf("GetByName: %v", err)
+	}
+	if byName == nil || byName.Aliases != "seated row,cable row" {
+		t.Errorf("GetByName returned %+v, want aliases set", byName)
+	}
+
+	updated, err := repo.Update(id, UpdateExerciseParams{
+		Name:    "Alias Test",
+		Aliases: "low row",
+		Type:    ExerciseTypeStrength,
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.Aliases != "low row" {
+		t.Errorf("Update returned %+v, want updated aliases", updated)
+	}
+
+	list, err := repo.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	found := false
+	for _, e := range list {
+		if e.ID == id {
+			found = true
+			if e.Aliases != "low row" {
+				t.Errorf("List row %+v, want updated aliases", e)
+			}
+		}
+	}
+	if !found {
+		t.Error("updated exercise not in List() result")
+	}
+}
+
+func TestExerciseRepository_AliasesDefaultEmpty(t *testing.T) {
+	// Exercises created without aliases (including the legacy
+	// Create path used when logging new exercise names) default to "".
+	repo, _, database, _ := setupTestRepo(t)
+	defer database.Close()
+
+	id, err := repo.Create(nil, "No Alias Exercise")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := repo.GetByID(id)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.Aliases != "" {
+		t.Errorf("Aliases = %q, want empty", got.Aliases)
+	}
+}

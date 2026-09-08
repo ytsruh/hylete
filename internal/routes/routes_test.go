@@ -85,7 +85,7 @@ func (m *mockRepository) CreateNoTx(params models.CreateExerciseParams) (string,
 		}
 	}
 	id := "ex-" + params.Name
-	m.exercises = append(m.exercises, models.Exercise{ID: id, Name: params.Name, Description: params.Description, VideoURL: params.VideoURL, ImgURL: params.ImgURL, ImgURLOriginal: params.ImgURLOriginal, Type: params.Type})
+	m.exercises = append(m.exercises, models.Exercise{ID: id, Name: params.Name, Aliases: params.Aliases, Description: params.Description, VideoURL: params.VideoURL, ImgURL: params.ImgURL, ImgURLOriginal: params.ImgURLOriginal, Type: params.Type})
 	return id, nil
 }
 
@@ -143,6 +143,7 @@ func (m *mockRepository) Update(id string, params models.UpdateExerciseParams) (
 	for i, e := range m.exercises {
 		if e.ID == id {
 			m.exercises[i].Name = params.Name
+			m.exercises[i].Aliases = params.Aliases
 			m.exercises[i].Description = params.Description
 			m.exercises[i].VideoURL = params.VideoURL
 			m.exercises[i].ImgURL = params.ImgURL
@@ -2154,6 +2155,54 @@ func TestAdminCreateExercise_PersistsImageKeys(t *testing.T) {
 	}
 	if got.ImgURLOriginal != "exercises/abc_original.jpg" {
 		t.Errorf("ImgURLOriginal = %q, want %q", got.ImgURLOriginal, "exercises/abc_original.jpg")
+	}
+}
+
+func TestAdminCreateExercise_PersistsAliases(t *testing.T) {
+	// The aliases form field must reach the persisted exercise,
+	// normalized (trimmed, de-duped) by the controller.
+	h, mock, _, e := setupHandler(t)
+
+	form := adminCreateForm("Bent-Over Row", "strength", "", "")
+	form.Set("aliases", " barbell row ,,Seated Row, barbell ROW ")
+	rec := adminPostForm(t, h, e, "/admin/exercises", form)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+
+	got := findExerciseByName(mock, "Bent-Over Row")
+	if got == nil {
+		t.Fatal("expected the new exercise to be persisted")
+	}
+	if got.Aliases != "barbell row,Seated Row" {
+		t.Errorf("Aliases = %q, want normalized %q", got.Aliases, "barbell row,Seated Row")
+	}
+}
+
+func TestAdminUpdateExercise_PersistsAliases(t *testing.T) {
+	h, mock, _, e := setupHandler(t)
+	mock.exercises = append(mock.exercises, models.Exercise{ID: "ex-row", Name: "Row"})
+
+	form := adminCreateForm("Row", "strength", "", "")
+	form.Set("aliases", "low row, cable row")
+	rec := adminPostForm(t, h, e, "/admin/exercises/ex-row", form)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+
+	var got *models.Exercise
+	for i := range mock.exercises {
+		if mock.exercises[i].ID == "ex-row" {
+			got = &mock.exercises[i]
+		}
+	}
+	if got == nil {
+		t.Fatal("expected the exercise to still exist")
+	}
+	if got.Aliases != "low row,cable row" {
+		t.Errorf("Aliases = %q, want %q", got.Aliases, "low row,cable row")
 	}
 }
 

@@ -807,3 +807,20 @@ func TestExercisesList_TypeFilter(t *testing.T) {
 		t.Error("expected type filter change listener combining search + type")
 	}
 }
+
+// TestExercisesList_AliasFilter verifies catalogue rows carry their
+// lower-cased aliases and the client-side filter matches them, so a
+// user can find an exercise by an alternate name without a reload.
+func TestExercisesList_AliasFilter(t *testing.T) {
+	exercises := []models.Exercise{
+		{ID: "ex-1", Name: "Bent-Over Row", Aliases: "Barbell Row,Seated Row", Type: models.ExerciseTypeStrength},
+	}
+	html := renderToString(t, ExercisesList(exercises, "Test User", true, false))
+
+	if !strings.Contains(html, `data-aliases="barbell row,seated row"`) {
+		t.Error("expected exercise row with lower-cased data-aliases")
+	}
+	if !strings.Contains(html, `aliases.includes(query)`) {
+		t.Error("expected client-side filter to match aliases")
+	}
+}

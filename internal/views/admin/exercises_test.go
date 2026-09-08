@@ -237,3 +237,40 @@ func TestAdminExerciseList_TypeFilter(t *testing.T) {
 		t.Error("expected type filter change listener combining search + type")
 	}
 }
+
+// TestAdminExerciseList_AliasFilter verifies rows carry their lower-cased
+// aliases and the client-side filter matches them, so an admin can find
+// an exercise by an alternate name without a reload.
+func TestAdminExerciseList_AliasFilter(t *testing.T) {
+	exercises := []models.Exercise{
+		{ID: "ex-1", Name: "Bent-Over Row", Aliases: "Barbell Row,Seated Row", Type: models.ExerciseTypeStrength},
+	}
+	html := renderToString(t, AdminExerciseList(exercises, "Admin", true, true))
+
+	if !strings.Contains(html, `data-aliases="barbell row,seated row"`) {
+		t.Error("expected exercise row with lower-cased data-aliases")
+	}
+	if !strings.Contains(html, `aliases.includes(query)`) {
+		t.Error("expected client-side filter to match aliases")
+	}
+}
+
+// TestAdminExerciseForm_AliasesField verifies the create/edit form exposes
+// the comma-separated aliases input (prefilled on edit).
+func TestAdminExerciseForm_AliasesField(t *testing.T) {
+	html := renderToString(t, AdminExerciseForm(AdminExerciseFormData{IsEdit: false}, "Admin", true, true))
+	if !strings.Contains(html, `name="aliases"`) {
+		t.Error("expected new-exercise form with aliases input")
+	}
+
+	edit := renderToString(t, AdminExerciseForm(AdminExerciseFormData{
+		Exercise: &models.Exercise{ID: "ex-1", Name: "Row", Aliases: "seated row,cable row", Type: models.ExerciseTypeStrength},
+		IsEdit:   true,
+	}, "Admin", true, true))
+	if !strings.Contains(html, `name="aliases"`) {
+		t.Error("expected edit-exercise form with aliases input")
+	}
+	if !strings.Contains(edit, `value="seated row,cable row"`) {
+		t.Error("expected edit-exercise form to prefill aliases")
+	}
+}
