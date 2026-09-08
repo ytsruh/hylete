@@ -28,6 +28,7 @@ type Handler struct {
 	feedbackCtrl      *controllers.FeedbackController
 	weightCtrl        *controllers.WeightController
 	goalsCtrl         *controllers.GoalsController
+	healthCtrl        *controllers.HealthSnapshotController
 	userRepo          models.UserRepo
 	jwtService        *utils.JWTService
 	validator         utils.Validator
@@ -61,7 +62,7 @@ type RealClock struct{}
 func (RealClock) Now() time.Time { return time.Now() }
 
 // NewHandler creates a new route handler instance.
-func NewHandler(authCtrl *controllers.AuthController, authRecoveryCtrl *controllers.AuthRecoveryController, exerciseEntryCtrl *controllers.ExerciseEntryController, adminCtrl *controllers.AdminController, adminUserCtrl *controllers.AdminUserController, feedbackCtrl *controllers.FeedbackController, weightCtrl *controllers.WeightController, goalsCtrl *controllers.GoalsController, userRepo models.UserRepo, jwtService *utils.JWTService, validator utils.Validator, imageProcessor exerciseImageProcessor, imageUploader exerciseImageUploader, imageConfig ExerciseImageConfig) *Handler {
+func NewHandler(authCtrl *controllers.AuthController, authRecoveryCtrl *controllers.AuthRecoveryController, exerciseEntryCtrl *controllers.ExerciseEntryController, adminCtrl *controllers.AdminController, adminUserCtrl *controllers.AdminUserController, feedbackCtrl *controllers.FeedbackController, weightCtrl *controllers.WeightController, goalsCtrl *controllers.GoalsController, healthCtrl *controllers.HealthSnapshotController, userRepo models.UserRepo, jwtService *utils.JWTService, validator utils.Validator, imageProcessor exerciseImageProcessor, imageUploader exerciseImageUploader, imageConfig ExerciseImageConfig) *Handler {
 	return &Handler{
 		authCtrl:          authCtrl,
 		authRecoveryCtrl:  authRecoveryCtrl,
@@ -71,6 +72,7 @@ func NewHandler(authCtrl *controllers.AuthController, authRecoveryCtrl *controll
 		feedbackCtrl:      feedbackCtrl,
 		weightCtrl:        weightCtrl,
 		goalsCtrl:         goalsCtrl,
+		healthCtrl:        healthCtrl,
 		userRepo:          userRepo,
 		jwtService:        jwtService,
 		validator:         validator,
@@ -234,6 +236,15 @@ func registerAPIRoutes(e *echo.Echo, h *Handler) {
 	e.PUT("/api/v1/weight/:id", h.APIUpdateWeightEntry)
 	e.DELETE("/api/v1/weight/:id", h.APIDeleteWeightEntry)
 	e.POST("/api/v1/weight/photo-upload", h.APIRequestPhotoUploadURL)
+
+	// Health snapshots (daily Apple Health vitals uploaded
+	// read-only from the iOS client — used by the iOS Health
+	// sync; no web UI). POST upserts a batch against
+	// (user_id, snapshot_date) so retries and backfills
+	// overwrite instead of duplicating; GET reads history for
+	// future analysis surfaces.
+	e.POST("/api/v1/health-snapshots", h.APIUpsertHealthSnapshots)
+	e.GET("/api/v1/health-snapshots", h.APIListHealthSnapshots)
 }
 
 // ServeManifest serves the web app manifest with the correct MIME type.

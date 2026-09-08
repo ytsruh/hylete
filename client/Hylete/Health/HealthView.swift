@@ -11,17 +11,22 @@ import SwiftUI
 /// written to HealthKit or to the Hylete server.
 public struct HealthView: View {
     @StateObject private var viewModel: HealthViewModel
+    @ObservedObject private var syncStore = HealthSyncStore.shared
+
+    private let api: HealthSnapshotAPI
 
     public init(
         provider: HealthDataProvider = LiveHealthStore(),
         weightUnit: String = "kg",
-        distanceUnit: String = "km"
+        distanceUnit: String = "km",
+        api: HealthSnapshotAPI
     ) {
         _viewModel = StateObject(wrappedValue: HealthViewModel(
             provider: provider,
             weightUnit: weightUnit,
             distanceUnit: distanceUnit
         ))
+        self.api = api
     }
 
     public var body: some View {
@@ -32,6 +37,12 @@ public struct HealthView: View {
                     if viewModel.status == .loading {
                         await viewModel.refresh()
                     }
+                    // Opportunistic catch-up: uploads any past
+                    // days missing server confirmation (no-op
+                    // unless sync consent is on). Closed-app
+                    // time just means delayed uploads — HealthKit
+                    // keeps recording regardless.
+                    await syncStore.syncIfNeeded(api: api)
                 }
                 .refreshable {
                     await viewModel.refresh()
@@ -108,7 +119,8 @@ public struct HealthView: View {
                     StatCard(
                         label: metric.title,
                         value: viewModel.text(for: metric),
-                        icon: metric.systemImage
+                        icon: metric.systemImage,
+                        footnote: viewModel.footnote(for: metric)
                     )
                 }
             }
@@ -194,10 +206,14 @@ public struct HealthView: View {
             .sleep: HealthSample(value: 7.2, date: Date()),
         ]),
         weightUnit: "kg",
-        distanceUnit: "km"
+        distanceUnit: "km",
+        api: MockSnapshotAPI()
     )
 }
 
 #Preview("Connect") {
-    HealthView(provider: MockHealthStore(status: .notRequested))
+    HealthView(
+        provider: MockHealthStore(status: .notRequested),
+        api: MockSnapshotAPI()
+    )
 }

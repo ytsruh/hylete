@@ -33,6 +33,7 @@ func setupFeedbackHandler(t *testing.T) (*Handler, *mockFeedbackRepository, *ech
 		controllers.NewFeedbackController(mockFeedback),
 		controllers.NewWeightController(newMockWeightRepository(), nil),
 		controllers.NewGoalsController(newMockGoalRepository()),
+		controllers.NewHealthSnapshotController(newMockHealthSnapshotRepository()),
 		mockUser, jwtService, utils.NewValidator(),
 		proc, upl, DefaultExerciseImageConfig,
 	)

@@ -241,20 +241,214 @@ public final class LiveHealthStore: HealthDataProvider {
 
 /// Deterministic stub for previews and unit tests. Never
 /// touches HealthKit.
-public final class MockHealthStore: HealthDataProvider {
+public final class MockHealthStore: HealthDataProvider, HealthHistoryProvider {
     private let status: HealthAuthStatus
     private let readings: [HealthMetric: HealthSample]
+    private let history: [DailyHealthSnapshot]
 
     public init(
         status: HealthAuthStatus = .granted,
-        readings: [HealthMetric: HealthSample] = [:]
+        readings: [HealthMetric: HealthSample] = [:],
+        history: [DailyHealthSnapshot] = []
     ) {
         self.status = status
         self.readings = readings
+        self.history = history
     }
 
     public func isAvailable() -> Bool { status != .unavailable }
     public func authorizationStatus() -> HealthAuthStatus { status }
     public func requestAuthorization() async throws {}
     public func fetchReadings() async -> [HealthMetric: HealthSample] { readings }
+    /// Returns only the canned snapshots falling inside the
+    /// requested days — like the live store, which returns
+    /// exactly 1:1 with its input. Tests asserting re-verify
+    /// behaviour depend on this filtering.
+    public func fetchHistory(days: [Date]) async -> [DailyHealthSnapshot] {
+        let wanted = Set(days.map { snapshotDateString($0) })
+        return history.filter { wanted.contains($0.date) }
+    }
+}
+
+// MARK: - History (backfill + catch-up sync)
+
+extension LiveHealthStore: HealthHistoryProvider {
+    /// Fetches one `DailyHealthSnapshot` per requested
+    /// device-local midnight (oldest first, matching `days`).
+    /// Daily totals come from one
+    /// `HKStatisticsCollectionQuery` per metric over the whole
+    /// window; latest-type metrics and sleep come from one
+    /// windowed sample query each, bucketed in memory
+    /// (`bucketLatest` / `bucketSleep` with carry-forward) —
+    /// ~17 HealthKit round-trips for a 90-day backfill instead
+    /// of ~1,400 per-day-per-metric queries. Per-metric
+    /// failures degrade to missing values, never a failed
+    /// history.
+    public func fetchHistory(days: [Date]) async -> [DailyHealthSnapshot] {
+        let calendar = Calendar.current
+        guard let first = days.first, let last = days.last,
+              let end = calendar.date(byAdding: .day, value: 1, to: last)
+        else { return [] }
+
+        // Daily totals: one collection query per metric.
+        let steps = await dailyTotals(.stepCount, unit: .count(), from: first, to: end)
+        let distance = await dailyTotals(.distanceWalkingRunning, unit: .meter(), from: first, to: end)
+        let active = await dailyTotals(.activeEnergyBurned, unit: .kilocalorie(), from: first, to: end)
+        let basal = await dailyTotals(.basalEnergyBurned, unit: .kilocalorie(), from: first, to: end)
+        let exercise = await dailyTotals(.appleExerciseTime, unit: .minute(), from: first, to: end)
+
+        // Latest-type metrics: one windowed sample query each,
+        // bucketed per day with carry-forward.
+        let bpm = HKUnit.count().unitDivided(by: .minute())
+        let masses = await windowedSamples(.bodyMass, unit: .gramUnit(with: .kilo), from: first, to: end)
+        let bmis = await windowedSamples(.bodyMassIndex, unit: .count(), from: first, to: end)
+        let fats = await windowedSamples(.bodyFatPercentage, unit: .percent(), from: first, to: end)
+            .map { (date: $0.date, value: $0.value * 100) }
+        let leans = await windowedSamples(.leanBodyMass, unit: .gramUnit(with: .kilo), from: first, to: end)
+        let hrs = await windowedSamples(.heartRate, unit: bpm, from: first, to: end)
+        let resting = await windowedSamples(.restingHeartRate, unit: bpm, from: first, to: end)
+        let walking = await windowedSamples(.walkingHeartRateAverage, unit: bpm, from: first, to: end)
+        let recovery = await windowedSamples(.heartRateRecoveryOneMinute, unit: bpm, from: first, to: end)
+        let hrv = await windowedSamples(.heartRateVariabilitySDNN, unit: HKUnit.secondUnit(with: .milli), from: first, to: end)
+        let vo2 = await windowedSamples(.vo2Max, unit: Self.vo2Unit, from: first, to: end)
+        let sleepSegs = await windowedSleepSegments(from: first, to: end)
+
+        let bucketed: [HealthMetric: [Date: (value: Double, measuredAt: Date)]] = [
+            .weight: bucketLatest(samples: masses, days: days),
+            .bmi: bucketLatest(samples: bmis, days: days),
+            .bodyFatPercentage: bucketLatest(samples: fats, days: days),
+            .leanBodyMass: bucketLatest(samples: leans, days: days),
+            .heartRate: bucketLatest(samples: hrs, days: days),
+            .restingHeartRate: bucketLatest(samples: resting, days: days),
+            .walkingHeartRateAverage: bucketLatest(samples: walking, days: days),
+            .cardioRecovery: bucketLatest(samples: recovery, days: days),
+            .heartRateVariability: bucketLatest(samples: hrv, days: days),
+            .cardioFitness: bucketLatest(samples: vo2, days: days),
+        ]
+        let sleepByDay = bucketSleep(segments: sleepSegs, days: days)
+        let tz = TimeZone.current.identifier
+
+        return days.map { day in            var values: [HealthMetric: Double] = [:]
+            var measured: [HealthMetric: Date] = [:]
+            if let v = steps[day] { values[.steps] = v }
+            if let v = distance[day] { values[.distance] = v }
+            if let v = active[day] { values[.activeEnergy] = v }
+            if let v = basal[day] { values[.basalEnergy] = v }
+            if let v = exercise[day] { values[.exerciseTime] = v }
+            if let h = sleepByDay[day] { values[.sleep] = h }
+            for (metric, table) in bucketed {
+                if let entry = table[day] {
+                    values[metric] = entry.value
+                    measured[metric] = entry.measuredAt
+                }
+            }
+            return DailyHealthSnapshot(
+                date: snapshotDateString(day),
+                timeZone: tz,
+                values: values,
+                measuredAt: measured
+            )
+        }
+    }
+
+    /// Cumulative daily sums over [start, end) keyed by day
+    /// midnight. A day with no samples is simply absent (the
+    /// caller treats absence as 0 / not recorded).
+    private func dailyTotals(
+        _ identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        from start: Date,
+        to end: Date
+    ) async -> [Date: Double] {
+        guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else { return [:] }
+        let anchor = Calendar.current.startOfDay(for: start)
+        do {
+            return try await withCheckedThrowingContinuation { cont in
+                let q = HKStatisticsCollectionQuery(
+                    quantityType: type,
+                    quantitySamplePredicate: nil,
+                    options: .cumulativeSum,
+                    anchorDate: anchor,
+                    intervalComponents: DateComponents(day: 1)
+                )
+                q.initialResultsHandler = { _, results, error in
+                    if let error { cont.resume(throwing: error); return }
+                    var out: [Date: Double] = [:]
+                    results?.enumerateStatistics(from: start, to: end) { stats, _ in
+                        if let sum = stats.sumQuantity()?.doubleValue(for: unit) {
+                            out[stats.startDate] = sum
+                        }
+                    }
+                    cont.resume(returning: out)
+                }
+                self.store.execute(q)
+            }
+        } catch {
+            return [:]
+        }
+    }
+
+    /// Every sample in [start, end) as (endDate, value) pairs,
+    /// oldest first. Callers bucket with `bucketLatest`.
+    private func windowedSamples(
+        _ identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        from start: Date,
+        to end: Date
+    ) async -> [(date: Date, value: Double)] {
+        guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else { return [] }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
+        do {
+            return try await withCheckedThrowingContinuation { cont in
+                let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: true)
+                let q = HKSampleQuery(
+                    sampleType: type,
+                    predicate: predicate,
+                    limit: HKObjectQueryNoLimit,
+                    sortDescriptors: [sort]
+                ) { _, samples, error in
+                    if let error { cont.resume(throwing: error); return }
+                    let out = ((samples as? [HKQuantitySample]) ?? []).map {
+                        (date: $0.endDate, value: $0.quantity.doubleValue(for: unit))
+                    }
+                    cont.resume(returning: out)
+                }
+                self.store.execute(q)
+            }
+        } catch {
+            return []
+        }
+    }
+
+    /// Asleep segments in [start, end) for per-day sleep
+    /// bucketing. In-bed / awake samples are excluded — the
+    /// snapshot answers "how much did I sleep?".
+    private func windowedSleepSegments(from start: Date, to end: Date) async -> [(start: Date, end: Date)] {
+        guard let type = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) else { return [] }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
+        let asleep: Set<HKCategoryValueSleepAnalysis> = [
+            .asleepCore, .asleepDeep, .asleepREM, .asleepUnspecified,
+        ]
+        do {
+            return try await withCheckedThrowingContinuation { cont in
+                let q = HKSampleQuery(
+                    sampleType: type,
+                    predicate: predicate,
+                    limit: HKObjectQueryNoLimit,
+                    sortDescriptors: nil
+                ) { _, samples, error in
+                    if let error { cont.resume(throwing: error); return }
+                    let out = ((samples as? [HKCategorySample]) ?? []).compactMap { s -> (Date, Date)? in
+                        guard let v = HKCategoryValueSleepAnalysis(rawValue: s.value),
+                              asleep.contains(v) else { return nil }
+                        return (s.startDate, s.endDate)
+                    }
+                    cont.resume(returning: out)
+                }
+                self.store.execute(q)
+            }
+        } catch {
+            return []
+        }
+    }
 }

@@ -28,6 +28,21 @@ public final class HealthViewModel: ObservableObject {
     private let weightUnit: String
     private let distanceUnit: String
 
+    /// UserDefaults flag recording that the user completed the
+    /// system permission sheet at least once (set in
+    /// `connect()`; denial included — the sheet returning
+    /// without throwing is what counts). The per-type status
+    /// API misreads on Simulator (granted reading as
+    /// not-determined), so a set flag sends init down the
+    /// fetch-first path: one refresh resolves the true state
+    /// from actually-returned samples instead of trusting the
+    /// stale read. Per-install like all UserDefaults state.
+    static let connectCompletedKey = "healthConnectCompleted"
+
+    static var hasCompletedConnect: Bool {
+        UserDefaults.standard.bool(forKey: connectCompletedKey)
+    }
+
     public init(
         provider: HealthDataProvider = LiveHealthStore(),
         weightUnit: String = "kg",
@@ -38,7 +53,11 @@ public final class HealthViewModel: ObservableObject {
         self.distanceUnit = distanceUnit
         if !provider.isAvailable() {
             status = .unavailable
-        } else if provider.authorizationStatus() == .granted {
+        } else if provider.authorizationStatus() == .granted || Self.hasCompletedConnect {
+            // Fetch-first: `.loading` triggers a refresh on
+            // appear, and `refresh()` resolves from returned
+            // samples (ground truth), so a stale status read
+            // costs a brief spinner, never a bogus prompt.
             status = .loading
         }
     }
@@ -53,6 +72,20 @@ public final class HealthViewModel: ObservableObject {
         )
     }
 
+    /// Sample-age footnote for one metric ("3 mo. ago"), or nil
+    /// when no footnote applies. Only `.latest`-kind metrics get
+    /// one: daily totals are "today so far" by definition (the
+    /// grid footer already shows fetch time), and a missing
+    /// sample date renders nothing so cards read exactly as
+    /// before. This is what makes a stale vital
+    /// distinguishable from a fresh one.
+    public func footnote(for metric: HealthMetric) -> String? {
+        guard metric.kind == .latest, let date = readings[metric]?.date else {
+            return nil
+        }
+        return date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))
+    }
+
     /// Presents the system permission sheet, then fetches.
     /// Denial is not an error — it lands on `.denied` with an
     /// "Open Settings" CTA in the view. A *thrown* failure
@@ -64,6 +97,7 @@ public final class HealthViewModel: ObservableObject {
         status = .loading
         do {
             try await provider.requestAuthorization()
+            UserDefaults.standard.set(true, forKey: Self.connectCompletedKey)
         } catch {
             status = .error(Self.connectFailureMessage(for: error))
             return

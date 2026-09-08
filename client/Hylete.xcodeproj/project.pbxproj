@@ -27,11 +27,14 @@
 		2E701C17550ECBB4092E7D8B /* TimerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD059BBA93A4D71316C256A /* TimerView.swift */; };
 		31167B8452E0B92FC046A029 /* WeightUnitEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 422635B9E5C794178F603A86 /* WeightUnitEditView.swift */; };
 		32406A63068FDFD88C111A76 /* GoalRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C711EC47CBEE1C3FBEE483D /* GoalRow.swift */; };
+		3295A50DFEE2C1256126BF71 /* HealthSyncStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BB8134E77E1D24122C123C4 /* HealthSyncStore.swift */; };
 		32A8F88A835C3747C90F804D /* ThemeMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C180F902EE864DB3D50F6D /* ThemeMode.swift */; };
 		36B2268DBDC5D34EF64A7A5F /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67F31C7DC1F254F60FC5F16 /* Colors.swift */; };
 		38BF2B65ECCFA8C4507D186C /* HealthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A71031199C9147D8356D97E /* HealthView.swift */; };
+		3A13F1C432AA660EA1D4DC87 /* HealthSyncRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0348CF855103C4D4082E0277 /* HealthSyncRow.swift */; };
 		3C354C21E0CC0562E2045654 /* HyleteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3CAD7DC20F34634B3662537 /* HyleteApp.swift */; };
 		3DA7E65D1FA693A6795A0CE6 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D294F63B2EFAB2282EB9C12 /* AppEnvironment.swift */; };
+		413FB006FBB1DEB6B0B9A876 /* HealthSnapshotPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30840C63306FE1B0BA69022B /* HealthSnapshotPayload.swift */; };
 		48FAC58CC104E377AFB4592B /* WeightEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDE8F827F41017B9CF43EEC7 /* WeightEditorView.swift */; };
 		4A01AC34097A7C19C3F83902 /* TextFieldStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = C365DC87132594CB25BA50E2 /* TextFieldStyles.swift */; };
 		5026FF1B244693943ADBF31B /* BetaFeatureFlag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51215BC9CCCFC8A80E0A56FB /* BetaFeatureFlag.swift */; };
@@ -57,6 +60,7 @@
 		92595912D83F96959467FC62 /* HealthMetric.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC6B350F40EF52C2F01E9B7D /* HealthMetric.swift */; };
 		9441DF44FD26CECEEEFFBBD9 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE2C9DD75C577C23B69BB5E5 /* APIClient.swift */; };
 		96F26DA4B6E53B7D149AE3FF /* GoalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A16D238B015163DD84A8D36 /* GoalStore.swift */; };
+		9BE8EE19AF9A9CF70FEA67ED /* HealthHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31CA832C4FC78409E5BBCC8B /* HealthHistory.swift */; };
 		A1C10AAA9A4B2BDF2BBA3C18 /* SelectedDaySetList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A0341E9C169FB3D344C4F22 /* SelectedDaySetList.swift */; };
 		AA77857A9E5A1D689507CD84 /* WeekCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A41DEC5C42E5BD5D58CA45 /* WeekCalendarView.swift */; };
 		AB04481FD84681AF2A1C24C9 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B8C3E2A9A0AB5810BFF451 /* LoginView.swift */; };
@@ -92,6 +96,7 @@
 
 /* Begin PBXFileReference section */
 		004DD155E7C9AD7087500764 /* HealthDataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthDataProvider.swift; sourceTree = "<group>"; };
+		0348CF855103C4D4082E0277 /* HealthSyncRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSyncRow.swift; sourceTree = "<group>"; };
 		04C180F902EE864DB3D50F6D /* ThemeMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeMode.swift; sourceTree = "<group>"; };
 		061DDBDD043561A5A3CC0E89 /* APIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIError.swift; sourceTree = "<group>"; };
 		0A16D238B015163DD84A8D36 /* GoalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalStore.swift; sourceTree = "<group>"; };
@@ -104,6 +109,8 @@
 		29C72F28FA82941B5B23217F /* WeightPhotoUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeightPhotoUploader.swift; sourceTree = "<group>"; };
 		2F974BE99B5527B2C5A0C042 /* ButtonStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ButtonStyles.swift; sourceTree = "<group>"; };
 		304EF4FF3DAE01EA279FFC22 /* EditSetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditSetView.swift; sourceTree = "<group>"; };
+		30840C63306FE1B0BA69022B /* HealthSnapshotPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSnapshotPayload.swift; sourceTree = "<group>"; };
+		31CA832C4FC78409E5BBCC8B /* HealthHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthHistory.swift; sourceTree = "<group>"; };
 		324CC70DC347ADF29335A464 /* SetList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetList.swift; sourceTree = "<group>"; };
 		32D98E895557E65B1DCA3344 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		3868DE3D51B00D33B6355B79 /* ExerciseHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseHistoryView.swift; sourceTree = "<group>"; };
@@ -133,6 +140,7 @@
 		8882EC6559BDF9B30C1DA604 /* HealthConnectRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthConnectRow.swift; sourceTree = "<group>"; };
 		8A1B829C034CD8F128F4F7FD /* NameEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NameEditView.swift; sourceTree = "<group>"; };
 		8B4028CB67B6C26EC6B9BB2D /* ForgotPasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgotPasswordView.swift; sourceTree = "<group>"; };
+		8BB8134E77E1D24122C123C4 /* HealthSyncStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSyncStore.swift; sourceTree = "<group>"; };
 		90F8F8894F2AF191F5137905 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		91E63C10452F836338D4319D /* Inter_18pt-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter_18pt-Bold.ttf"; sourceTree = "<group>"; };
 		94FDECDB7EC8962A9EFDFEE4 /* PopularExercises.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopularExercises.swift; sourceTree = "<group>"; };
@@ -396,7 +404,11 @@
 			children = (
 				8882EC6559BDF9B30C1DA604 /* HealthConnectRow.swift */,
 				004DD155E7C9AD7087500764 /* HealthDataProvider.swift */,
+				31CA832C4FC78409E5BBCC8B /* HealthHistory.swift */,
 				FC6B350F40EF52C2F01E9B7D /* HealthMetric.swift */,
+				30840C63306FE1B0BA69022B /* HealthSnapshotPayload.swift */,
+				0348CF855103C4D4082E0277 /* HealthSyncRow.swift */,
+				8BB8134E77E1D24122C123C4 /* HealthSyncStore.swift */,
 				9A71031199C9147D8356D97E /* HealthView.swift */,
 				D63F71E822EC7F59C2B6D4DA /* HealthViewModel.swift */,
 				38816C16E8825AA484ACE51A /* LiveHealthStore.swift */,
@@ -445,6 +457,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = F6E604EFB7146A523E14D399 /* Build configuration list for PBXNativeTarget "Hylete" */;
 			buildPhases = (
+				288236167CC6353E4954D191 /* Verify HealthKit entitlement */,
 				8AD72F5001FB999437B6B51C /* Sources */,
 				5F4D9119ABDE63597D74BE4A /* Resources */,
 			);
@@ -523,6 +536,28 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		288236167CC6353E4954D191 /* Verify HealthKit entitlement */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				Hylete/Hylete.entitlements,
+			);
+			name = "Verify HealthKit entitlement";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if ! grep -q \"com.apple.developer.healthkit\" \"${SRCROOT}/Hylete/Hylete.entitlements\"; then\n  echo \"error: Hylete/Hylete.entitlements is missing the com.apple.developer.healthkit key. HealthKit authorization will fail at runtime. Re-add the HealthKit capability (Signing & Capabilities) or restore the file, then rebuild.\"\n  exit 1\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		6226FE63418E0231D66F1197 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -564,7 +599,11 @@
 				D207F464B1F65E78787BE6EE /* GoalsListView.swift in Sources */,
 				BCE86D2AB7C8298D11887E05 /* HealthConnectRow.swift in Sources */,
 				27CE3791A5398346365E7BB8 /* HealthDataProvider.swift in Sources */,
+				9BE8EE19AF9A9CF70FEA67ED /* HealthHistory.swift in Sources */,
 				92595912D83F96959467FC62 /* HealthMetric.swift in Sources */,
+				413FB006FBB1DEB6B0B9A876 /* HealthSnapshotPayload.swift in Sources */,
+				3A13F1C432AA660EA1D4DC87 /* HealthSyncRow.swift in Sources */,
+				3295A50DFEE2C1256126BF71 /* HealthSyncStore.swift in Sources */,
 				38BF2B65ECCFA8C4507D186C /* HealthView.swift in Sources */,
 				0799426CDF2C93702088ED2D /* HealthViewModel.swift in Sources */,
 				3C354C21E0CC0562E2045654 /* HyleteApp.swift in Sources */,

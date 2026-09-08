@@ -42,6 +42,7 @@ func profileTestHarness(t *testing.T) (*Handler, *mockUserRepository, *echo.Echo
 		authCtrl, authRecoveryCtrl, entryCtrl, adminCtrl, adminUserCtrl,
 		feedbackCtrl, weightCtrl,
 		goalsCtrl,
+		controllers.NewHealthSnapshotController(newMockHealthSnapshotRepository()),
 		mockUser, jwtService, validator,
 		proc, upl, DefaultExerciseImageConfig,
 	)

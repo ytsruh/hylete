@@ -116,7 +116,8 @@ struct MainTabView: View {
                 BetaFeature {
                     HealthView(
                         weightUnit: env.authStore.currentUser?.weightUnit ?? "kg",
-                        distanceUnit: env.authStore.currentUser?.distanceUnit ?? "km"
+                        distanceUnit: env.authStore.currentUser?.distanceUnit ?? "km",
+                        api: env.api
                     )
                 }
                 .tabItem { Label("Health", systemImage: "heart.text.square") }

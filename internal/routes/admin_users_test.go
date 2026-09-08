@@ -63,6 +63,7 @@ func setupAdminUserHandler(t *testing.T, users []models.User, sender *mockAdminR
 		controllers.NewFeedbackController(newMockFeedbackRepository()),
 		controllers.NewWeightController(newMockWeightRepository(), nil),
 		controllers.NewGoalsController(newMockGoalRepository()),
+		controllers.NewHealthSnapshotController(newMockHealthSnapshotRepository()),
 		mockUser, jwtService, utils.NewValidator(),
 		proc, upl, DefaultExerciseImageConfig,
 	)
