@@ -168,3 +168,24 @@ type GoalRepo interface {
 
 // Compile-time check to ensure GoalRepository implements GoalRepo.
 var _ GoalRepo = (*GoalRepository)(nil)
+
+// HealthSnapshotRepo defines the interface for health snapshot
+// data access. The controller depends on this so route tests can
+// substitute an in-memory fake without touching the real sqlc
+// repository.
+type HealthSnapshotRepo interface {
+	// Upsert inserts a snapshot or replaces the row for the same
+	// (user_id, snapshot_date). The generated ID is assigned
+	// back onto the supplied value.
+	Upsert(entry *HealthSnapshot) error
+	// GetByDate returns the snapshot for a device-local calendar
+	// date (YYYY-MM-DD), or nil when none exists. Scoped to the
+	// user.
+	GetByDate(userID, snapshotDate string) (*HealthSnapshot, error)
+	// ListRange returns snapshots within an inclusive date
+	// range, newest first. Scoped to the user.
+	ListRange(userID, startDate, endDate string) ([]HealthSnapshot, error)
+}
+
+// Compile-time check to ensure HealthSnapshotRepository implements HealthSnapshotRepo.
+var _ HealthSnapshotRepo = (*HealthSnapshotRepository)(nil)

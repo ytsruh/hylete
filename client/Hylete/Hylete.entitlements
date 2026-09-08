@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Read-only Apple Health vitals. HAND-MAINTAINED: do not rely on
+	     XcodeGen or Xcode to preserve this file — the build setting
+	     CODE_SIGN_ENTITLEMENTS (project.yml) points here, and the
+	     "Verify HealthKit entitlement" build phase fails loudly if
+	     the key below goes missing. -->
+	<key>com.apple.developer.healthkit</key>
+	<true/>
+</dict>
+</plist>

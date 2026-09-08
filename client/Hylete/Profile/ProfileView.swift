@@ -48,6 +48,16 @@ struct ProfileView: View {
                     headerSection(user: user)
                     accountSection(user: user)
                     preferencesSection(user: user)
+                    BetaFeature {
+                        Section {
+                            HealthConnectRow()
+                            HealthSyncRow(api: env.api)
+                        } header: {
+                            Text("Connected Accounts")
+                        } footer: {
+                            Text("Sync uploads the last 90 days of activity, heart, body, and sleep metrics to Hylete, then keeps each day caught up. Read-only — nothing is ever written back to Apple Health.")
+                        }
+                    }
                     appearanceSection
                     betaSection
                 }

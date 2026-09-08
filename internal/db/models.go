@@ -67,6 +67,41 @@ type Goal struct {
 	UpdatedAt   time.Time
 }
 
+type HealthSnapshot struct {
+	ID                       string
+	UserID                   string
+	SnapshotDate             string
+	Tz                       string
+	Steps                    int64
+	DistanceMeters           float64
+	ActiveEnergyKcal         float64
+	BasalEnergyKcal          float64
+	ExerciseMinutes          float64
+	SleepSeconds             float64
+	Weight                   float64
+	WeightMeasuredAt         sql.NullTime
+	Bmi                      float64
+	BmiMeasuredAt            sql.NullTime
+	BodyFatPercentage        float64
+	BodyFatMeasuredAt        sql.NullTime
+	LeanBodyMass             float64
+	LeanMassMeasuredAt       sql.NullTime
+	HeartRate                float64
+	HeartRateMeasuredAt      sql.NullTime
+	RestingHeartRate         float64
+	RestingHrMeasuredAt      sql.NullTime
+	WalkingHeartRateAvg      float64
+	WalkingHrMeasuredAt      sql.NullTime
+	HrvMs                    float64
+	HrvMeasuredAt            sql.NullTime
+	CardioRecoveryBpm        float64
+	CardioRecoveryMeasuredAt sql.NullTime
+	Vo2Max                   float64
+	Vo2MeasuredAt            sql.NullTime
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+}
+
 type PushSubscription struct {
 	ID         string
 	UserID     string

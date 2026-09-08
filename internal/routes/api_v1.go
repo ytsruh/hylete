@@ -877,3 +877,158 @@ func (h *Handler) APIRequestPhotoUploadURL(c echo.Context) error {
 	// cannot bypass it by going via the JSON API.
 	return h.PhotoUploadURL(c)
 }
+
+// --- Health snapshots ---
+
+// maxHealthSnapshotRangeSpan caps the from/to window on GET
+// /api/v1/health-snapshots. Analysis pulls months at a time,
+// so this is generous headroom (over a year) rather than a
+// feature limit — it exists to stop a caller requesting an
+// effectively unbounded scan.
+const maxHealthSnapshotRangeSpan = 400 * 24 * time.Hour
+
+// APIUpsertHealthSnapshots handles POST /api/v1/health-snapshots.
+// Accepts a batch of daily snapshots (backfills fit with
+// headroom) and upserts each against (user_id, snapshot_date),
+// so re-uploads overwrite instead of duplicating — retries and
+// late corrections are safe. Returns 200 with the persisted
+// rows in request order.
+func (h *Handler) APIUpsertHealthSnapshots(c echo.Context) error {
+	var in UpsertHealthSnapshotsRequest
+	if err := c.Bind(&in); err != nil {
+		return c.JSON(http.StatusBadRequest, APIError{Error: "invalid request body"})
+	}
+	if err := h.validator.ValidateStruct(&in); err != nil {
+		return c.JSON(http.StatusBadRequest, APIError{Error: friendlyValidationError(err)})
+	}
+
+	claims := GetClaims(c)
+	inputs := make([]controllers.HealthSnapshotInput, 0, len(in.Snapshots))
+	for _, s := range in.Snapshots {
+		inputs = append(inputs, healthSnapshotInputFromDTO(s))
+	}
+	persisted, err := h.healthCtrl.UpsertSnapshots(claims.UserID, inputs)
+	if err != nil {
+		if msg, ok := healthSnapshotValidationError(err); ok {
+			return c.JSON(http.StatusBadRequest, APIError{Error: msg})
+		}
+		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to save health snapshots"})
+	}
+	return c.JSON(http.StatusOK, HealthSnapshotsResponse{Snapshots: HealthSnapshotsFromModels(persisted)})
+}
+
+// healthSnapshotValidationError reports whether err is one of
+// the controller's snapshot validation sentinels. These are
+// client mistakes (bad dates, oversized batches) so they map to
+// 400 rather than 500 — mirroring exerciseEntryValidationError.
+func healthSnapshotValidationError(err error) (string, bool) {
+	switch {
+	case errors.Is(err, controllers.ErrHealthSnapshotDateInvalid),
+		errors.Is(err, controllers.ErrHealthSnapshotDateFuture),
+		errors.Is(err, controllers.ErrHealthSnapshotBatchTooLarge):
+		return err.Error(), true
+	}
+	return "", false
+}
+
+// healthSnapshotInputFromDTO maps one request item onto the
+// controller input. Field-for-field copy — both layers speak
+// canonical units.
+func healthSnapshotInputFromDTO(s HealthSnapshotItem) controllers.HealthSnapshotInput {
+	return controllers.HealthSnapshotInput{
+		SnapshotDate:         s.SnapshotDate,
+		Tz:                   s.Tz,
+		Steps:                s.Steps,
+		DistanceMeters:       s.DistanceMeters,
+		ActiveEnergyKcal:     s.ActiveEnergyKcal,
+		BasalEnergyKcal:      s.BasalEnergyKcal,
+		ExerciseMinutes:      s.ExerciseMinutes,
+		SleepSeconds:         s.SleepSeconds,
+		Weight:               s.Weight,
+		WeightMeasuredAt:     s.WeightMeasuredAt,
+		BMI:                  s.BMI,
+		BMIMeasuredAt:        s.BMIMeasuredAt,
+		BodyFatPercentage:    s.BodyFatPercentage,
+		BodyFatMeasuredAt:    s.BodyFatMeasuredAt,
+		LeanBodyMass:         s.LeanBodyMass,
+		LeanMassMeasuredAt:   s.LeanMassMeasuredAt,
+		HeartRate:            s.HeartRate,
+		HeartRateMeasuredAt:  s.HeartRateMeasuredAt,
+		RestingHeartRate:     s.RestingHeartRate,
+		RestingHRMeasuredAt:  s.RestingHRMeasuredAt,
+		WalkingHeartRateAvg:  s.WalkingHeartRateAvg,
+		WalkingHRMeasuredAt:  s.WalkingHRMeasuredAt,
+		HRV:                  s.HRV,
+		HRVMeasuredAt:        s.HRVMeasuredAt,
+		CardioRecoveryBPM:    s.CardioRecoveryBPM,
+		CardioRecoveryAt:     s.CardioRecoveryAt,
+		VO2Max:               s.VO2Max,
+		VO2MeasuredAt:        s.VO2MeasuredAt,
+	}
+}
+
+// APIListHealthSnapshots handles GET /api/v1/health-snapshots.
+//
+// Two mutually-exclusive ways to pick the window (mirroring
+// the exercise-entries list):
+//
+//   - ?days=N (default 90, clamped to [1, 365]): snapshots for
+//     the last N device-local calendar dates, newest first.
+//   - ?from=<YYYY-MM-DD>&to=<YYYY-MM-DD>: an explicit
+//     device-local date range, inclusive on both ends (plain
+//     dates, not instants — snapshot_date is a calendar date).
+//
+// When either from or to is present the range mode wins; days
+// is ignored. Malformed ranges return 400s with an APIError
+// body.
+func (h *Handler) APIListHealthSnapshots(c echo.Context) error {
+	claims := GetClaims(c)
+
+	rawFrom, rawTo := c.QueryParam("from"), c.QueryParam("to")
+
+	var (
+		snapshots []models.HealthSnapshot
+		err       error
+	)
+	switch {
+	case rawFrom != "" || rawTo != "":
+		// Explicit range mode. Both bounds are required.
+		if rawFrom == "" || rawTo == "" {
+			return c.JSON(http.StatusBadRequest, APIError{Error: "both from and to are required"})
+		}
+		if _, parseErr := time.Parse("2006-01-02", rawFrom); parseErr != nil {
+			return c.JSON(http.StatusBadRequest, APIError{Error: "from must be a YYYY-MM-DD date"})
+		}
+		if _, parseErr := time.Parse("2006-01-02", rawTo); parseErr != nil {
+			return c.JSON(http.StatusBadRequest, APIError{Error: "to must be a YYYY-MM-DD date"})
+		}
+		if rawFrom > rawTo {
+			return c.JSON(http.StatusBadRequest, APIError{Error: "from must not be after to"})
+		}
+		from, _ := time.Parse("2006-01-02", rawFrom)
+		to, _ := time.Parse("2006-01-02", rawTo)
+		if to.Sub(from) > maxHealthSnapshotRangeSpan {
+			return c.JSON(http.StatusBadRequest, APIError{Error: "range must not exceed 400 days"})
+		}
+		snapshots, err = h.healthCtrl.ListSnapshots(claims.UserID, rawFrom, rawTo)
+	default:
+		days := 90
+		if raw := c.QueryParam("days"); raw != "" {
+			n, atoiErr := strconv.Atoi(raw)
+			if atoiErr != nil || n < 1 {
+				return c.JSON(http.StatusBadRequest, APIError{Error: "days must be a positive integer"})
+			}
+			if n > 365 {
+				n = 365
+			}
+			days = n
+		}
+		end := time.Now().Format("2006-01-02")
+		start := time.Now().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+		snapshots, err = h.healthCtrl.ListSnapshots(claims.UserID, start, end)
+	}
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to load health snapshots"})
+	}
+	return c.JSON(http.StatusOK, HealthSnapshotsResponse{Snapshots: HealthSnapshotsFromModels(snapshots)})
+}

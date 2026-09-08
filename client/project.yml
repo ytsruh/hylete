@@ -39,9 +39,43 @@ targets:
           - "DesignSystem/Fonts/Inter/static/**/Inter_18pt-Black*"
           - "DesignSystem/Fonts/Inter/OFL.txt"
           - "DesignSystem/Fonts/Inter/README.txt"
+    # Entitlements: CODE_SIGN_ENTITLEMENTS (in settings below)
+    # points at a HAND-MAINTAINED plist. Do NOT use XcodeGen's
+    # `entitlements:` key for this target — xcodegen rewrites
+    # that file on every `make gen`, silently dropping the
+    # HealthKit key (proven with checksums: this broke HealthKit
+    # auth twice before the cause was found). With only the
+    # build setting referencing it, neither `make gen` nor the
+    # build touches the file's contents. Read-only Apple Health
+    # vitals (display-only, no workouts).
+    # Fails the build early when the HealthKit entitlement goes
+    # missing from Hylete.entitlements (Xcode's Signing &
+    # Capabilities editor has stripped it before). Without the
+    # key the app still compiles but every HealthKit
+    # authorization throws at runtime and the Health link fails
+    # silently — this turns that into a loud build error naming
+    # the fix instead.
+    preBuildScripts:
+      - script: |
+          if ! grep -q "com.apple.developer.healthkit" "${SRCROOT}/Hylete/Hylete.entitlements"; then
+            echo "error: Hylete/Hylete.entitlements is missing the com.apple.developer.healthkit key. HealthKit authorization will fail at runtime. Re-add the HealthKit capability (Signing & Capabilities) or restore the file, then rebuild."
+            exit 1
+          fi
+        name: Verify HealthKit entitlement
+        # Declared input doubles as a sandbox read grant:
+        # ENABLE_USER_SCRIPT_SANDBOXING is on, so without this
+        # the grep sees nothing and the check false-fails.
+        inputFiles:
+          - Hylete/Hylete.entitlements
     info:
       path: Hylete/Info.plist
       properties:
+        # Read-only Apple Health vitals (display-only, no workouts).
+        # Only the share (read) key is declared — there is no
+        # NSHealthUpdateUsageDescription because the app never
+        # writes to HealthKit. Wrapped behind BetaFeature until
+        # validated.
+        NSHealthShareUsageDescription: Hylete reads steps, heart rate, and body measurements from Apple Health to show your daily activity alongside your workouts.
         # Resolved per build configuration from the xcconfig
         # files (Hylete/Configs/*.xcconfig): "Hylete Dev" in
         # Debug, "Hylete" in Release — so dev and prod installs
@@ -97,6 +131,11 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # HealthKit entitlement source file (hand-maintained —
+        # see the note above `info:`). CODE_SIGN_ENTITLEMENTS is
+        # safe here (unlike the bundle ID above) because no
+        # xcconfig sets it, so there is nothing to override.
+        CODE_SIGN_ENTITLEMENTS: Hylete/Hylete.entitlements
   # Hosted unit-test bundle. Runs against the app target so
   # tests can exercise DesignSystem helpers (CalendarMath) and
   # any future logic that doesn't need a running server.
@@ -126,9 +165,10 @@ targets:
 #          simulator before archiving.
 #
 # Schemes MUST be declared here (not hand-added in Xcode) —
-# Hylete.xcodeproj is gitignored and regenerated wholesale by
-# XcodeGen; anything defined only in the project file is lost
-# on `make gen`.
+# the generated project is gitignored, so anything defined
+# only in Xcode (schemes, phases, capabilities, file
+# membership) is lost on the next `make gen` with no trace.
+# Change the YAML, regen, and commit the YAML only.
 schemes:
   Dev:
     build:

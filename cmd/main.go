@@ -96,6 +96,7 @@ func main() {
 	weightCtrl := controllers.NewWeightController(weightRepo, r2PhotoGetter{})
 	authRecoveryCtrl := controllers.NewAuthRecoveryController(userRepo, authTokenRepo, emailService)
 	goalsCtrl := controllers.NewGoalsController(goalsRepo)
+	healthCtrl := controllers.NewHealthSnapshotController(models.NewHealthSnapshotRepository(database))
 
 	// Initialize the per-user weight-reminder orchestrator here so
 	// the hourly cron scheduler below can drive it. The orchestrator
@@ -122,6 +123,7 @@ func main() {
 		feedbackCtrl,
 		weightCtrl,
 		goalsCtrl,
+		healthCtrl,
 		userRepo,
 		jwtService,
 		validator,

@@ -11,6 +11,12 @@
 # `release` target archives through the Prod scheme.
 SCHEME = Dev
 RELEASE_SCHEME = Prod
+# Pinned XcodeGen version — the version that generated the
+# committed Hylete.xcodeproj. Different versions emit
+# different pbxproj noise, so `make gen` refuses to run on any
+# other version; bump this deliberately (and commit the
+# regenerated project in the same change) when upgrading.
+XCODEGEN_VERSION = 2.46.0
 # Use the generic simulator destination so xcodebuild doesn't
 # try to resolve `OS:latest` to the latest installed runtime
 # (which can be a beta iOS that doesn't have the iPhone model
@@ -61,6 +67,7 @@ help:
 # capabilities).
 gen:
 	@command -v xcodegen >/dev/null 2>&1 || { echo "xcodegen not installed. Run: brew install xcodegen"; exit 1; }
+	@xcodegen --version 2>/dev/null | grep -qF "$(XCODEGEN_VERSION)" || { echo "xcodegen $(XCODEGEN_VERSION) required (see XCODEGEN_VERSION in this Makefile). Run: brew upgrade xcodegen"; exit 1; }
 	xcodegen generate
 	@echo "✓ $(XCODEPROJ) regenerated"
 

@@ -898,6 +898,7 @@ func setupHandler(t *testing.T) (*Handler, *mockRepository, *mockUserRepository,
 		authCtrl, authRecoveryCtrl, entryCtrl, adminCtrl, adminUserCtrl,
 		feedbackCtrl, weightCtrl,
 		goalsCtrl,
+		controllers.NewHealthSnapshotController(newMockHealthSnapshotRepository()),
 		mockUser, jwtService, validator,
 		proc, upl, DefaultExerciseImageConfig,
 	)

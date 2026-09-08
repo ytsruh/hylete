@@ -843,3 +843,88 @@ public struct WeightPhotoUploadResponse: Decodable, Equatable {
     public let url: String
     public let key: String
 }
+
+// MARK: Health snapshots
+
+/// One persisted day of Apple Health vitals, mirroring the
+/// server's `HealthSnapshotDTO` in
+/// `internal/routes/api_dto.go`. Canonical units, identical to
+/// the upload payload; `measuredAt` dates are nil when the
+/// server holds no observation for that metric (carried or
+/// never measured). Synthesized decoding suffices: the server
+/// omits nil timestamps (`omitempty`), and Swift maps absent
+/// optional keys to nil.
+public struct HealthSnapshotDTO: Decodable, Equatable {
+    public let id: String
+    public let snapshotDate: String
+    public let tz: String
+    public let steps: Int
+    public let distanceMeters: Double
+    public let activeEnergyKcal: Double
+    public let basalEnergyKcal: Double
+    public let exerciseMinutes: Double
+    public let sleepSeconds: Double
+    public let weight: Double
+    public let weightMeasuredAt: Date?
+    public let bmi: Double
+    public let bmiMeasuredAt: Date?
+    public let bodyFatPercentage: Double
+    public let bodyFatMeasuredAt: Date?
+    public let leanBodyMass: Double
+    public let leanMassMeasuredAt: Date?
+    public let heartRate: Double
+    public let heartRateMeasuredAt: Date?
+    public let restingHeartRate: Double
+    public let restingHRMeasuredAt: Date?
+    public let walkingHeartRateAvg: Double
+    public let walkingHRMeasuredAt: Date?
+    public let hrvMs: Double
+    public let hrvMeasuredAt: Date?
+    public let cardioRecoveryBpm: Double
+    public let cardioRecoveryMeasuredAt: Date?
+    public let vo2Max: Double
+    public let vo2MeasuredAt: Date?
+    public let createdAt: Date
+    public let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case snapshotDate = "snapshot_date"
+        case tz
+        case steps
+        case distanceMeters = "distance_meters"
+        case activeEnergyKcal = "active_energy_kcal"
+        case basalEnergyKcal = "basal_energy_kcal"
+        case exerciseMinutes = "exercise_minutes"
+        case sleepSeconds = "sleep_seconds"
+        case weight
+        case weightMeasuredAt = "weight_measured_at"
+        case bmi
+        case bmiMeasuredAt = "bmi_measured_at"
+        case bodyFatPercentage = "body_fat_percentage"
+        case bodyFatMeasuredAt = "body_fat_measured_at"
+        case leanBodyMass = "lean_body_mass"
+        case leanMassMeasuredAt = "lean_mass_measured_at"
+        case heartRate = "heart_rate"
+        case heartRateMeasuredAt = "heart_rate_measured_at"
+        case restingHeartRate = "resting_heart_rate"
+        case restingHRMeasuredAt = "resting_hr_measured_at"
+        case walkingHeartRateAvg = "walking_heart_rate_avg"
+        case walkingHRMeasuredAt = "walking_hr_measured_at"
+        case hrvMs = "hrv_ms"
+        case hrvMeasuredAt = "hrv_measured_at"
+        case cardioRecoveryBpm = "cardio_recovery_bpm"
+        case cardioRecoveryMeasuredAt = "cardio_recovery_measured_at"
+        case vo2Max = "vo2_max"
+        case vo2MeasuredAt = "vo2_measured_at"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+/// Response body for `POST /api/v1/health-snapshots` and
+/// `GET /api/v1/health-snapshots`. Wrapping the slice lets the
+/// server add fields without breaking the iOS contract.
+public struct HealthSnapshotsResponse: Decodable, Equatable {
+    public let snapshots: [HealthSnapshotDTO]
+}

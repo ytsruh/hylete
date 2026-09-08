@@ -62,6 +62,18 @@ struct DashboardView: View {
     @State private var showingNewSet: Bool = false
     @State private var showingTimer: Bool = false
 
+    /// Dashboard-owned vitals model behind the beta-gated
+    /// `DashboardHealthSummary` below the calendar. The
+    /// distance unit comes from the init (profile unit passed
+    /// down by the parent, mirroring `HealthView`); init is
+    /// side-effect-free (status reads only) — no HealthKit
+    /// queries until an explicit refresh.
+    @StateObject private var healthSummary: HealthViewModel
+
+    init(distanceUnit: String = "km") {
+        _healthSummary = StateObject(wrappedValue: HealthViewModel(distanceUnit: distanceUnit))
+    }
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
             content
@@ -174,6 +186,9 @@ struct DashboardView: View {
                         distanceUnit: authStore.currentUser?.distanceUnit ?? "km",
                         exerciseLookup: exerciseLookup
                     )
+                }
+                BetaFeature {
+                    DashboardHealthSummary(viewModel: healthSummary)
                 }
             }
             .padding(DSSpacing.md)
@@ -315,6 +330,17 @@ struct DashboardView: View {
     private func refresh() async {
         loadedWeeks.removeAll()
         await load()
+        // Beta-gated vitals refresh alongside the server data.
+        // `shouldRefresh` keeps this off for non-beta users
+        // (whose dashboard must never touch HealthKit) and for
+        // never-connected beta users (no wasted queries);
+        // denied/error recovery stays in the Health tab.
+        if DashboardHealthSummary.shouldRefresh(
+            status: healthSummary.status,
+            betaEnabled: BetaFeatureFlag.isEnabled
+        ) {
+            await healthSummary.refresh()
+        }
     }
 
     /// Fetches the calendar week containing `date` unless it's

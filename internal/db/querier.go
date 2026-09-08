@@ -48,6 +48,7 @@ type Querier interface {
 	GetExerciseEntry(ctx context.Context, arg GetExerciseEntryParams) (GetExerciseEntryRow, error)
 	GetFeedbackByID(ctx context.Context, id string) (GetFeedbackByIDRow, error)
 	GetGoal(ctx context.Context, arg GetGoalParams) (Goal, error)
+	GetHealthSnapshotByDate(ctx context.Context, arg GetHealthSnapshotByDateParams) (HealthSnapshot, error)
 	GetLastSetByExercise(ctx context.Context, arg GetLastSetByExerciseParams) (GetLastSetByExerciseRow, error)
 	// Longest distance in metres logged for an exercise. Returns 0 when no exercise entries exist.
 	GetLongestDistanceByExercise(ctx context.Context, arg GetLongestDistanceByExerciseParams) (float64, error)
@@ -67,6 +68,7 @@ type Querier interface {
 	ListExerciseEntries(ctx context.Context, userID sql.NullString) ([]ListExerciseEntriesRow, error)
 	ListExerciseEntriesLast7Days(ctx context.Context, userID sql.NullString) ([]ListExerciseEntriesLast7DaysRow, error)
 	ListExerciseEntriesWithLimit(ctx context.Context, arg ListExerciseEntriesWithLimitParams) ([]ListExerciseEntriesWithLimitRow, error)
+	ListHealthSnapshotsRange(ctx context.Context, arg ListHealthSnapshotsRangeParams) ([]HealthSnapshot, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	// Returns every enabled user whose next_fire_at is at or before the
 	// supplied reference time. The hourly tick calls this once per hour;
@@ -119,6 +121,7 @@ type Querier interface {
 	// for both "user changed preferences" and "tick just fired" callers.
 	UpdateUserReminder(ctx context.Context, arg UpdateUserReminderParams) error
 	UpdateWeightEntry(ctx context.Context, arg UpdateWeightEntryParams) error
+	UpsertHealthSnapshot(ctx context.Context, arg UpsertHealthSnapshotParams) (HealthSnapshot, error)
 }
 
 var _ Querier = (*Queries)(nil)

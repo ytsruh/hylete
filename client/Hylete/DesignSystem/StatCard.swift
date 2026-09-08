@@ -20,11 +20,16 @@ public struct StatCard: View {
     public let label: String
     public let value: String
     public let icon: String
+    /// Optional caption beneath the value (e.g. a Health
+    /// sample's age, "3 mo. ago"). Nil renders nothing, so
+    /// existing call sites are unaffected.
+    public let footnote: String?
 
-    public init(label: String, value: String, icon: String) {
+    public init(label: String, value: String, icon: String, footnote: String? = nil) {
         self.label = label
         self.value = value
         self.icon = icon
+        self.footnote = footnote
     }
 
     public var body: some View {
@@ -48,6 +53,12 @@ public struct StatCard: View {
                 .foregroundStyle(DSColors.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+            if let footnote {
+                Text(footnote)
+                    .font(.caption2)
+                    .foregroundStyle(DSColors.textSecondary)
+                    .lineLimit(1)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, DSSpacing.sm)

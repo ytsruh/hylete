@@ -555,3 +555,148 @@ type SubmitFeedbackRequest struct {
 	Title   string `json:"title"`
 	Message string `json:"message"`
 }
+
+// --- Health snapshots ---
+
+// HealthSnapshotDTO is one day of Apple Health vitals. Metric
+// units are canonical (metres, kcal, bpm, ms, ml/kg/min,
+// unitless mass); the iOS client converts to display units.
+// MeasuredAt timestamps are omitted when nil (value carried
+// forward or never measured) so Swift decodes them as nil via
+// decodeIfPresent rather than tripping on null.
+type HealthSnapshotDTO struct {
+	ID                  string     `json:"id"`
+	SnapshotDate        string     `json:"snapshot_date"`
+	Tz                  string     `json:"tz"`
+	Steps               int64      `json:"steps"`
+	DistanceMeters      float64    `json:"distance_meters"`
+	ActiveEnergyKcal    float64    `json:"active_energy_kcal"`
+	BasalEnergyKcal     float64    `json:"basal_energy_kcal"`
+	ExerciseMinutes     float64    `json:"exercise_minutes"`
+	SleepSeconds        float64    `json:"sleep_seconds"`
+	Weight              float64    `json:"weight"`
+	WeightMeasuredAt    *time.Time `json:"weight_measured_at,omitempty"`
+	BMI                 float64    `json:"bmi"`
+	BMIMeasuredAt       *time.Time `json:"bmi_measured_at,omitempty"`
+	BodyFatPercentage   float64    `json:"body_fat_percentage"`
+	BodyFatMeasuredAt   *time.Time `json:"body_fat_measured_at,omitempty"`
+	LeanBodyMass        float64    `json:"lean_body_mass"`
+	LeanMassMeasuredAt  *time.Time `json:"lean_mass_measured_at,omitempty"`
+	HeartRate           float64    `json:"heart_rate"`
+	HeartRateMeasuredAt *time.Time `json:"heart_rate_measured_at,omitempty"`
+	RestingHeartRate    float64    `json:"resting_heart_rate"`
+	RestingHRMeasuredAt *time.Time `json:"resting_hr_measured_at,omitempty"`
+	WalkingHeartRateAvg float64    `json:"walking_heart_rate_avg"`
+	WalkingHRMeasuredAt *time.Time `json:"walking_hr_measured_at,omitempty"`
+	HRV                 float64    `json:"hrv_ms"`
+	HRVMeasuredAt       *time.Time `json:"hrv_measured_at,omitempty"`
+	CardioRecoveryBPM   float64    `json:"cardio_recovery_bpm"`
+	CardioRecoveryAt    *time.Time `json:"cardio_recovery_measured_at,omitempty"`
+	VO2Max              float64    `json:"vo2_max"`
+	VO2MeasuredAt       *time.Time `json:"vo2_measured_at,omitempty"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+}
+
+// HealthSnapshotFromModel converts a models.HealthSnapshot into
+// its JSON DTO. Field-for-field copy — no conversion, since
+// both sides already speak canonical units.
+func HealthSnapshotFromModel(e models.HealthSnapshot) HealthSnapshotDTO {
+	return HealthSnapshotDTO{
+		ID:                  e.ID,
+		SnapshotDate:        e.SnapshotDate,
+		Tz:                  e.Tz,
+		Steps:               e.Steps,
+		DistanceMeters:      e.DistanceMeters,
+		ActiveEnergyKcal:    e.ActiveEnergyKcal,
+		BasalEnergyKcal:     e.BasalEnergyKcal,
+		ExerciseMinutes:     e.ExerciseMinutes,
+		SleepSeconds:        e.SleepSeconds,
+		Weight:              e.Weight,
+		WeightMeasuredAt:    e.WeightMeasuredAt,
+		BMI:                 e.BMI,
+		BMIMeasuredAt:       e.BMIMeasuredAt,
+		BodyFatPercentage:   e.BodyFatPercentage,
+		BodyFatMeasuredAt:   e.BodyFatMeasuredAt,
+		LeanBodyMass:        e.LeanBodyMass,
+		LeanMassMeasuredAt:  e.LeanMassMeasuredAt,
+		HeartRate:           e.HeartRate,
+		HeartRateMeasuredAt: e.HeartRateMeasuredAt,
+		RestingHeartRate:    e.RestingHeartRate,
+		RestingHRMeasuredAt: e.RestingHRMeasuredAt,
+		WalkingHeartRateAvg: e.WalkingHeartRateAvg,
+		WalkingHRMeasuredAt: e.WalkingHRMeasuredAt,
+		HRV:                 e.HRV,
+		HRVMeasuredAt:       e.HRVMeasuredAt,
+		CardioRecoveryBPM:   e.CardioRecoveryBPM,
+		CardioRecoveryAt:    e.CardioRecoveryAt,
+		VO2Max:              e.VO2Max,
+		VO2MeasuredAt:       e.VO2MeasuredAt,
+		CreatedAt:           e.CreatedAt,
+		UpdatedAt:           e.UpdatedAt,
+	}
+}
+
+// HealthSnapshotsFromModels converts a slice of snapshots into
+// the DTO slice. Returns an empty (non-nil) slice when the
+// input is empty so the JSON encoder writes `[]` rather than
+// `null` — easier for the Swift Codable decoder.
+func HealthSnapshotsFromModels(es []models.HealthSnapshot) []HealthSnapshotDTO {
+	out := make([]HealthSnapshotDTO, 0, len(es))
+	for _, e := range es {
+		out = append(out, HealthSnapshotFromModel(e))
+	}
+	return out
+}
+
+// HealthSnapshotsResponse wraps the snapshot slice in a named
+// envelope so the server can add fields without breaking the
+// iOS contract.
+type HealthSnapshotsResponse struct {
+	Snapshots []HealthSnapshotDTO `json:"snapshots"`
+}
+
+// HealthSnapshotItem is one snapshot in an upsert batch. Range
+// bounds reject physically implausible values; the calendar
+// date shape and future-date rule are enforced by the
+// controller (validateSnapshotDate) so the error surfaces as a
+// sentinel-mapped 400.
+type HealthSnapshotItem struct {
+	SnapshotDate         string     `json:"snapshot_date"          validate:"required"`
+	Tz                   string     `json:"tz"                     validate:"max=64"`
+	Steps                int64      `json:"steps"                  validate:"gte=0,lte=200000"`
+	DistanceMeters       float64    `json:"distance_meters"        validate:"gte=0,lte=500000"`
+	ActiveEnergyKcal     float64    `json:"active_energy_kcal"     validate:"gte=0,lte=20000"`
+	BasalEnergyKcal      float64    `json:"basal_energy_kcal"      validate:"gte=0,lte=20000"`
+	ExerciseMinutes      float64    `json:"exercise_minutes"       validate:"gte=0,lte=1440"`
+	SleepSeconds         float64    `json:"sleep_seconds"          validate:"gte=0,lte=86400"`
+	Weight               float64    `json:"weight"                 validate:"gte=0,lte=1000"`
+	WeightMeasuredAt     *time.Time `json:"weight_measured_at,omitempty"`
+	BMI                  float64    `json:"bmi"                    validate:"gte=0,lte=100"`
+	BMIMeasuredAt        *time.Time `json:"bmi_measured_at,omitempty"`
+	BodyFatPercentage    float64    `json:"body_fat_percentage"    validate:"gte=0,lte=100"`
+	BodyFatMeasuredAt    *time.Time `json:"body_fat_measured_at,omitempty"`
+	LeanBodyMass         float64    `json:"lean_body_mass"         validate:"gte=0,lte=1000"`
+	LeanMassMeasuredAt   *time.Time `json:"lean_mass_measured_at,omitempty"`
+	HeartRate            float64    `json:"heart_rate"             validate:"gte=0,lte=300"`
+	HeartRateMeasuredAt  *time.Time `json:"heart_rate_measured_at,omitempty"`
+	RestingHeartRate     float64    `json:"resting_heart_rate"     validate:"gte=0,lte=300"`
+	RestingHRMeasuredAt  *time.Time `json:"resting_hr_measured_at,omitempty"`
+	WalkingHeartRateAvg  float64    `json:"walking_heart_rate_avg" validate:"gte=0,lte=300"`
+	WalkingHRMeasuredAt  *time.Time `json:"walking_hr_measured_at,omitempty"`
+	HRV                  float64    `json:"hrv_ms"                 validate:"gte=0,lte=1000"`
+	HRVMeasuredAt        *time.Time `json:"hrv_measured_at,omitempty"`
+	CardioRecoveryBPM    float64    `json:"cardio_recovery_bpm"    validate:"gte=0,lte=300"`
+	CardioRecoveryAt     *time.Time `json:"cardio_recovery_measured_at,omitempty"`
+	VO2Max               float64    `json:"vo2_max"                validate:"gte=0,lte=100"`
+	VO2MeasuredAt        *time.Time `json:"vo2_measured_at,omitempty"`
+}
+
+// UpsertHealthSnapshotsRequest is the body for POST
+// /api/v1/health-snapshots: a batch of daily snapshots (the
+// 90-day backfill fits with headroom; larger syncs chunk
+// client-side). Same dates re-uploaded overwrite via the
+// (user_id, snapshot_date) upsert, so retries are safe.
+type UpsertHealthSnapshotsRequest struct {
+	Snapshots []HealthSnapshotItem `json:"snapshots" validate:"required,min=1,max=120,dive"`
+}

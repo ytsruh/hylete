@@ -323,6 +323,30 @@ public final class APIClient: @unchecked Sendable {
         ))
     }
 
+    // MARK: - Health snapshots
+
+    /// Uploads a batch of daily Health snapshots. The server
+    /// upserts each against (user_id, snapshot_date), so
+    /// re-uploads overwrite instead of duplicating — retries,
+    /// backfills, and late corrections are safe. Returns the
+    /// persisted rows in request order.
+    public func upsertHealthSnapshots(_ snapshots: [HealthSnapshotPayload]) async throws -> [HealthSnapshotDTO] {
+        struct Body: Encodable {
+            let snapshots: [HealthSnapshotPayload]
+        }
+        let response: HealthSnapshotsResponse = try await send("POST", "health-snapshots", body: Body(snapshots: snapshots))
+        return response.snapshots
+    }
+
+    /// Lists persisted snapshots for the last N device-local
+    /// calendar dates, newest first. Used for future analysis
+    /// surfaces; the sync flow itself tracks confirmation
+    /// locally and does not need this.
+    public func listHealthSnapshots(days: Int = 90) async throws -> [HealthSnapshotDTO] {
+        let response: HealthSnapshotsResponse = try await send("GET", "health-snapshots?days=\(days)")
+        return response.snapshots
+    }
+
     // MARK: - Request plumbing
 
     /// Generic request method for endpoints that return a
@@ -441,3 +465,8 @@ private struct AnyEncodable: Encodable {
         try _encode(encoder)
     }
 }
+
+// `APIClient` is the production `HealthSnapshotAPI`: its
+// `upsertHealthSnapshots` matches the protocol requirement, so
+// only the conformance needs declaring. Tests inject a fake.
+extension APIClient: HealthSnapshotAPI {}
