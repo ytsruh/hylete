@@ -85,7 +85,7 @@ struct ExercisePickerSheet: View {
             }
             .navigationTitle("Choose Exercise")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $search, prompt: "Search exercises")
+            .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search exercises")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
