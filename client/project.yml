@@ -165,9 +165,10 @@ targets:
 #          simulator before archiving.
 #
 # Schemes MUST be declared here (not hand-added in Xcode) —
-# Hylete.xcodeproj is gitignored and regenerated wholesale by
-# XcodeGen; anything defined only in the project file is lost
-# on `make gen`.
+# the generated project is gitignored, so anything defined
+# only in Xcode (schemes, phases, capabilities, file
+# membership) is lost on the next `make gen` with no trace.
+# Change the YAML, regen, and commit the YAML only.
 schemes:
   Dev:
     build:

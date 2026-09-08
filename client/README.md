@@ -7,7 +7,10 @@ web app uses (sent as `Authorization: Bearer <token>`).
 ## Requirements
 
 - macOS with **Xcode 15+** (provides the iOS 17 SDK and Simulator)
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen) **2.46.0**
+  (`brew install xcodegen`; `make gen` refuses any other version —
+  see `XCODEGEN_VERSION` in the Makefile). Only needed for
+  structural changes; daily builds and tests don't touch it.
 - A running Hylete server (the parent `../` directory) reachable from
   the simulator
 
@@ -15,9 +18,16 @@ web app uses (sent as `Authorization: Bearer <token>`).
 
 ```bash
 # from this directory (client/)
-make gen           # generates Hylete.xcodeproj from project.yml
+make gen             # generates Hylete.xcodeproj from project.yml
+make build           # compile check that everything resolved
 open Hylete.xcodeproj   # optional — only needed for the debugger
 ```
+
+`project.yml` is the sole source of truth for the Xcode
+project (which is gitignored — never commit it). Re-run
+`make gen` after any structural change; the Makefile refuses
+any XcodeGen other than the pinned version so regeneration
+stays deterministic across machines.
 
 Edit `Hylete/Configs/*.xcconfig` to change the server a build talks
 to. Defaults are already wired up:
@@ -37,7 +47,7 @@ Run → Arguments → Environment Variables.
 
 | Command | What it does |
 |---|---|
-| `make gen`     | Regenerate `Hylete.xcodeproj` after editing `project.yml` or moving files |
+| `make gen`     | Regenerate the gitignored `Hylete.xcodeproj` from `project.yml` — after structural changes (new target, plist keys, capabilities, schemes) and on every fresh clone |
 | `make build`   | Compile the app for the booted iOS simulator (no run) |
 | `make boot`    | Open the first available iPhone simulator (no-op if one is already running) |
 | `make run`     | Build, install, and launch on the booted simulator — **auto-boots one if nothing is running** |
