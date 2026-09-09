@@ -4,7 +4,9 @@ import SwiftUI
 /// and a sign-out button. Tapping the name, weight unit, or
 /// target weight row pushes a per-field editor that PUTs the
 /// change to `/api/v1/me` and refreshes `authStore.currentUser`
-/// on success so the rest of the app sees the new value.
+/// on success so the rest of the app sees the new value. The
+/// weight-reminders row opens `ReminderEditView` as a sheet,
+/// seeded with the schedule fetched below.
 struct ProfileView: View {
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var authStore: AuthStore
@@ -40,6 +42,29 @@ struct ProfileView: View {
             set: { themeModeRaw = $0.rawValue }
         )
     }
+
+    /// The user's weight-reminder schedule, fetched once for the
+    /// summary row and passed into the editor sheet as its initial
+    /// state — the sheet itself never fetches. Nil until the first
+    /// load completes; a failed load sets `remindersFailed` instead
+    /// of a misleading default.
+    @State private var reminderPrefs: ReminderPreferencesDTO?
+    @State private var remindersFailed: Bool = false
+
+    /// Guards the fetch below so overlapping callers (appear +
+    /// row-tap) collapse into one request. Cleared *before* the
+    /// fetched schedule is published or the sheet is presented,
+    /// so no state write lands mid-presentation animation.
+    @State private var remindersLoading: Bool = false
+
+    /// Remembers a row tap that arrived while the schedule was still
+    /// loading, so the sheet opens right after the data arrives —
+    /// only after `remindersLoading` has been cleared, never while
+    /// a write is still pending.
+    @State private var remindersPendingOpen: Bool = false
+
+    /// Presents the reminders editor sheet.
+    @State private var showingRemindersSheet: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -119,6 +144,27 @@ struct ProfileView: View {
             } message: {
                 Text("You'll need to log in again.")
             }
+            // Task + sheet live on the stable NavigationStack host,
+            // not on the Preferences Section inside the List. A sheet
+            // attached deep in the list tears down whenever the row
+            // label (Loading… -> summary) or its Section identity
+            // re-renders mid-presentation — the first-open
+            // instant-close.
+            .task {
+                if reminderPrefs == nil && !remindersLoading {
+                    await reloadReminders()
+                }
+            }
+            .sheet(isPresented: $showingRemindersSheet) {
+                if let prefs = reminderPrefs {
+                    NavigationStack {
+                        ReminderEditView(prefs: prefs, onSaved: { updated in
+                            reminderPrefs = updated
+                        })
+                    }
+                    .presentationDetents([.large])
+                }
+            }
         }
     }
 
@@ -189,6 +235,68 @@ struct ProfileView: View {
                     }
                 }
             }
+            // Opens the editor sheet when the schedule is loaded.
+            // Tapped while loading (or after a failure), it records
+            // the intent and ensures a fetch is running — the sheet
+            // then opens from the fetch completion (see
+            // reloadReminders), so a failed fetch never strands the
+            // row on a placeholder.
+            Button {
+                if reminderPrefs != nil {
+                    showingRemindersSheet = true
+                } else {
+                    remindersPendingOpen = true
+                    Task { await reloadReminders() }
+                }
+            } label: {
+                HStack {
+                    Text("Weight reminders")
+                        .foregroundStyle(DSColors.text)
+                    Spacer()
+                    Text(reminderSummaryText)
+                        .foregroundStyle(DSColors.textSecondary)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+    }
+
+    /// Summary text for the weight-reminders row.
+    private var reminderSummaryText: String {
+        if let prefs = reminderPrefs {
+            return prefs.summary
+        }
+        return remindersFailed ? "Couldn't load" : "Loading…"
+    }
+
+    /// Loads the reminder schedule once for the summary row (and as
+    /// the editor sheet's initial state). Overlapping calls collapse
+    /// into one (see remindersLoading). `remindersLoading` is cleared
+    /// before `reminderPrefs` is published or a remembered tap-open
+    /// presents the sheet, so no trailing write lands during the
+    /// presentation animation. Failures flag for retry rather than
+    /// inventing a default the sheet would then present as fact.
+    @MainActor
+    private func reloadReminders() async {
+        guard !remindersLoading else { return }
+        remindersLoading = true
+        remindersFailed = false
+        do {
+            let fetched = try await env.api.getReminderPreferences()
+            // Clear loading first: the presenter (see body) must be
+            // idle before data + sheet-presentation mutate it.
+            remindersLoading = false
+            reminderPrefs = fetched
+            if remindersPendingOpen {
+                remindersPendingOpen = false
+                showingRemindersSheet = true
+            }
+        } catch {
+            remindersLoading = false
+            remindersFailed = true
+            remindersPendingOpen = false
         }
     }
 

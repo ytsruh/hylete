@@ -115,10 +115,9 @@ func (h *Handler) APIMe(c echo.Context) error {
 // APIUpdateMe handles PUT /api/v1/me. Updates the same
 // user-editable fields the HTML profile form exposes (name,
 // target weight, weight unit) and returns the updated
-// UserDTO. Reminder preferences, push subscriptions, and
-// notification channels are intentionally NOT updated here
-// — the iOS app surfaces no UI for them yet, and the web
-// keeps the form-only ownership of those fields for now.
+// UserDTO. Reminder preferences are intentionally NOT updated here
+// — they live on GET/PUT /api/v1/me/reminders so a client
+// PUTting /me without reminder fields can never clobber them.
 //
 // The JWT is not regenerated. iOS reads the token directly
 // from the Keychain and the next /me round-trip on launch

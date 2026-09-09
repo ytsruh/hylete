@@ -90,9 +90,9 @@ func UserFromModel(u *models.User) UserDTO {
 // the user-editable subset of the HTML profile form (name,
 // target weight, weight unit, distance unit) so the iOS app can update the
 // same fields the web app exposes. Reminder preferences are
-// deliberately omitted: they live on the web app only for now, and the
-// iOS client surfaces no UI for them. Add fields here (and to UserDTO)
-// when the iOS app grows that surface.
+// deliberately omitted: they live on the dedicated
+// GET/PUT /api/v1/me/reminders endpoints so an older client
+// PUTting /me without reminder fields can never clobber them.
 //
 // TargetWeight is a pointer so an omitted JSON field (or an
 // explicit null) clears the user's goal, matching the form's
@@ -102,6 +102,63 @@ type UpdateMeRequest struct {
 	TargetWeight *float64 `json:"target_weight" validate:"omitempty,gte=0,lte=1000"`
 	WeightUnit   string   `json:"weight_unit"   validate:"omitempty,oneof=kg lbs"`
 	DistanceUnit string   `json:"distance_unit" validate:"omitempty,oneof=km mi"`
+}
+
+// ReminderPreferencesDTO is the JSON shape for the user's
+// weight-reminder schedule. Mirrors models.ReminderPreferences
+// but speaks the on-the-wire strings the web profile form uses:
+// frequency is one of "off" | "daily" | "weekly" | "biweekly",
+// day_of_week is 0–6 (Sunday=0) for weekly/biweekly and omitted
+// otherwise, and time is "HH:00" in 24h UTC (hour-only by design).
+//
+// Reminders are email-only: enabled IS the opt-in, there is no
+// separate channel flag. Returned by GET /api/v1/me/reminders
+// and accepted (same shape) by PUT /api/v1/me/reminders.
+type ReminderPreferencesDTO struct {
+	Enabled   bool   `json:"enabled"`
+	Frequency string `json:"frequency"`
+	DayOfWeek *int   `json:"day_of_week,omitempty"`
+	Time      string `json:"time"`
+}
+
+// ReminderPreferencesFromModel converts the stored user row into
+// the DTO. Empty frequency reads as "off" and empty time as
+// "09:00" (matching the SQL column defaults in migrations 00009
+// and the web form's empty-input behavior) so a never-touched
+// row decodes to a usable "reminders off" shape instead of a
+// blank picker.
+func ReminderPreferencesFromModel(u *models.User) ReminderPreferencesDTO {
+	if u == nil {
+		return ReminderPreferencesDTO{Frequency: string(models.ReminderOff), Time: defaultReminderTime}
+	}
+	frequency := string(u.ReminderFrequency)
+	if frequency == "" {
+		frequency = string(models.ReminderOff)
+	}
+	timeValue := u.ReminderTime
+	if timeValue == "" {
+		timeValue = defaultReminderTime
+	}
+	return ReminderPreferencesDTO{
+		Enabled:   u.ReminderEnabled,
+		Frequency: frequency,
+		DayOfWeek: u.ReminderDayOfWeek,
+		Time:      timeValue,
+	}
+}
+
+// UpdateReminderPreferencesRequest is the JSON body for
+// PUT /api/v1/me/reminders. Same shape as ReminderPreferencesDTO;
+// validation mirrors the web profile form (profileInput in
+// internal/routes/profile.go): frequency must be a known value,
+// day_of_week must be 0–6 when present, and time must be a valid
+// "HH:00" hour (checked via models.ParseReminderTimeForRoute so
+// the same accept-set is enforced in one place).
+type UpdateReminderPreferencesRequest struct {
+	Enabled   bool   `json:"enabled"`
+	Frequency string `json:"frequency"   validate:"required,oneof=off daily weekly biweekly"`
+	DayOfWeek *int   `json:"day_of_week,omitempty" validate:"omitempty,gte=0,lte=6"`
+	Time      string `json:"time"         validate:"required"`
 }
 
 // ExerciseDTO is the JSON shape for an exercise in any list or
