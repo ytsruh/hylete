@@ -33,7 +33,7 @@ struct WeightUnitEditView: View {
             } header: {
                 Text("Preferred unit")
             } footer: {
-                Text("Used everywhere your weight is shown: dashboard, charts, exports.")
+                Text("Used everywhere weight is shown: dashboard, charts, exports etc.")
             }
             if let errorMessage {
                 Section {

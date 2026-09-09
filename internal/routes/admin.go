@@ -109,6 +109,7 @@ func (h *Handler) AdminCreateExercise(c echo.Context) error {
 
 	params := models.CreateExerciseParams{
 		Name:           name,
+		Aliases:        c.FormValue("aliases"),
 		Description:    c.FormValue("description"),
 		VideoURL:       c.FormValue("video_url"),
 		ImgURL:         c.FormValue("img_key"),
@@ -213,6 +214,7 @@ func (h *Handler) AdminUpdateExercise(c echo.Context) error {
 
 	params := models.UpdateExerciseParams{
 		Name:           name,
+		Aliases:        c.FormValue("aliases"),
 		Description:    c.FormValue("description"),
 		VideoURL:       c.FormValue("video_url"),
 		ImgURL:         finalDisplay,

@@ -42,7 +42,7 @@ struct NameEditView: View {
             } header: {
                 Text("Display name")
             } footer: {
-                Text("Shown across the app, including your dashboard and any sets you log.")
+                Text("Shown across the app and is only visible to you.")
             }
             if let errorMessage {
                 Section {

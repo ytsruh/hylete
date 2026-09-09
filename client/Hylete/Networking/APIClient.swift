@@ -132,14 +132,33 @@ public final class APIClient: @unchecked Sendable {
     /// user so the caller can refresh `AuthStore.currentUser`
     /// without a follow-up `me()` round trip.
     ///
-    /// Reminder preferences and push subscriptions are NOT
-    /// writable through this endpoint — the iOS app surfaces
-    /// no UI for them yet, so the server keeps the form-only
-    /// ownership of those fields. When those surfaces land
-    /// on iOS, add dedicated endpoints rather than expanding
-    /// this one.
+    /// Reminder preferences are NOT writable through this endpoint —
+    /// they live on `getReminderPreferences` /
+    /// `updateReminderPreferences` below so a `PUT /me` that doesn't
+    /// know about reminders can never clobber them.
     public func updateProfile(_ request: UpdateMeRequest) async throws -> UserDTO {
         try await send("PUT", "me", body: request)
+    }
+
+    // MARK: - Weight reminders
+
+    /// Fetches the authenticated user's weight-reminder schedule
+    /// (`GET /api/v1/me/reminders`). A row that has never been touched
+    /// reads as reminders-off with the 09:00 default time, so the
+    /// editor always has a usable first-paint state.
+    public func getReminderPreferences() async throws -> ReminderPreferencesDTO {
+        try await send("GET", "me/reminders")
+    }
+
+    /// Replaces the authenticated user's weight-reminder schedule
+    /// (`PUT /api/v1/me/reminders`). Mirrors the web `/profile` form's
+    /// reminder section: `frequency` is one of off/daily/weekly/
+    /// biweekly, `dayOfWeek` is 0–6 (Sunday=0) for weekly/biweekly and
+    /// nil otherwise, `time` is `"HH:00"` in 24h UTC (hour-only by
+    /// design). Returns the stored schedule so the caller can render
+    /// the exact server state without a follow-up GET.
+    public func updateReminderPreferences(_ request: UpdateReminderPreferencesRequest) async throws -> ReminderPreferencesDTO {
+        try await send("PUT", "me/reminders", body: request)
     }
 
     // MARK: - Exercises

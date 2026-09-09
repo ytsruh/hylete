@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -22,9 +23,14 @@ func (et ExerciseType) IsValid() bool {
 }
 
 // Exercise represents a normalized exercise name with metadata.
+// Aliases holds a comma-separated list of alternate names
+// (e.g. "seated row,cable row"). It is never rendered visibly;
+// it exists only so exercise lists can match on alternate names
+// the same way they match on Name.
 type Exercise struct {
 	ID             string
 	Name           string
+	Aliases        string
 	Description    string
 	VideoURL       string
 	ImgURL         string
@@ -218,4 +224,27 @@ func ValidateURL(s string) bool {
 	}
 	u, err := url.Parse(s)
 	return err == nil && u.Scheme != "" && u.Host != ""
+}
+
+// NormalizeAliases cleans a raw comma-separated alias string: splits on
+// commas, trims whitespace, drops empties, and de-dupes
+// case-insensitively (keeping the first casing). The result is joined
+// with ",". An alias cannot contain a comma — commas are separators.
+func NormalizeAliases(raw string) string {
+	parts := strings.Split(raw, ",")
+	seen := make(map[string]struct{}, len(parts))
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return strings.Join(out, ",")
 }

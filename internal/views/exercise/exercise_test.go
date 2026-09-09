@@ -778,3 +778,49 @@ func TestExerciseChartAdvanced_CardioNotice(t *testing.T) {
 		t.Error("did not expect the scatter canvas for a cardio exercise")
 	}
 }
+
+// TestExercisesList_TypeFilter verifies the exercise catalogue page renders
+// the type dropdown and tags each row with its lower-cased type so the
+// client-side filter can combine search + type without a reload.
+func TestExercisesList_TypeFilter(t *testing.T) {
+	exercises := []models.Exercise{
+		{ID: "ex-1", Name: "Squat", Type: models.ExerciseTypeStrength},
+		{ID: "ex-2", Name: "Run", Type: models.ExerciseTypeCardio},
+		{ID: "ex-3", Name: "Yoga", Type: models.ExerciseTypeOther},
+	}
+	html := renderToString(t, ExercisesList(exercises, "Test User", true, false))
+
+	if !strings.Contains(html, `id="exercise-type-filter"`) {
+		t.Error("expected type filter dropdown with id exercise-type-filter")
+	}
+	for _, want := range []string{`value="all"`, `value="strength"`, `value="cardio"`, `value="other"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("expected type filter option %s", want)
+		}
+	}
+	for _, want := range []string{`data-type="strength"`, `data-type="cardio"`, `data-type="other"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("expected exercise row with %s", want)
+		}
+	}
+	if !strings.Contains(html, `typeFilter.addEventListener('change', applyFilters)`) {
+		t.Error("expected type filter change listener combining search + type")
+	}
+}
+
+// TestExercisesList_AliasFilter verifies catalogue rows carry their
+// lower-cased aliases and the client-side filter matches them, so a
+// user can find an exercise by an alternate name without a reload.
+func TestExercisesList_AliasFilter(t *testing.T) {
+	exercises := []models.Exercise{
+		{ID: "ex-1", Name: "Bent-Over Row", Aliases: "Barbell Row,Seated Row", Type: models.ExerciseTypeStrength},
+	}
+	html := renderToString(t, ExercisesList(exercises, "Test User", true, false))
+
+	if !strings.Contains(html, `data-aliases="barbell row,seated row"`) {
+		t.Error("expected exercise row with lower-cased data-aliases")
+	}
+	if !strings.Contains(html, `aliases.includes(query)`) {
+		t.Error("expected client-side filter to match aliases")
+	}
+}

@@ -45,6 +45,7 @@ func (ac *AdminController) Create(params models.CreateExerciseParams) (*models.E
 	if params.Name == "" {
 		return nil, errors.New("exercise name cannot be empty")
 	}
+	params.Aliases = models.NormalizeAliases(params.Aliases)
 
 	if !params.Type.IsValid() {
 		params.Type = models.ExerciseTypeOther
@@ -70,6 +71,7 @@ func (ac *AdminController) Create(params models.CreateExerciseParams) (*models.E
 	return &models.Exercise{
 		ID:             id,
 		Name:           params.Name,
+		Aliases:        params.Aliases,
 		Description:    params.Description,
 		VideoURL:       params.VideoURL,
 		ImgURL:         params.ImgURL,
@@ -86,6 +88,7 @@ func (ac *AdminController) Update(id string, params models.UpdateExerciseParams)
 	if params.Name == "" {
 		return nil, errors.New("exercise name cannot be empty")
 	}
+	params.Aliases = models.NormalizeAliases(params.Aliases)
 
 	if !params.Type.IsValid() {
 		params.Type = models.ExerciseTypeOther

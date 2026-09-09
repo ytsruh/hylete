@@ -191,6 +191,14 @@ func registerAPIRoutes(e *echo.Echo, h *Handler) {
 	e.GET("/api/v1/me", h.APIMe)
 	e.PUT("/api/v1/me", h.APIUpdateMe)
 
+	// Weight-reminder schedule (JSON mirror of the HTML profile
+	// form's reminder section — used by the iOS Profile tab).
+	// Kept as dedicated endpoints (rather than fields on PUT
+	// /me) so an older client PUTting /me without reminder
+	// fields can never clobber the schedule.
+	e.GET("/api/v1/me/reminders", h.APIGetReminderPreferences)
+	e.PUT("/api/v1/me/reminders", h.APIUpdateReminderPreferences)
+
 	// Exercises
 	e.GET("/api/v1/exercises", h.APIListExercises)
 

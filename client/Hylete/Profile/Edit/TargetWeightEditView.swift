@@ -3,9 +3,7 @@ import SwiftUI
 /// Editor for the user's target body-weight goal. The
 /// underlying value is a `Double?` on the server (an empty
 /// field clears the goal), so the form binds to a `String`
-/// and only converts to a number on save. The "Clear"
-/// button removes the goal entirely without the user
-/// needing to backspace to zero.
+/// and only converts to a number on save.
 struct TargetWeightEditView: View {
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var authStore: AuthStore
@@ -48,13 +46,6 @@ struct TargetWeightEditView: View {
                         .focused($weightFocused)
                     Text(user.weightUnit)
                         .foregroundStyle(DSColors.textSecondary)
-                }
-                if !weightText.isEmpty {
-                    Button(role: .destructive) {
-                        weightText = ""
-                    } label: {
-                        Label("Clear target weight", systemImage: "xmark.circle")
-                    }
                 }
             } header: {
                 Text("Target weight")

@@ -20,13 +20,19 @@ templ AdminExerciseList(exercises []models.Exercise, userName string, isAuthenti
 				New Exercise
 			</a>
 		</div>
-		<div class="mb-6">
+		<div class="mb-6 flex gap-2">
 			<input
 				type="search"
 				id="exercise-search"
 				placeholder="Search exercises..."
-				class="input"
+				class="input flex-1"
 			/>
+			<select id="exercise-type-filter" class="input w-auto" aria-label="Filter by exercise type">
+				<option value="all">All types</option>
+				<option value="strength">Strength</option>
+				<option value="cardio">Cardio</option>
+				<option value="other">Other</option>
+			</select>
 		</div>
 		if len(exercises) == 0 {
 			<div class="text-center py-12 text-muted-foreground">
@@ -43,7 +49,7 @@ templ AdminExerciseList(exercises []models.Exercise, userName string, isAuthenti
 				</thead>
 				<tbody>
 					for _, e := range exercises {
-						<tr class="exercise-row" data-name={ strings.ToLower(e.Name) }>
+						<tr class="exercise-row" data-name={ strings.ToLower(e.Name) } data-aliases={ strings.ToLower(e.Aliases) } data-type={ strings.ToLower(string(e.Type)) }>
 							<td>{ e.Name }</td>
 							<td>
 								@components.ExerciseTypeBadge(string(e.Type))
@@ -70,29 +76,39 @@ templ AdminExerciseList(exercises []models.Exercise, userName string, isAuthenti
 		<script>
 			(function() {
 				const searchInput = document.getElementById('exercise-search');
+				const typeFilter = document.getElementById('exercise-type-filter');
 				const rows = document.querySelectorAll('.exercise-row');
 				const noResults = document.getElementById('no-results');
 				let debounceTimer;
 
+				function applyFilters() {
+					const query = searchInput.value.toLowerCase().trim();
+					const selectedType = typeFilter.value;
+					let visibleCount = 0;
+
+					rows.forEach(function(row) {
+						const name = row.getAttribute('data-name');
+						const aliases = row.getAttribute('data-aliases') || '';
+						const type = row.getAttribute('data-type');
+						const matchesQuery = name.includes(query) || aliases.includes(query);
+						const matchesType = selectedType === 'all' || type === selectedType;
+						if (matchesQuery && matchesType) {
+							row.classList.remove('hidden');
+							visibleCount++;
+						} else {
+							row.classList.add('hidden');
+						}
+					});
+
+					noResults.classList.toggle('hidden', visibleCount > 0);
+				}
+
 				searchInput.addEventListener('input', function() {
 					clearTimeout(debounceTimer);
-					debounceTimer = setTimeout(function() {
-						const query = searchInput.value.toLowerCase().trim();
-						let visibleCount = 0;
-
-						rows.forEach(function(row) {
-							const name = row.getAttribute('data-name');
-							if (name.includes(query)) {
-								row.classList.remove('hidden');
-								visibleCount++;
-							} else {
-								row.classList.add('hidden');
-							}
-						});
-
-						noResults.classList.toggle('hidden', visibleCount > 0);
-					}, 200);
+					debounceTimer = setTimeout(applyFilters, 200);
 				});
+
+				typeFilter.addEventListener('change', applyFilters);
 			})();
 		</script>
 	}
@@ -131,6 +147,18 @@ templ AdminExerciseForm(data AdminExerciseFormData, userName string, isAuthentic
 							value={ data.Exercise.Name }
 							required
 						/>
+					</div>
+					<div class="grid gap-2">
+						<label for="aliases">Aliases</label>
+						<input
+							class="input"
+							type="text"
+							id="aliases"
+							name="aliases"
+							placeholder="e.g. chest press, push-up"
+							value={ data.Exercise.Aliases }
+						/>
+						<p class="text-sm text-muted-foreground">Comma-separated alternate names. Used for search only, never shown.</p>
 					</div>
 					<div class="grid gap-2">
 						<label for="type">Type</label>
@@ -209,6 +237,17 @@ templ AdminExerciseForm(data AdminExerciseFormData, userName string, isAuthentic
 							placeholder="e.g. Bench Press"
 							required
 						/>
+					</div>
+					<div class="grid gap-2">
+						<label for="aliases">Aliases</label>
+						<input
+							class="input"
+							type="text"
+							id="aliases"
+							name="aliases"
+							placeholder="e.g. chest press, push-up"
+						/>
+						<p class="text-sm text-muted-foreground">Comma-separated alternate names. Used for search only, never shown.</p>
 					</div>
 					<div class="grid gap-2">
 						<label for="type">Type</label>

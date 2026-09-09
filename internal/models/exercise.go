@@ -48,6 +48,7 @@ func (r *ExerciseRepository) GetByName(name string) (*Exercise, error) {
 	return &Exercise{
 		ID:             row.ID,
 		Name:           row.Name,
+		Aliases:        row.Aliases,
 		Description:    nullStringToString(row.Description),
 		VideoURL:       nullStringToString(row.VideoUrl),
 		ImgURL:         nullStringToString(row.ImgUrl),
@@ -69,6 +70,7 @@ func (r *ExerciseRepository) List() ([]Exercise, error) {
 		exercises[i] = Exercise{
 			ID:             row.ID,
 			Name:           row.Name,
+			Aliases:        row.Aliases,
 			Description:    nullStringToString(row.Description),
 			VideoURL:       nullStringToString(row.VideoUrl),
 			ImgURL:         nullStringToString(row.ImgUrl),
@@ -92,6 +94,7 @@ func (r *ExerciseRepository) GetByID(id string) (*Exercise, error) {
 	return &Exercise{
 		ID:             row.ID,
 		Name:           row.Name,
+		Aliases:        row.Aliases,
 		Description:    nullStringToString(row.Description),
 		VideoURL:       nullStringToString(row.VideoUrl),
 		ImgURL:         nullStringToString(row.ImgUrl),
@@ -114,6 +117,7 @@ func (r *ExerciseRepository) GetExerciseByID(id string, userID string) (*Exercis
 	return &Exercise{
 		ID:             row.ID,
 		Name:           row.Name,
+		Aliases:        row.Aliases,
 		Description:    nullStringToString(row.Description),
 		VideoURL:       nullStringToString(row.VideoUrl),
 		ImgURL:         nullStringToString(row.ImgUrl),
@@ -129,6 +133,7 @@ func (r *ExerciseRepository) CreateNoTx(params CreateExerciseParams) (string, er
 	return r.queries.Create(ctx, db.CreateParams{
 		ID:             id,
 		Name:           params.Name,
+		Aliases:        params.Aliases,
 		Description:    stringToNullString(params.Description),
 		VideoUrl:       stringToNullString(params.VideoURL),
 		ImgUrl:         stringToNullString(params.ImgURL),
@@ -142,6 +147,7 @@ func (r *ExerciseRepository) Update(id string, params UpdateExerciseParams) (*Ex
 	ctx := context.Background()
 	row, err := r.queries.Update(ctx, db.UpdateParams{
 		Name:           params.Name,
+		Aliases:        params.Aliases,
 		Description:    stringToNullString(params.Description),
 		VideoUrl:       stringToNullString(params.VideoURL),
 		ImgUrl:         stringToNullString(params.ImgURL),
@@ -155,6 +161,7 @@ func (r *ExerciseRepository) Update(id string, params UpdateExerciseParams) (*Ex
 	return &Exercise{
 		ID:             row.ID,
 		Name:           row.Name,
+		Aliases:        row.Aliases,
 		Description:    nullStringToString(row.Description),
 		VideoURL:       nullStringToString(row.VideoUrl),
 		ImgURL:         nullStringToString(row.ImgUrl),

@@ -2,6 +2,7 @@ package models
 
 type CreateExerciseParams struct {
 	Name           string
+	Aliases        string
 	Description    string
 	VideoURL       string
 	ImgURL         string
@@ -11,6 +12,7 @@ type CreateExerciseParams struct {
 
 type UpdateExerciseParams struct {
 	Name           string
+	Aliases        string
 	Description    string
 	VideoURL       string
 	ImgURL         string

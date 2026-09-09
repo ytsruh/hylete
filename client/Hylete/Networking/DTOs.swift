@@ -97,9 +97,10 @@ public struct UserDTO: Codable, Equatable, Identifiable {
 /// JSON body for `PUT /api/v1/me`. Mirrors the user-editable
 /// subset of the server's `UpdateMeRequest` (name, target
 /// weight, weight unit, distance unit). Reminder preferences
-/// are deliberately omitted — the iOS app surfaces no UI for
-/// them yet, so the iOS-only DTOs stay slim. When those
-/// surfaces land on iOS, add the fields here and to `UserDTO`.
+/// are deliberately omitted — they live on the dedicated
+/// `GET`/`PUT /api/v1/me/reminders` endpoints (see
+/// `ReminderPreferencesDTO` below) so a `PUT /me` that doesn't
+/// know about reminders can never clobber them.
 ///
 /// `targetWeight` is an optional pointer so an explicit `nil`
 /// clears the goal (matching the HTML form's empty-input
@@ -131,6 +132,104 @@ public struct UpdateMeRequest: Encodable, Equatable {
     }
 }
 
+// MARK: Weight reminders
+
+/// JSON shape for the user's weight-reminder schedule. Mirrors the
+/// server's `ReminderPreferencesDTO` in
+/// `internal/routes/api_dto.go` (served by `GET
+/// /api/v1/me/reminders`, accepted by `PUT /api/v1/me/reminders`).
+///
+/// `frequency` is one of `"off" | "daily" | "weekly" | "biweekly"`;
+/// `dayOfWeek` is 0–6 (Sunday=0) for weekly/biweekly and nil
+/// otherwise (the server omits the key via `omitempty`, so
+/// `decodeIfPresent` maps a missing key to nil rather than failing
+/// the decode); `time` is `"HH:00"` in 24h UTC (hour-only by
+/// design — the web form and the iOS editor both pick whole hours).
+///
+/// Reminders are email-only: `enabled` IS the opt-in, there is no
+/// separate channel flag.
+public struct ReminderPreferencesDTO: Codable, Equatable {
+    public let enabled: Bool
+    public let frequency: String
+    public let dayOfWeek: Int?
+    public let time: String
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case frequency
+        case dayOfWeek = "day_of_week"
+        case time
+    }
+
+    public init(enabled: Bool, frequency: String, dayOfWeek: Int?, time: String) {
+        self.enabled = enabled
+        self.frequency = frequency
+        self.dayOfWeek = dayOfWeek
+        self.time = time
+    }
+
+    /// `true` when the schedule uses the day-of-week field
+    /// (weekly/biweekly). The editor shows the day picker only then,
+    /// mirroring the server's `ReminderFrequency.NeedsDayOfWeek` and
+    /// the web form's show/hide script.
+    public var needsDayOfWeek: Bool {
+        frequency == "weekly" || frequency == "biweekly"
+    }
+
+    /// Short human summary for the Profile row, e.g. "Off",
+    /// "Daily 09:00 UTC", "Weekly Sun 09:00 UTC". Falls back to the
+    /// raw frequency string for unknown values so the row never
+    /// renders blank.
+    public var summary: String {
+        guard enabled, frequency != "off" else { return "Off" }
+        var parts: [String] = [frequency.capitalized]
+        if needsDayOfWeek, let day = dayOfWeek, day >= 0, day < 7 {
+            parts.append(Self.weekdayLabels[day])
+        }
+        parts.append("\(time) UTC")
+        return parts.joined(separator: " ")
+    }
+
+    /// 0–6 (Sunday=0) short labels, matching the web form's
+    /// `reminderDayLabels` order.
+    public static let weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+    /// Hour of day (0–23) parsed from `time`, or 9 when malformed.
+    /// Mirrors the server's `ReminderHour` fallback so a corrupt row
+    /// never breaks the editor.
+    public var hour: Int {
+        let parts = time.split(separator: ":")
+        guard parts.count == 2, let h = Int(parts[0]), (0...23).contains(h), parts[1] == "00" else { return 9 }
+        return h
+    }
+}
+
+/// JSON body for `PUT /api/v1/me/reminders`. Same shape as
+/// `ReminderPreferencesDTO`; kept as a separate type so the request
+/// stays `Encodable`-only and future response-only fields (e.g. a
+/// computed next-fire timestamp) don't leak into what the editor
+/// sends.
+public struct UpdateReminderPreferencesRequest: Encodable, Equatable {
+    public let enabled: Bool
+    public let frequency: String
+    public let dayOfWeek: Int?
+    public let time: String
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case frequency
+        case dayOfWeek = "day_of_week"
+        case time
+    }
+
+    public init(enabled: Bool, frequency: String, dayOfWeek: Int?, time: String) {
+        self.enabled = enabled
+        self.frequency = frequency
+        self.dayOfWeek = dayOfWeek
+        self.time = time
+    }
+}
+
 // MARK: Exercises
 
 /// Mirrors the server's `ExerciseDTO` in
@@ -144,6 +243,10 @@ public struct UpdateMeRequest: Encodable, Equatable {
 public struct ExerciseDTO: Codable, Equatable, Identifiable, Hashable {
     public let id: String
     public let name: String
+    /// Comma-separated alternate names. Never displayed; only used for
+    /// client-side search filtering (mirrors the web `data-aliases` attr).
+    /// Defaults to "" when the key is absent (older server builds).
+    public let aliases: String
     public let description: String
     public let videoURL: String
     public let imgURL: String
@@ -158,6 +261,7 @@ public struct ExerciseDTO: Codable, Equatable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id
         case name
+        case aliases
         case description
         case videoURL = "video_url"
         case imgURL = "img_url"
@@ -169,6 +273,7 @@ public struct ExerciseDTO: Codable, Equatable, Identifiable, Hashable {
     public init(
         id: String,
         name: String,
+        aliases: String = "",
         description: String,
         videoURL: String,
         imgURL: String,
@@ -178,12 +283,26 @@ public struct ExerciseDTO: Codable, Equatable, Identifiable, Hashable {
     ) {
         self.id = id
         self.name = name
+        self.aliases = aliases
         self.description = description
         self.videoURL = videoURL
         self.imgURL = imgURL
         self.imageURL = imageURL
         self.imageURLOriginal = imageURLOriginal
         self.type = type
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        aliases = try container.decodeIfPresent(String.self, forKey: .aliases) ?? ""
+        description = try container.decode(String.self, forKey: .description)
+        videoURL = try container.decode(String.self, forKey: .videoURL)
+        imgURL = try container.decode(String.self, forKey: .imgURL)
+        imageURL = try container.decode(String.self, forKey: .imageURL)
+        imageURLOriginal = try container.decodeIfPresent(String.self, forKey: .imageURLOriginal)
+        type = try container.decode(String.self, forKey: .type)
     }
 
     /// `true` when the exercise has a renderable image. The

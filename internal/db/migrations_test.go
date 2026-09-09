@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 )
@@ -82,5 +83,51 @@ func TestMigrate_CreatesHealthSnapshotsTable(t *testing.T) {
 		).Scan(&name); err != nil {
 			t.Errorf("index %s missing after migrate: %v", want, err)
 		}
+	}
+}
+
+// TestMigrate_AddsExerciseAliasesColumn boots a fresh local
+// database (running every embedded goose migration) and asserts
+// the exercises.aliases column exists. This executes the
+// 00012 migration SQL itself — a syntax error there would
+// otherwise surface only at first boot.
+func TestMigrate_AddsExerciseAliasesColumn(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	database, err := NewLocalConnection(dbPath)
+	if err != nil {
+		t.Fatalf("NewLocalConnection: %v", err)
+	}
+	defer database.Close()
+
+	rows, err := database.Conn().Query(`PRAGMA table_info('exercises')`)
+	if err != nil {
+		t.Fatalf("PRAGMA table_info: %v", err)
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			t.Fatalf("scan table_info: %v", err)
+		}
+		if name == "aliases" {
+			found = true
+			if notNull != 1 {
+				t.Errorf("aliases NOT NULL = %d, want 1", notNull)
+			}
+			if !dflt.Valid || dflt.String != "''" {
+				t.Errorf("aliases default = %v, want ''", dflt)
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("table_info rows: %v", err)
+	}
+	if !found {
+		t.Error("exercises.aliases column missing after migrate")
 	}
 }
