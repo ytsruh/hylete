@@ -37,7 +37,7 @@ struct SelectedDaySetList: View {
                 Text(emptyTitle)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(DSColors.text)
-                Text("Tap a set's exercise to view its full history.")
+                Text("Tap an exercise to view its full history.")
                     .font(.footnote)
                     .foregroundStyle(DSColors.textSecondary)
             }
@@ -68,9 +68,9 @@ struct SelectedDaySetList: View {
     /// "No sets yet" on today, otherwise the friendly date.
     private var emptyTitle: String {
         if CalendarMath.isSameDay(date, Date()) {
-            return "No sets logged today"
+            return "No activity logged today"
         }
-        return "No sets on \(date.formatted(date: .abbreviated, time: .omitted))"
+        return "No activity on \(date.formatted(date: .abbreviated, time: .omitted))"
     }
 
     @ViewBuilder

@@ -1,12 +1,11 @@
 import SwiftUI
 
 /// The "Profile" tab. Shows the signed-in user's basic info
-/// and a sign-out button. Tapping the name, weight unit, or
-/// target weight row pushes a per-field editor that PUTs the
-/// change to `/api/v1/me` and refreshes `authStore.currentUser`
-/// on success so the rest of the app sees the new value. The
-/// weight-reminders row opens `ReminderEditView` as a sheet,
-/// seeded with the schedule fetched below.
+/// and a sign-out button. Tapping the name, weight unit,
+/// target weight, or weight-reminders row opens a per-field
+/// editor as a sheet that PUTs the change and refreshes
+/// `authStore.currentUser` on success so the rest of the app
+/// sees the new value.
 struct ProfileView: View {
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var authStore: AuthStore
@@ -65,6 +64,13 @@ struct ProfileView: View {
 
     /// Presents the reminders editor sheet.
     @State private var showingRemindersSheet: Bool = false
+
+    /// Present the per-field profile editors as sheets (same
+    /// overlay style as weight reminders) so the sheet root
+    /// shows only Cancel/Save with no push back button.
+    @State private var showingNameSheet: Bool = false
+    @State private var showingUnitSheet: Bool = false
+    @State private var showingTargetSheet: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -165,6 +171,30 @@ struct ProfileView: View {
                     .presentationDetents([.large])
                 }
             }
+            .sheet(isPresented: $showingNameSheet) {
+                if let user = authStore.currentUser {
+                    NavigationStack {
+                        NameEditView(user: user)
+                    }
+                    .presentationDetents([.large])
+                }
+            }
+            .sheet(isPresented: $showingUnitSheet) {
+                if let user = authStore.currentUser {
+                    NavigationStack {
+                        WeightUnitEditView(user: user)
+                    }
+                    .presentationDetents([.large])
+                }
+            }
+            .sheet(isPresented: $showingTargetSheet) {
+                if let user = authStore.currentUser {
+                    NavigationStack {
+                        TargetWeightEditView(user: user)
+                    }
+                    .presentationDetents([.large])
+                }
+            }
         }
     }
 
@@ -195,14 +225,18 @@ struct ProfileView: View {
 
     private func accountSection(user: UserDTO) -> some View {
         Section("Account") {
-            NavigationLink {
-                NameEditView(user: user)
+            Button {
+                showingNameSheet = true
             } label: {
                 HStack {
                     Text("Name")
+                        .foregroundStyle(DSColors.text)
                     Spacer()
                     Text(user.name)
                         .foregroundStyle(DSColors.textSecondary)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
                 }
             }
         }
@@ -210,21 +244,26 @@ struct ProfileView: View {
 
     private func preferencesSection(user: UserDTO) -> some View {
         Section("Preferences") {
-            NavigationLink {
-                WeightUnitEditView(user: user)
+            Button {
+                showingUnitSheet = true
             } label: {
                 HStack {
                     Text("Weight unit")
+                        .foregroundStyle(DSColors.text)
                     Spacer()
                     Text(user.weightUnit)
                         .foregroundStyle(DSColors.textSecondary)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
                 }
             }
-            NavigationLink {
-                TargetWeightEditView(user: user)
+            Button {
+                showingTargetSheet = true
             } label: {
                 HStack {
                     Text("Target weight")
+                        .foregroundStyle(DSColors.text)
                     Spacer()
                     if let target = user.targetWeight {
                         Text(String(format: "%.1f %@", target, user.weightUnit))
@@ -233,6 +272,9 @@ struct ProfileView: View {
                         Text("Not set")
                             .foregroundStyle(DSColors.textSecondary)
                     }
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
                 }
             }
             // Opens the editor sheet when the schedule is loaded.
