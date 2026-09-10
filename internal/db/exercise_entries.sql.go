@@ -90,7 +90,7 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.created_at BETWEEN ? AND ? AND e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 `
 
 type GetExerciseEntriesByDateRangeParams struct {
@@ -159,7 +159,7 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.exercise_id = ? AND e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 LIMIT ? OFFSET ?
 `
 
@@ -286,7 +286,7 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.exercise_id = ? AND e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 LIMIT 1
 `
 
@@ -352,6 +352,25 @@ func (q *Queries) GetLongestDistanceByExercise(ctx context.Context, arg GetLonge
 	return column_1, err
 }
 
+const getMaxSetVolumeByExercise = `-- name: GetMaxSetVolumeByExercise :one
+SELECT CAST(COALESCE(MAX(reps * weight), 0) AS REAL) FROM exercise_entries
+WHERE exercise_id = ? AND user_id = ?
+`
+
+type GetMaxSetVolumeByExerciseParams struct {
+	ExerciseID string
+	UserID     sql.NullString
+}
+
+// Best single-set volume (reps * weight) logged for a strength exercise.
+// Returns 0 when no exercise entries exist.
+func (q *Queries) GetMaxSetVolumeByExercise(ctx context.Context, arg GetMaxSetVolumeByExerciseParams) (float64, error) {
+	row := q.db.QueryRowContext(ctx, getMaxSetVolumeByExercise, arg.ExerciseID, arg.UserID)
+	var column_1 float64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const getMaxWeightByExercise = `-- name: GetMaxWeightByExercise :one
 SELECT CAST(COALESCE(MAX(weight), 0) AS REAL) FROM exercise_entries
 WHERE exercise_id = ? AND user_id = ?
@@ -375,7 +394,7 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 `
 
 type ListExerciseEntriesRow struct {
@@ -438,7 +457,7 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.created_at >= datetime('now', '-7 days') AND e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 `
 
 type ListExerciseEntriesLast7DaysRow struct {
@@ -501,7 +520,7 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 LIMIT ?
 `
 

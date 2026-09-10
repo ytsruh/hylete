@@ -7,7 +7,10 @@ import SwiftUI
 ///     when one is set
 ///   - Progress card under the chart with the current
 ///     weight, target, percent, and remaining gap
-///   - Date-grouped list of entries, newest first
+///   - Date-grouped list of entries, newest first (photo-less
+///     rows with a count badge; photos live in the editor)
+///   - Compare button (when ≥ 2 photo-bearing entries exist)
+///     opening the comparison picker
 ///
 /// Each row is tappable to open the editor.
 struct WeightListView: View {
@@ -18,11 +21,14 @@ struct WeightListView: View {
 
     @State private var showingNewWeight: Bool = false
     @State private var editingEntry: WeightEntryDTO?
-    @State private var selectedPhotoIDs: [String] = []
+    @State private var showingComparePicker: Bool = false
     @State private var comparison: WeightCompareResponse?
     @State private var showingComparison: Bool = false
-    @State private var comparisonError: String?
-    @State private var isLoadingComparison: Bool = false
+    /// Holds the freshly-fetched pair while the picker dismisses.
+    /// Presenting the comparison sheet only after the picker's
+    /// dismissal completes avoids stacking two sheets, which
+    /// otherwise presents a blank sheet.
+    @State private var pendingComparison: WeightCompareResponse?
 
     /// Sorted chart points (oldest-first) so the chart
     /// draws left-to-right. Cached because the sort runs
@@ -52,6 +58,12 @@ struct WeightListView: View {
     /// the parent can hide the card.
     private var currentWeight: Double? {
         store.latestEntry?.weight
+    }
+
+    /// Entries with at least one photo. Drives the compare
+    /// entry point — comparison needs photo-bearing pairs.
+    private var photoEntries: [WeightEntryDTO] {
+        store.entries.filter { $0.hasPhoto }
     }
 
     /// Progress percent clamped to `[0, 100]`. Mirrors
@@ -86,6 +98,27 @@ struct WeightListView: View {
                 WeightEditorView(mode: .edit(entry), store: store)
                     .environmentObject(env)
                     .environmentObject(authStore)
+            }
+            .sheet(isPresented: $showingComparePicker, onDismiss: {
+                // Present the slider only once the picker is fully
+                // gone — presenting mid-dismissal yields a blank
+                // sheet. Cancelling leaves pendingComparison nil so
+                // nothing presents.
+                if let pending = pendingComparison {
+                    pendingComparison = nil
+                    comparison = pending
+                    showingComparison = true
+                }
+            }) {
+                WeightComparePickerView(
+                    entries: photoEntries,
+                    weightUnit: weightUnit,
+                    onCompared: { response in
+                        pendingComparison = response
+                        showingComparePicker = false
+                    }
+                )
+                .environmentObject(env)
             }
             .sheet(isPresented: $showingComparison) {
                 if let comparison {
@@ -131,17 +164,13 @@ struct WeightListView: View {
     }
 
     /// The main scroll view: chart + progress card (when
-    /// applicable) + entries. The chart and progress sit
-    /// in their original card chrome at the top; the
-    /// entries live below in a card with the iOS-native
-    /// "list" feel (rounded corners, separator strokes,
-    /// thumbnail-on-left row design).
+    /// applicable) + entries + compare entry point.
     private var loadedList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DSSpacing.md) {
                 chartSection
                 entriesSection
-                comparisonBar
+                compareSection
             }
             .padding(DSSpacing.md)
         }
@@ -185,9 +214,8 @@ struct WeightListView: View {
 
     /// Date-grouped list of entries, styled to feel like
     /// an iOS-native list card (rounded corners, hairline
-    /// separators between rows). The row layout itself —
-    /// thumbnail on the left, weight + date inline —
-    /// matches the `ExerciseRow` pattern in
+    /// separators between rows). Rows are photo-less with a
+    /// count badge — matches the `ExerciseRow` pattern in
     /// `ExerciseListView` so the two list-heavy tabs read
     /// as part of the same iOS-native idiom.
     private var entriesSection: some View {
@@ -201,13 +229,11 @@ struct WeightListView: View {
                     WeightRow(
                         entry: entry,
                         weightUnit: weightUnit,
-                        onTap: { editingEntry = entry },
-                        isSelected: selectedPhotoIDs.contains(entry.id),
-                        onToggleSelection: entry.hasPhoto ? { togglePhotoSelection(entry.id) } : nil
+                        onTap: { editingEntry = entry }
                     )
                     if entry.id != store.entries.last?.id {
                         Divider()
-                            .padding(.leading, DSSpacing.md + 60 + DSSpacing.md)
+                            .padding(.leading, DSSpacing.md)
                     }
                 }
             }
@@ -223,54 +249,20 @@ struct WeightListView: View {
         }
     }
 
+    /// Compare entry point. Only shown when at least two
+    /// photo-bearing entries exist — comparison needs a pair
+    /// that shares a photo angle, which the picker validates.
     @ViewBuilder
-    private var comparisonBar: some View {
-        if !selectedPhotoIDs.isEmpty {
-            VStack(spacing: DSSpacing.sm) {
-                HStack {
-                    VStack(alignment: .leading, spacing: DSSpacing.xxs) {
-                        Text("Compare photos")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(DSColors.text)
-                        Text("\(selectedPhotoIDs.count) of 2 selected")
-                            .font(.caption)
-                            .foregroundStyle(DSColors.textSecondary)
-                    }
-                    Spacer()
-                    Button("Clear") {
-                        selectedPhotoIDs.removeAll()
-                    }
-                    .buttonStyle(.dsSecondary)
-                    Button {
-                        Task { await loadComparison() }
-                    } label: {
-                        if isLoadingComparison {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Text("Compare")
-                        }
-                    }
-                    .buttonStyle(.dsPrimary)
-                    .disabled(selectedPhotoIDs.count != 2 || isLoadingComparison)
-                }
-
-                if let comparisonError {
-                    Text(comparisonError)
-                        .font(.caption)
-                        .foregroundStyle(DSColors.destructive)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+    private var compareSection: some View {
+        if photoEntries.count >= 2 {
+            Button {
+                showingComparePicker = true
+            } label: {
+                Label("Compare photos", systemImage: "photo.on.rectangle.angled")
+                    .frame(maxWidth: .infinity)
             }
-            .padding(DSSpacing.md)
-            .background(
-                RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous)
-                    .fill(DSColors.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous)
-                    .stroke(DSColors.separator, lineWidth: 0.5)
-            )
+            .buttonStyle(.dsSecondary)
+            .accessibilityLabel("Compare progress photos")
         }
     }
 
@@ -320,33 +312,5 @@ struct WeightListView: View {
         .padding(DSSpacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DSColors.background.ignoresSafeArea())
-    }
-
-    private func togglePhotoSelection(_ id: String) {
-        comparisonError = nil
-        if let index = selectedPhotoIDs.firstIndex(of: id) {
-            selectedPhotoIDs.remove(at: index)
-        } else if selectedPhotoIDs.count < 2 {
-            selectedPhotoIDs.append(id)
-        }
-    }
-
-    private func loadComparison() async {
-        guard selectedPhotoIDs.count == 2 else { return }
-        comparisonError = nil
-        isLoadingComparison = true
-        defer { isLoadingComparison = false }
-
-        do {
-            comparison = try await env.api.compareWeightEntries(
-                a: selectedPhotoIDs[0],
-                b: selectedPhotoIDs[1]
-            )
-            showingComparison = true
-        } catch let error as APIError {
-            comparisonError = error.errorDescription
-        } catch {
-            comparisonError = "Could not compare the selected photos."
-        }
     }
 }

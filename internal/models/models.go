@@ -70,11 +70,13 @@ func (e *ExerciseEntry) IsCardio() bool {
 
 // HistoryStats summarises an exercise's training history for the header stat cards.
 // LastSet is a zero-value ExerciseEntry when the user has no exercise entries for the exercise.
-// Strength exercises surface MaxWeight; cardio exercises surface BestPaceSecPerKm and
+// Strength exercises surface MaxWeight and BestSetVolume (best single-set reps * weight,
+// 0 when no exercise entries exist); cardio exercises surface BestPaceSecPerKm and
 // LongestDistanceMeters (both 0 when no qualifying exercise entries exist). Callers pick
 // the pair that matches the exercise's type — see IsCardio on ExerciseEntry.
 type HistoryStats struct {
 	MaxWeight             float64
+	BestSetVolume         float64
 	LastSet               ExerciseEntry
 	BestPaceSecPerKm      float64
 	LongestDistanceMeters float64

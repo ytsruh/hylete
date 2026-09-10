@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
+	"hylete/internal/models"
 	"hylete/internal/utils"
 )
 
@@ -16,6 +17,10 @@ import (
 type photoUploadRequest struct {
 	Filename    string `json:"filename"`
 	ContentType string `json:"content_type"`
+	// Angle optionally namespaces the storage key by photo slot
+	// (front/side/back) so R2 keys are browsable per angle. Empty
+	// means "no namespace" for older clients.
+	Angle string `json:"angle"`
 }
 
 // photoUploadResponse is returned to the client with the URL to PUT to
@@ -28,7 +33,9 @@ type photoUploadResponse struct {
 
 // PhotoUploadURL returns a presigned PUT URL for a client to upload a
 // weight-progress photo directly to R2. The key is generated server-side
-// as `weight/{userID}/{uuid}{ext}` and must be sent back when creating or
+// as `weight/{userID}/{uuid}{ext}`, namespaced to
+// `weight/{userID}/{angle}/{uuid}{ext}` when the request carries a valid
+// angle (front/side/back), and must be sent back when creating or
 // updating the weight entry.
 //
 // Auth: requires a logged-in user. Reachable via POST /api/v1/weight/
@@ -50,6 +57,11 @@ func (h *Handler) PhotoUploadURL(c echo.Context) error {
 	if !strings.HasPrefix(req.ContentType, "image/") {
 		return echo.NewHTTPError(http.StatusBadRequest, "content_type must be an image type")
 	}
+	if req.Angle != "" {
+		if _, ok := models.ParseWeightPhotoAngle(req.Angle); !ok {
+			return echo.NewHTTPError(http.StatusBadRequest, "angle must be one of front, side, back")
+		}
+	}
 
 	ext := strings.ToLower(filepath.Ext(req.Filename))
 	if ext == "" {
@@ -69,6 +81,9 @@ func (h *Handler) PhotoUploadURL(c echo.Context) error {
 	}
 
 	key := "weight/" + claims.UserID + "/" + uuid.New().String() + ext
+	if angle, ok := models.ParseWeightPhotoAngle(req.Angle); ok && req.Angle != "" {
+		key = "weight/" + claims.UserID + "/" + string(angle) + "/" + uuid.New().String() + ext
+	}
 
 	url, err := utils.CreatePresignedPutURL(key, req.ContentType)
 	if err != nil {

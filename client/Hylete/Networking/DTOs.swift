@@ -598,6 +598,10 @@ public struct UpdateExerciseEntryRequest: Encodable {
 
 public struct HistoryStatsDTO: Codable, Equatable {
     public let maxWeight: Double
+    /// Best single-set volume (reps * weight) ever recorded for the
+    /// exercise, in the user's weight unit. 0 when no exercise entries
+    /// exist. Strength only — cardio clients ignore it.
+    public let bestSetVolume: Double
     /// Fastest pace ever recorded for the exercise, in seconds per
     /// kilometre. 0 when no entry has both a duration and a distance.
     public let bestPaceSecPerKm: Double
@@ -606,9 +610,36 @@ public struct HistoryStatsDTO: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case maxWeight = "max_weight"
+        case bestSetVolume = "best_set_volume"
         case bestPaceSecPerKm = "best_pace_sec_per_km"
         case longestDistanceMeters = "longest_distance_meters"
         case lastSet = "last_set"
+    }
+
+    public init(
+        maxWeight: Double,
+        bestSetVolume: Double = 0,
+        bestPaceSecPerKm: Double,
+        longestDistanceMeters: Double,
+        lastSet: ExerciseEntryDTO?
+    ) {
+        self.maxWeight = maxWeight
+        self.bestSetVolume = bestSetVolume
+        self.bestPaceSecPerKm = bestPaceSecPerKm
+        self.longestDistanceMeters = longestDistanceMeters
+        self.lastSet = lastSet
+    }
+
+    /// Custom decoder. `best_set_volume` is omitted by older server
+    /// builds, so a missing key maps to 0 rather than failing the
+    /// decode — the card renders "—" in that case.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        maxWeight = try container.decode(Double.self, forKey: .maxWeight)
+        bestSetVolume = try container.decodeIfPresent(Double.self, forKey: .bestSetVolume) ?? 0
+        bestPaceSecPerKm = try container.decode(Double.self, forKey: .bestPaceSecPerKm)
+        longestDistanceMeters = try container.decode(Double.self, forKey: .longestDistanceMeters)
+        lastSet = try container.decodeIfPresent(ExerciseEntryDTO.self, forKey: .lastSet)
     }
 }
 
@@ -803,40 +834,65 @@ public struct SubmitFeedbackRequest: Encodable, Equatable {
 /// JSON shape for a single body-weight entry on the
 /// `/api/v1/weight/*` namespace. Mirrors the server's
 /// `WeightEntryDTO` in `internal/routes/api_dto.go`. The
-/// server resolves the raw R2 storage key into a fully
-/// qualified `photoURL` so the iOS view can hand it
+/// server resolves each angle's raw R2 storage key into a fully
+/// qualified `*PhotoURL` so the iOS view can hand it
 /// straight to `AsyncImage` without any extra config.
 ///
-/// `hasPhoto` is the single source of truth for "is there
-/// a renderable image?" — checking both `photoKey` and
-/// `photoURL` for emptiness is unnecessary because the
-/// server omits both fields when there is no photo
-/// (the `omitempty` JSON tag). The custom decoder below
-/// uses `decodeIfPresent` for those two fields so a
-/// missing key is mapped to an empty string rather than
-/// failing the decode.
+/// `hasPhoto` is true when any angle slot holds a photo;
+/// `photoCount` is the number of filled slots (0–3). The
+/// per-angle `has*Photo` flags are the single source of truth
+/// for "is there a renderable image in this slot?" — checking
+/// the key/URL strings for emptiness is unnecessary because the
+/// server omits them when the slot is empty (the `omitempty`
+/// JSON tag). The custom decoder below uses `decodeIfPresent`
+/// for those fields so a missing key maps to an empty string
+/// rather than failing the decode.
 ///
-/// `photoKey` is included so the iOS editor can re-submit
-/// the existing key on update (the server's PUT handler
-/// expects to be told the existing key explicitly when
-/// replacing a photo). The iOS view is free to ignore it
-/// for read-only display.
+/// The `*PhotoKey` fields are included so the iOS editor can
+/// re-submit the existing keys on update (the server's PUT
+/// handler expects to be told the existing keys explicitly
+/// when replacing a photo). The iOS view is free to ignore
+/// them for read-only display.
 public struct WeightEntryDTO: Codable, Equatable, Identifiable, Hashable {
     public let id: String
     public let weight: Double
     public let notes: String
-    public let photoKey: String
-    public let photoURL: String
+    public let frontPhotoKey: String
+    public let frontPhotoURL: String
+    public let hasFrontPhoto: Bool
+    public let sidePhotoKey: String
+    public let sidePhotoURL: String
+    public let hasSidePhoto: Bool
+    public let backPhotoKey: String
+    public let backPhotoURL: String
+    public let hasBackPhoto: Bool
     public let hasPhoto: Bool
+    public let photoCount: Int
     public let createdAt: Date
+
+    /// The three photo angles, in front/side/back preference
+    /// order. Mirrors the server's `WeightPhotoAngle`.
+    public enum PhotoAngle: String, CaseIterable, Codable {
+        case front
+        case side
+        case back
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
         case weight
         case notes
-        case photoKey = "photo_key"
-        case photoURL = "photo_url"
+        case frontPhotoKey = "front_photo_key"
+        case frontPhotoURL = "front_photo_url"
+        case hasFrontPhoto = "has_front_photo"
+        case sidePhotoKey = "side_photo_key"
+        case sidePhotoURL = "side_photo_url"
+        case hasSidePhoto = "has_side_photo"
+        case backPhotoKey = "back_photo_key"
+        case backPhotoURL = "back_photo_url"
+        case hasBackPhoto = "has_back_photo"
         case hasPhoto = "has_photo"
+        case photoCount = "photo_count"
         case createdAt = "created_at"
     }
 
@@ -844,36 +900,109 @@ public struct WeightEntryDTO: Codable, Equatable, Identifiable, Hashable {
         id: String,
         weight: Double,
         notes: String,
-        photoKey: String,
-        photoURL: String,
+        frontPhotoKey: String,
+        frontPhotoURL: String,
+        hasFrontPhoto: Bool,
+        sidePhotoKey: String,
+        sidePhotoURL: String,
+        hasSidePhoto: Bool,
+        backPhotoKey: String,
+        backPhotoURL: String,
+        hasBackPhoto: Bool,
         hasPhoto: Bool,
+        photoCount: Int,
         createdAt: Date
     ) {
         self.id = id
         self.weight = weight
         self.notes = notes
-        self.photoKey = photoKey
-        self.photoURL = photoURL
+        self.frontPhotoKey = frontPhotoKey
+        self.frontPhotoURL = frontPhotoURL
+        self.hasFrontPhoto = hasFrontPhoto
+        self.sidePhotoKey = sidePhotoKey
+        self.sidePhotoURL = sidePhotoURL
+        self.hasSidePhoto = hasSidePhoto
+        self.backPhotoKey = backPhotoKey
+        self.backPhotoURL = backPhotoURL
+        self.hasBackPhoto = hasBackPhoto
         self.hasPhoto = hasPhoto
+        self.photoCount = photoCount
         self.createdAt = createdAt
     }
 
-    /// Custom decoder. The server uses `omitempty` on
-    /// `photo_key` and `photo_url`, so a photo-less
-    /// entry omits both fields entirely from the JSON
-    /// response. `decodeIfPresent` maps that to an
-    /// empty string here so the DTO's non-optional
-    /// invariant holds (`hasPhoto` is the single source
-    /// of truth for "is there a photo?").
+    /// Custom decoder. The server uses `omitempty` on the
+    /// per-angle key/URL fields, so an empty slot omits both
+    /// fields entirely from the JSON response.
+    /// `decodeIfPresent` maps that to an empty string here so
+    /// the DTO's non-optional invariant holds (the `has*Photo`
+    /// flags are the single source of truth for "is there a
+    /// photo?"). `photo_count` also decodes leniently so
+    /// older server builds that don't send it still decode.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(String.self, forKey: .id)
         self.weight = try container.decode(Double.self, forKey: .weight)
         self.notes = try container.decode(String.self, forKey: .notes)
-        self.photoKey = try container.decodeIfPresent(String.self, forKey: .photoKey) ?? ""
-        self.photoURL = try container.decodeIfPresent(String.self, forKey: .photoURL) ?? ""
-        self.hasPhoto = try container.decode(Bool.self, forKey: .hasPhoto)
+        let frontKey = try container.decodeIfPresent(String.self, forKey: .frontPhotoKey) ?? ""
+        let frontURL = try container.decodeIfPresent(String.self, forKey: .frontPhotoURL) ?? ""
+        let sideKey = try container.decodeIfPresent(String.self, forKey: .sidePhotoKey) ?? ""
+        let sideURL = try container.decodeIfPresent(String.self, forKey: .sidePhotoURL) ?? ""
+        let backKey = try container.decodeIfPresent(String.self, forKey: .backPhotoKey) ?? ""
+        let backURL = try container.decodeIfPresent(String.self, forKey: .backPhotoURL) ?? ""
+        self.frontPhotoKey = frontKey
+        self.frontPhotoURL = frontURL
+        self.hasFrontPhoto = try container.decodeIfPresent(Bool.self, forKey: .hasFrontPhoto) ?? (frontKey != "")
+        self.sidePhotoKey = sideKey
+        self.sidePhotoURL = sideURL
+        self.hasSidePhoto = try container.decodeIfPresent(Bool.self, forKey: .hasSidePhoto) ?? (sideKey != "")
+        self.backPhotoKey = backKey
+        self.backPhotoURL = backURL
+        self.hasBackPhoto = try container.decodeIfPresent(Bool.self, forKey: .hasBackPhoto) ?? (backKey != "")
+        // Older builds may omit the aggregate fields; derive them
+        // from the per-angle flags so mixed-version fleets decode.
+        let decodedHasPhoto = try container.decodeIfPresent(Bool.self, forKey: .hasPhoto)
+        self.hasPhoto = decodedHasPhoto ?? (self.hasFrontPhoto || self.hasSidePhoto || self.hasBackPhoto)
+        let decodedCount = try container.decodeIfPresent(Int.self, forKey: .photoCount)
+        if let decodedCount {
+            self.photoCount = decodedCount
+        } else {
+            self.photoCount = [self.hasFrontPhoto, self.hasSidePhoto, self.hasBackPhoto].filter { $0 }.count
+        }
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+    }
+
+    /// Whether the entry has a photo in the given angle slot.
+    public func hasPhoto(for angle: PhotoAngle) -> Bool {
+        switch angle {
+        case .front: return hasFrontPhoto
+        case .side: return hasSidePhoto
+        case .back: return hasBackPhoto
+        }
+    }
+
+    /// The renderable URL string for the given angle slot
+    /// ("" when the slot is empty).
+    public func photoURL(for angle: PhotoAngle) -> String {
+        switch angle {
+        case .front: return frontPhotoURL
+        case .side: return sidePhotoURL
+        case .back: return backPhotoURL
+        }
+    }
+
+    /// The storage key for the given angle slot ("" when empty).
+    public func photoKey(for angle: PhotoAngle) -> String {
+        switch angle {
+        case .front: return frontPhotoKey
+        case .side: return sidePhotoKey
+        case .back: return backPhotoKey
+        }
+    }
+
+    /// The angles this entry has photos for, in
+    /// front/side/back preference order.
+    public var photoAngles: [PhotoAngle] {
+        PhotoAngle.allCases.filter { hasPhoto(for: $0) }
     }
 
     /// Pretty-printed weight in the user's preferred unit.
@@ -896,27 +1025,48 @@ public struct WeightEntriesResponse: Decodable, Equatable {
 }
 
 /// Response body for `GET /api/v1/weight/compare`. The server
-/// validates ownership and photo availability, then returns the
-/// pair in chronological order so the client can render `before`
-/// and `after` without duplicating that business rule.
+/// validates ownership and per-angle photo availability, then
+/// returns the pair in chronological order so the client can
+/// render `before` and `after` without duplicating that business
+/// rule. `angle` echoes the compared slot (front/side/back).
 public struct WeightCompareResponse: Decodable, Equatable {
     public let before: WeightEntryDTO
     public let after: WeightEntryDTO
+    public let angle: String
     public let deltaText: String
 
     enum CodingKeys: String, CodingKey {
         case before
         case after
+        case angle
         case deltaText = "delta_text"
+    }
+
+    public init(before: WeightEntryDTO, after: WeightEntryDTO, angle: String, deltaText: String) {
+        self.before = before
+        self.after = after
+        self.angle = angle
+        self.deltaText = deltaText
+    }
+
+    /// Custom decoder: `angle` is omitted by older server builds
+    /// that only ever compared the single photo, so it defaults
+    /// to front.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.before = try container.decode(WeightEntryDTO.self, forKey: .before)
+        self.after = try container.decode(WeightEntryDTO.self, forKey: .after)
+        self.angle = try container.decodeIfPresent(String.self, forKey: .angle) ?? "front"
+        self.deltaText = try container.decode(String.self, forKey: .deltaText)
     }
 }
 
 /// JSON body for `POST /api/v1/weight`. Mirrors the server's
 /// `CreateWeightEntryRequest`. `weight` is the only required
-/// field; `notes` and `photoKey` are optional, and `createdAt`
-/// is optional (defaults to time.Now() on the server when
-/// omitted) so the iOS "log it now" button can send an empty
-/// body field.
+/// field; `notes` and the three per-angle photo keys are
+/// optional, and `createdAt` is optional (defaults to
+/// time.Now() on the server when omitted) so the iOS "log it
+/// now" button can send an empty body field.
 ///
 /// `createdAt` is a `Date?` rather than a `Date` so the JSON
 /// encoder can omit the field entirely when the user wants
@@ -925,36 +1075,50 @@ public struct WeightCompareResponse: Decodable, Equatable {
 public struct CreateWeightEntryRequest: Encodable, Equatable {
     public let weight: Double
     public let notes: String
-    public let photoKey: String
+    public let frontPhotoKey: String
+    public let sidePhotoKey: String
+    public let backPhotoKey: String
     public let createdAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case weight
         case notes
-        case photoKey = "photo_key"
+        case frontPhotoKey = "front_photo_key"
+        case sidePhotoKey = "side_photo_key"
+        case backPhotoKey = "back_photo_key"
         case createdAt = "created_at"
     }
 
     public init(
         weight: Double,
         notes: String,
-        photoKey: String,
+        frontPhotoKey: String = "",
+        sidePhotoKey: String = "",
+        backPhotoKey: String = "",
         createdAt: Date?
     ) {
         self.weight = weight
         self.notes = notes
-        self.photoKey = photoKey
+        self.frontPhotoKey = frontPhotoKey
+        self.sidePhotoKey = sidePhotoKey
+        self.backPhotoKey = backPhotoKey
         self.createdAt = createdAt
+    }
+
+    /// Back-compat convenience for single-photo call sites.
+    /// Maps the legacy `photoKey` onto the front slot.
+    public init(weight: Double, notes: String, photoKey: String, createdAt: Date?) {
+        self.init(weight: weight, notes: notes, frontPhotoKey: photoKey, createdAt: createdAt)
     }
 }
 
 /// JSON body for `PUT /api/v1/weight/:id`. Mirrors the
-/// server's `UpdateWeightEntryRequest`. The photo-handling
-/// precedence matches the HTML form:
+/// server's `UpdateWeightEntryRequest`. Photo handling is per
+/// angle slot:
 ///
-///   - `removePhoto = true` clears the photo (the server
-///     ignores `photoKey` in this case)
-///   - non-empty `photoKey` replaces the existing key
+///   - `remove*Photo = true` clears that slot (the server
+///     ignores the corresponding key in this case)
+///   - non-empty `*PhotoKey` replaces the existing key
 ///   - otherwise the existing key is preserved
 ///
 /// `createdAt` is optional and preserves the existing
@@ -963,18 +1127,49 @@ public struct CreateWeightEntryRequest: Encodable, Equatable {
 public struct UpdateWeightEntryRequest: Encodable, Equatable {
     public let weight: Double
     public let notes: String
-    public let photoKey: String
-    public let removePhoto: Bool
+    public let frontPhotoKey: String
+    public let removeFrontPhoto: Bool
+    public let sidePhotoKey: String
+    public let removeSidePhoto: Bool
+    public let backPhotoKey: String
+    public let removeBackPhoto: Bool
     public let createdAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case weight
         case notes
-        case photoKey = "photo_key"
-        case removePhoto = "remove_photo"
+        case frontPhotoKey = "front_photo_key"
+        case removeFrontPhoto = "remove_front_photo"
+        case sidePhotoKey = "side_photo_key"
+        case removeSidePhoto = "remove_side_photo"
+        case backPhotoKey = "back_photo_key"
+        case removeBackPhoto = "remove_back_photo"
         case createdAt = "created_at"
     }
 
+    public init(
+        weight: Double,
+        notes: String,
+        frontPhotoKey: String = "",
+        removeFrontPhoto: Bool = false,
+        sidePhotoKey: String = "",
+        removeSidePhoto: Bool = false,
+        backPhotoKey: String = "",
+        removeBackPhoto: Bool = false,
+        createdAt: Date?
+    ) {
+        self.weight = weight
+        self.notes = notes
+        self.frontPhotoKey = frontPhotoKey
+        self.removeFrontPhoto = removeFrontPhoto
+        self.sidePhotoKey = sidePhotoKey
+        self.removeSidePhoto = removeSidePhoto
+        self.backPhotoKey = backPhotoKey
+        self.removeBackPhoto = removeBackPhoto
+        self.createdAt = createdAt
+    }
+
+    /// Back-compat convenience for single-photo call sites.
     public init(
         weight: Double,
         notes: String,
@@ -982,25 +1177,46 @@ public struct UpdateWeightEntryRequest: Encodable, Equatable {
         removePhoto: Bool,
         createdAt: Date?
     ) {
-        self.weight = weight
-        self.notes = notes
-        self.photoKey = photoKey
-        self.removePhoto = removePhoto
-        self.createdAt = createdAt
+        self.init(
+            weight: weight,
+            notes: notes,
+            frontPhotoKey: photoKey,
+            removeFrontPhoto: removePhoto,
+            createdAt: createdAt
+        )
     }
 }
 
 /// JSON body for `POST /api/v1/weight/photo-upload`. The
 /// iOS client POSTs the user's filename + preferred content
-/// type, receives a presigned R2 PUT URL and a server-side
-/// storage key, then PUTs the file bytes directly to R2.
+/// type (plus the optional angle slot so the server can
+/// namespace the storage key), receives a presigned R2 PUT URL
+/// and a server-side storage key, then PUTs the file bytes
+/// directly to R2.
 public struct WeightPhotoUploadRequest: Encodable, Equatable {
     public let filename: String
     public let contentType: String
+    public let angle: String?
 
-    public init(filename: String, contentType: String) {
+    public init(filename: String, contentType: String, angle: String? = nil) {
         self.filename = filename
         self.contentType = contentType
+        self.angle = angle
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case filename
+        case contentType = "content_type"
+        case angle
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(filename, forKey: .filename)
+        try container.encode(contentType, forKey: .contentType)
+        // Omit the angle when nil so older servers that don't
+        // know the field keep decoding the request.
+        try container.encodeIfPresent(angle, forKey: .angle)
     }
 }
 

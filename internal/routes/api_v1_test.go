@@ -942,6 +942,10 @@ func TestAPIGetExerciseHistory(t *testing.T) {
 	if page.Stats.MaxWeight != 110 {
 		t.Fatalf("max weight = %.1f, want 110", page.Stats.MaxWeight)
 	}
+	// Best single-set volume: 5x110=550 beats 5x100=500.
+	if page.Stats.BestSetVolume != 550 {
+		t.Fatalf("best set volume = %.1f, want 550", page.Stats.BestSetVolume)
+	}
 	if page.Page != 1 {
 		t.Fatalf("page = %d, want 1", page.Page)
 	}
@@ -1552,7 +1556,7 @@ func TestAPIListWeightEntries_ReturnsUserEntries(t *testing.T) {
 	now := time.Now()
 	repo.entries = []models.WeightEntry{
 		{ID: "w1", UserID: userID, Weight: 80, Notes: "morning", CreatedAt: now.Add(-24 * time.Hour)},
-		{ID: "w2", UserID: userID, Weight: 79.5, PhotoKey: "weight/u/w2.jpg", CreatedAt: now},
+		{ID: "w2", UserID: userID, Weight: 79.5, FrontPhotoKey: "weight/u/w2.jpg", CreatedAt: now},
 		// Mixed in: a row that belongs to a different user must
 		// not appear in the response. The mock's `List` already
 		// filters by userID, but the test makes that contract
@@ -1565,7 +1569,7 @@ func TestAPIListWeightEntries_ReturnsUserEntries(t *testing.T) {
 	if len(resp.Entries) != 2 {
 		t.Fatalf("entries len = %d, want 2", len(resp.Entries))
 	}
-	// has_photo should mirror whether PhotoKey is set.
+	// has_front_photo should mirror whether FrontPhotoKey is set.
 	var withPhoto *WeightEntryDTO
 	for i := range resp.Entries {
 		if resp.Entries[i].ID == "w2" {
@@ -1575,11 +1579,17 @@ func TestAPIListWeightEntries_ReturnsUserEntries(t *testing.T) {
 	if withPhoto == nil {
 		t.Fatal("w2 not in response")
 	}
-	if !withPhoto.HasPhoto {
-		t.Errorf("has_photo = false, want true (PhotoKey is set)")
+	if !withPhoto.HasFrontPhoto {
+		t.Errorf("has_front_photo = false, want true (FrontPhotoKey is set)")
 	}
-	if withPhoto.PhotoURL == "" {
-		t.Errorf("photo_url = empty, want resolved via utils.PublicURLFor")
+	if !withPhoto.HasPhoto {
+		t.Errorf("has_photo = false, want true (a photo is set)")
+	}
+	if withPhoto.PhotoCount != 1 {
+		t.Errorf("photo_count = %d, want 1", withPhoto.PhotoCount)
+	}
+	if withPhoto.FrontPhotoURL == "" {
+		t.Errorf("front_photo_url = empty, want resolved via utils.PublicURLFor")
 	}
 }
 
@@ -1686,22 +1696,22 @@ func TestAPIUpdateWeightEntry_ReplacePhoto(t *testing.T) {
 	token, _ := loginUser(t, h, mockUser, "wup@example.com", "WUP")
 
 	created := decodeAPI[WeightEntryDTO](t, apiDo(t, e, http.MethodPost, "/api/v1/weight", token, CreateWeightEntryRequest{
-		Weight:   80,
-		PhotoKey: "weight/u/old.jpg",
+		Weight:        80,
+		FrontPhotoKey: "weight/u/old.jpg",
 	}), http.StatusCreated)
-	if !created.HasPhoto {
-		t.Fatal("created photo state should be true")
+	if !created.HasFrontPhoto {
+		t.Fatal("created front photo state should be true")
 	}
 
 	updated := decodeAPI[WeightEntryDTO](t, apiDo(t, e, http.MethodPut, "/api/v1/weight/"+created.ID, token, UpdateWeightEntryRequest{
-		Weight:   80.5,
-		PhotoKey: "weight/u/new.jpg",
+		Weight:        80.5,
+		FrontPhotoKey: "weight/u/new.jpg",
 	}), http.StatusOK)
-	if updated.PhotoKey != "weight/u/new.jpg" {
-		t.Fatalf("photo_key = %q, want weight/u/new.jpg", updated.PhotoKey)
+	if updated.FrontPhotoKey != "weight/u/new.jpg" {
+		t.Fatalf("front_photo_key = %q, want weight/u/new.jpg", updated.FrontPhotoKey)
 	}
-	if !updated.HasPhoto {
-		t.Errorf("has_photo = false, want true")
+	if !updated.HasFrontPhoto {
+		t.Errorf("has_front_photo = false, want true")
 	}
 }
 
@@ -1710,19 +1720,50 @@ func TestAPIUpdateWeightEntry_RemovePhoto(t *testing.T) {
 	token, _ := loginUser(t, h, mockUser, "wur@example.com", "WUR")
 
 	created := decodeAPI[WeightEntryDTO](t, apiDo(t, e, http.MethodPost, "/api/v1/weight", token, CreateWeightEntryRequest{
-		Weight:   80,
-		PhotoKey: "weight/u/del.jpg",
+		Weight:        80,
+		FrontPhotoKey: "weight/u/del.jpg",
 	}), http.StatusCreated)
 
 	updated := decodeAPI[WeightEntryDTO](t, apiDo(t, e, http.MethodPut, "/api/v1/weight/"+created.ID, token, UpdateWeightEntryRequest{
-		Weight:      80,
-		RemovePhoto: true,
+		Weight:           80,
+		RemoveFrontPhoto: true,
 	}), http.StatusOK)
-	if updated.HasPhoto {
-		t.Errorf("has_photo = true, want false after remove_photo=true")
+	if updated.HasFrontPhoto {
+		t.Errorf("has_front_photo = true, want false after remove_front_photo=true")
 	}
-	if updated.PhotoKey != "" {
-		t.Errorf("photo_key = %q, want empty after remove_photo=true", updated.PhotoKey)
+	if updated.FrontPhotoKey != "" {
+		t.Errorf("front_photo_key = %q, want empty after remove_front_photo=true", updated.FrontPhotoKey)
+	}
+}
+
+// TestAPIUpdateWeightEntry_PerAnglePhoto verifies each angle slot is
+// independent: setting a side photo leaves the front photo untouched,
+// and removing the side photo preserves the front photo.
+func TestAPIUpdateWeightEntry_PerAnglePhoto(t *testing.T) {
+	h, _, mockUser, e := setupHandler(t)
+	token, _ := loginUser(t, h, mockUser, "wpa@example.com", "WPA")
+
+	created := decodeAPI[WeightEntryDTO](t, apiDo(t, e, http.MethodPost, "/api/v1/weight", token, CreateWeightEntryRequest{
+		Weight:        80,
+		FrontPhotoKey: "weight/u/front.jpg",
+		SidePhotoKey:  "weight/u/side.jpg",
+	}), http.StatusCreated)
+	if created.PhotoCount != 2 {
+		t.Fatalf("photo_count = %d, want 2", created.PhotoCount)
+	}
+
+	updated := decodeAPI[WeightEntryDTO](t, apiDo(t, e, http.MethodPut, "/api/v1/weight/"+created.ID, token, UpdateWeightEntryRequest{
+		Weight:          80,
+		RemoveSidePhoto: true,
+	}), http.StatusOK)
+	if !updated.HasFrontPhoto || updated.FrontPhotoKey != "weight/u/front.jpg" {
+		t.Errorf("front photo should be preserved, got %q", updated.FrontPhotoKey)
+	}
+	if updated.HasSidePhoto {
+		t.Errorf("side photo should be cleared")
+	}
+	if updated.PhotoCount != 1 {
+		t.Errorf("photo_count = %d, want 1", updated.PhotoCount)
 	}
 }
 
@@ -1731,16 +1772,16 @@ func TestAPIUpdateWeightEntry_PreservesPhotoWhenNotTouched(t *testing.T) {
 	token, _ := loginUser(t, h, mockUser, "wupp@example.com", "WUPP")
 
 	created := decodeAPI[WeightEntryDTO](t, apiDo(t, e, http.MethodPost, "/api/v1/weight", token, CreateWeightEntryRequest{
-		Weight:   80,
-		PhotoKey: "weight/u/keep.jpg",
+		Weight:        80,
+		FrontPhotoKey: "weight/u/keep.jpg",
 	}), http.StatusCreated)
 
-	// Update only the weight — photo_key must come through unchanged.
+	// Update only the weight — front_photo_key must come through unchanged.
 	updated := decodeAPI[WeightEntryDTO](t, apiDo(t, e, http.MethodPut, "/api/v1/weight/"+created.ID, token, UpdateWeightEntryRequest{
 		Weight: 80.1,
 	}), http.StatusOK)
-	if updated.PhotoKey != "weight/u/keep.jpg" {
-		t.Fatalf("photo_key = %q, want weight/u/keep.jpg (unchanged)", updated.PhotoKey)
+	if updated.FrontPhotoKey != "weight/u/keep.jpg" {
+		t.Fatalf("front_photo_key = %q, want weight/u/keep.jpg (unchanged)", updated.FrontPhotoKey)
 	}
 }
 
@@ -1792,11 +1833,11 @@ func TestAPICompareWeight_HappyPath(t *testing.T) {
 	earlier := time.Date(2025, 1, 1, 8, 0, 0, 0, time.UTC)
 	later := time.Date(2025, 6, 1, 8, 0, 0, 0, time.UTC)
 	repo.entries = []models.WeightEntry{
-		{ID: "w-old", UserID: userID, Weight: 90, PhotoKey: "weight/u/w-old.jpg", CreatedAt: earlier},
-		{ID: "w-new", UserID: userID, Weight: 85, PhotoKey: "weight/u/w-new.jpg", CreatedAt: later},
+		{ID: "w-old", UserID: userID, Weight: 90, FrontPhotoKey: "weight/u/w-old.jpg", CreatedAt: earlier},
+		{ID: "w-new", UserID: userID, Weight: 85, FrontPhotoKey: "weight/u/w-new.jpg", CreatedAt: later},
 	}
 
-	rec := apiDo(t, e, http.MethodGet, "/api/v1/weight/compare?a=w-old&b=w-new", token, nil)
+	rec := apiDo(t, e, http.MethodGet, "/api/v1/weight/compare?a=w-old&b=w-new&angle=front", token, nil)
 	resp := decodeAPI[WeightCompareResponse](t, rec, http.StatusOK)
 
 	// The controller sorts by created_at ascending, so the
@@ -1806,6 +1847,9 @@ func TestAPICompareWeight_HappyPath(t *testing.T) {
 	}
 	if resp.After.ID != "w-new" {
 		t.Errorf("after.id = %q, want w-new", resp.After.ID)
+	}
+	if resp.Angle != "front" {
+		t.Errorf("angle = %q, want front", resp.Angle)
 	}
 	// 85 - 90 = -5 → "−5.0 kg"
 	if resp.DeltaText != "−5.0 kg" {
@@ -1820,15 +1864,70 @@ func TestAPICompareWeight_MissingPhoto(t *testing.T) {
 
 	repo := mustSwapWeightRepo(t, h, newMockWeightRepository())
 	repo.entries = []models.WeightEntry{
-		{ID: "w-a", UserID: userID, Weight: 90, PhotoKey: "weight/u/a.jpg", CreatedAt: time.Now().Add(-24 * time.Hour)},
-		{ID: "w-b", UserID: userID, Weight: 85, PhotoKey: "", CreatedAt: time.Now()},
+		{ID: "w-a", UserID: userID, Weight: 90, FrontPhotoKey: "weight/u/a.jpg", CreatedAt: time.Now().Add(-24 * time.Hour)},
+		{ID: "w-b", UserID: userID, Weight: 85, CreatedAt: time.Now()},
 	}
 
-	rec := apiDo(t, e, http.MethodGet, "/api/v1/weight/compare?a=w-a&b=w-b", token, nil)
+	rec := apiDo(t, e, http.MethodGet, "/api/v1/weight/compare?a=w-a&b=w-b&angle=front", token, nil)
 	apiErr := decodeAPIError(t, rec, http.StatusBadRequest)
 	if !strings.Contains(apiErr.Error, "photo") {
 		t.Errorf("error = %q, want it to mention a photo", apiErr.Error)
 	}
+}
+
+// TestAPICompareWeight_MissingAngleSuggestsShared verifies the
+// angle-aware error: requesting side when only front is shared names
+// the shared angle so the client can auto-switch.
+func TestAPICompareWeight_MissingAngleSuggestsShared(t *testing.T) {
+	h, _, mockUser, e := setupHandler(t)
+	token, _ := loginUser(t, h, mockUser, "wcmps@example.com", "WCMPS")
+	userID := "user-wcmps@example.com"
+
+	repo := mustSwapWeightRepo(t, h, newMockWeightRepository())
+	now := time.Now()
+	repo.entries = []models.WeightEntry{
+		{ID: "w-a", UserID: userID, Weight: 90, FrontPhotoKey: "weight/u/a-front.jpg", SidePhotoKey: "weight/u/a-side.jpg", CreatedAt: now.Add(-24 * time.Hour)},
+		{ID: "w-b", UserID: userID, Weight: 85, FrontPhotoKey: "weight/u/b-front.jpg", CreatedAt: now},
+	}
+
+	rec := apiDo(t, e, http.MethodGet, "/api/v1/weight/compare?a=w-a&b=w-b&angle=side", token, nil)
+	apiErr := decodeAPIError(t, rec, http.StatusBadRequest)
+	if !strings.Contains(apiErr.Error, "side") || !strings.Contains(apiErr.Error, "front") {
+		t.Errorf("error = %q, want it to mention side and the shared front angle", apiErr.Error)
+	}
+}
+
+// TestAPICompareWeight_SideHappyPath verifies comparison works for a
+// non-front angle when both entries have it.
+func TestAPICompareWeight_SideHappyPath(t *testing.T) {
+	h, _, mockUser, e := setupHandler(t)
+	token, _ := loginUser(t, h, mockUser, "wcmpsh@example.com", "WCMPSH")
+	userID := "user-wcmpsh@example.com"
+
+	repo := mustSwapWeightRepo(t, h, newMockWeightRepository())
+	now := time.Now()
+	repo.entries = []models.WeightEntry{
+		{ID: "w-a", UserID: userID, Weight: 90, FrontPhotoKey: "weight/u/a-front.jpg", SidePhotoKey: "weight/u/a-side.jpg", CreatedAt: now.Add(-24 * time.Hour)},
+		{ID: "w-b", UserID: userID, Weight: 85, FrontPhotoKey: "weight/u/b-front.jpg", SidePhotoKey: "weight/u/b-side.jpg", CreatedAt: now},
+	}
+
+	rec := apiDo(t, e, http.MethodGet, "/api/v1/weight/compare?a=w-a&b=w-b&angle=side", token, nil)
+	resp := decodeAPI[WeightCompareResponse](t, rec, http.StatusOK)
+	if resp.Angle != "side" {
+		t.Errorf("angle = %q, want side", resp.Angle)
+	}
+	if resp.Before.ID != "w-a" || resp.After.ID != "w-b" {
+		t.Errorf("before/after = %q/%q, want w-a/w-b", resp.Before.ID, resp.After.ID)
+	}
+}
+
+// TestAPICompareWeight_BadAngle verifies an unknown angle is a 400.
+func TestAPICompareWeight_BadAngle(t *testing.T) {
+	h, _, mockUser, e := setupHandler(t)
+	token, _ := loginUser(t, h, mockUser, "wcmpba@example.com", "WCMPBA")
+
+	rec := apiDo(t, e, http.MethodGet, "/api/v1/weight/compare?a=w1&b=w2&angle=diagonal", token, nil)
+	decodeAPIError(t, rec, http.StatusBadRequest)
 }
 
 func TestAPICompareWeight_SameID(t *testing.T) {

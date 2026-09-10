@@ -3,9 +3,9 @@ import SwiftUI
 /// One row summarising a single exercise entry. Used by the
 /// dashboard's per-day calendar list (and available anywhere a
 /// compact set/session summary is needed). Shows the exercise
-/// name, notes, and a one-line metric summary — reps × weight
+/// name and a one-line metric summary — reps × weight
 /// for strength entries, duration · distance for cardio — with
-/// time of day and date intentionally omitted to keep rows
+/// notes, time of day and date intentionally omitted to keep rows
 /// scannable inside day-scoped lists.
 struct SetRow: View {
     let entry: ExerciseEntryDTO
@@ -14,17 +14,9 @@ struct SetRow: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: DSSpacing.xxs) {
-                Text(entry.exerciseName)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(DSColors.text)
-                if !entry.notes.isEmpty {
-                    Text(entry.notes)
-                        .font(.footnote)
-                        .foregroundStyle(DSColors.textSecondary)
-                        .lineLimit(2)
-                }
-            }
+            Text(entry.exerciseName)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(DSColors.text)
             Spacer()
             Text(summaryText)
                 .font(.body.weight(.semibold).monospacedDigit())

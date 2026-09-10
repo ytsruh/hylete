@@ -48,6 +48,7 @@ type mockRepository struct {
 	errGetExerciseEntriesByDateRange        error
 	errGetExerciseByID              error
 	errGetMaxWeightByExercise       error
+	errGetMaxSetVolumeByExercise    error
 	errGetBestPaceByExercise        error
 	errGetLongestDistanceByExercise error
 	errGetLastSetByExercise         error
@@ -310,6 +311,23 @@ func (m *mockRepository) GetMaxWeightByExercise(exerciseID string, userID string
 	for _, e := range m.exerciseEntries {
 		if e.ExerciseID == exerciseID && e.UserID == userID && e.Weight > max {
 			max = e.Weight
+		}
+	}
+	return max, nil
+}
+
+func (m *mockRepository) GetMaxSetVolumeByExercise(exerciseID string, userID string) (float64, error) {
+	if m.errGetMaxSetVolumeByExercise != nil {
+		return 0, m.errGetMaxSetVolumeByExercise
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var max float64
+	for _, e := range m.exerciseEntries {
+		if e.ExerciseID == exerciseID && e.UserID == userID {
+			if v := float64(e.Reps) * e.Weight; v > max {
+				max = v
+			}
 		}
 	}
 	return max, nil
@@ -1879,8 +1897,8 @@ func TestExportWeightZip_StreamsZip(t *testing.T) {
 	}}
 	mockWeight := newMockWeightRepository()
 	mockWeight.entries = []models.WeightEntry{
-		{ID: "w1", UserID: "u1", Weight: 80, Notes: "morning", PhotoKey: "weight/u1/photo.jpg", CreatedAt: time.Date(2026, 1, 9, 8, 0, 0, 0, time.UTC)},
-		{ID: "w2", UserID: "u1", Weight: 79, Notes: "evening", PhotoKey: "", CreatedAt: time.Date(2026, 1, 10, 8, 0, 0, 0, time.UTC)},
+		{ID: "w1", UserID: "u1", Weight: 80, Notes: "morning", FrontPhotoKey: "weight/u1/photo.jpg", CreatedAt: time.Date(2026, 1, 9, 8, 0, 0, 0, time.UTC)},
+		{ID: "w2", UserID: "u1", Weight: 79, Notes: "evening", CreatedAt: time.Date(2026, 1, 10, 8, 0, 0, 0, time.UTC)},
 	}
 	h.weightCtrl = controllers.NewWeightController(mockWeight, stub)
 
@@ -1913,7 +1931,7 @@ func TestExportWeightZip_StreamsZip(t *testing.T) {
 	for _, f := range zr.File {
 		got[f.Name] = true
 	}
-	for _, want := range []string{"weight.csv", "manifest.json", "photos/2026-01-09_w1.jpg"} {
+	for _, want := range []string{"weight.csv", "manifest.json", "photos/2026-01-09_w1_front.jpg"} {
 		if !got[want] {
 			t.Errorf("expected %q in zip, got files: %v", want, keys(got))
 		}

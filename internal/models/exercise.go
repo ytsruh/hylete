@@ -287,7 +287,9 @@ func (r *ExerciseRepository) DeleteExerciseEntry(id string, userID string) error
 	return nil
 }
 
-// ListExerciseEntries returns exercise entries ordered by created_at descending.
+// ListExerciseEntries returns exercise entries ordered by created_at descending,
+// breaking ties by insertion order (rowid descending) so multi-set submissions
+// sharing a timestamp have a stable newest-first order.
 // If limit > 0, results are capped at that count. Scopes to the given user ID.
 func (r *ExerciseRepository) ListExerciseEntries(userID string, limit int) ([]ExerciseEntry, error) {
 	ctx := context.Background()
@@ -315,7 +317,8 @@ func (r *ExerciseRepository) ListExerciseEntries(userID string, limit int) ([]Ex
 }
 
 // GetExerciseEntriesByExercisePaginated returns a page of exercise entries for a specific
-// exercise ID, ordered by created_at descending. Scopes to the given user ID.
+// exercise ID, ordered by created_at descending with insertion order (rowid
+// descending) as the tie-breaker. Scopes to the given user ID.
 func (r *ExerciseRepository) GetExerciseEntriesByExercisePaginated(exerciseID string, userID string, limit, offset int) ([]ExerciseEntry, error) {
 	ctx := context.Background()
 	rows, err := r.queries.GetExerciseEntriesByExercisePaginated(ctx, db.GetExerciseEntriesByExercisePaginatedParams{
@@ -340,6 +343,21 @@ func (r *ExerciseRepository) GetMaxWeightByExercise(exerciseID string, userID st
 	})
 	if err != nil {
 		return 0, fmt.Errorf("failed to get max weight by exercise: %w", err)
+	}
+	return max, nil
+}
+
+// GetMaxSetVolumeByExercise returns the best single-set volume (reps * weight)
+// logged for the given exercise by the given user, or 0 when no exercise entries
+// exist. Scopes to the given user ID.
+func (r *ExerciseRepository) GetMaxSetVolumeByExercise(exerciseID string, userID string) (float64, error) {
+	ctx := context.Background()
+	max, err := r.queries.GetMaxSetVolumeByExercise(ctx, db.GetMaxSetVolumeByExerciseParams{
+		ExerciseID: exerciseID,
+		UserID:     sql.NullString{String: userID, Valid: true},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to get max set volume by exercise: %w", err)
 	}
 	return max, nil
 }
@@ -375,7 +393,9 @@ func (r *ExerciseRepository) GetLongestDistanceByExercise(exerciseID string, use
 }
 
 // GetLastSetByExercise returns the most recent exercise entry for the given exercise by the
-// given user. Returns (nil, nil) when no exercise entries exist. Scopes to the given user ID.
+// given user. Ties on created_at are broken by insertion order (rowid descending)
+// so the last-submitted exercise entry of a multi-set submission wins.
+// Returns (nil, nil) when no exercise entries exist. Scopes to the given user ID.
 func (r *ExerciseRepository) GetLastSetByExercise(exerciseID string, userID string) (*ExerciseEntry, error) {
 	ctx := context.Background()
 	row, err := r.queries.GetLastSetByExercise(ctx, db.GetLastSetByExerciseParams{
@@ -407,7 +427,8 @@ func (r *ExerciseRepository) GetExerciseEntriesByDateRange(start, end time.Time,
 }
 
 // ListExerciseEntriesLast7Days returns exercise entries from the last 7 days ordered by
-// created_at descending. Scopes to the given user ID.
+// created_at descending with insertion order (rowid descending) as the tie-breaker.
+// Scopes to the given user ID.
 func (r *ExerciseRepository) ListExerciseEntriesLast7Days(userID string) ([]ExerciseEntry, error) {
 	ctx := context.Background()
 	rows, err := r.queries.ListExerciseEntriesLast7Days(ctx, sql.NullString{String: userID, Valid: true})

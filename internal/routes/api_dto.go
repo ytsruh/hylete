@@ -319,8 +319,9 @@ type CreateSetInput struct {
 
 // CreateExerciseEntriesRequest is the body for
 // POST /api/v1/exercise-entries. Sets is the multi-set payload
-// (one entry created per set, all sharing the same exercise,
-// notes and timestamp — same semantics as the web form).
+// (one exercise entry created per set, all sharing the same exercise and
+// notes; timestamps are the base created_at plus 1s per set index so
+// submission order is preserved).
 // CreatedAt is optional and defaults to time.Now() on the
 // server when omitted, so a client that just wants "log it
 // now" can send an empty body field. For cardio exercises each
@@ -352,12 +353,14 @@ type UpdateExerciseEntryRequest struct {
 }
 
 // HistoryStatsDTO is the lifetime-stats header shown above
-// the history list. Strength clients read max_weight; cardio
-// clients read best_pace_sec_per_km (0 = none) and
+// the history list. Strength clients read max_weight and
+// best_set_volume (best single-set reps * weight, 0 = none);
+// cardio clients read best_pace_sec_per_km (0 = none) and
 // longest_distance_meters. Both sets are always populated so
 // the client only needs exercise_type to pick.
 type HistoryStatsDTO struct {
 	MaxWeight             float64           `json:"max_weight"`
+	BestSetVolume         float64           `json:"best_set_volume"`
 	BestPaceSecPerKm      float64           `json:"best_pace_sec_per_km"`
 	LongestDistanceMeters float64           `json:"longest_distance_meters"`
 	LastSet               *ExerciseEntryDTO `json:"last_set,omitempty"`
@@ -370,6 +373,7 @@ type HistoryStatsDTO struct {
 func HistoryStatsFromModel(s models.HistoryStats) HistoryStatsDTO {
 	out := HistoryStatsDTO{
 		MaxWeight:             s.MaxWeight,
+		BestSetVolume:         s.BestSetVolume,
 		BestPaceSecPerKm:      s.BestPaceSecPerKm,
 		LongestDistanceMeters: s.LongestDistanceMeters,
 	}
@@ -494,43 +498,61 @@ func GoalsFromModels(gs []models.Goal) []GoalDTO {
 
 // WeightEntryDTO is the JSON shape for a single body-weight
 // entry on the /api/v1/weight namespace. Mirrors the
-// models.WeightEntry domain type but resolves the storage key
-// into a fully-qualified `PhotoURL` so the iOS client can hand
+// models.WeightEntry domain type but resolves each angle's storage
+// key into a fully-qualified `*PhotoURL` so the iOS client can hand
 // it straight to AsyncImage without any extra config.
 //
-// `PhotoKey` is included alongside `PhotoURL` so the iOS
-// editor can re-submit it on update (the server's PUT handler
-// expects to be told the existing key explicitly — see
-// `UpdateWeight` in `internal/routes/weight.go:127`). When
-// `HasPhoto` is false the `PhotoKey` and `PhotoURL` fields are
-// omitted from the JSON so a client can rely on `HasPhoto`
-// as the single source of truth (rather than checking both
-// fields for emptiness).
+// The `*PhotoKey` fields are included alongside the URLs so the iOS
+// editor can re-submit them on update (the server's PUT handler
+// expects to be told the existing keys explicitly). When an angle
+// slot is empty its key and URL fields are omitted from the JSON so
+// a client can rely on `Has*Photo` as the single source of truth
+// (rather than checking both fields for emptiness).
 type WeightEntryDTO struct {
-	ID        string    `json:"id"`
-	Weight    float64   `json:"weight"`
-	Notes     string    `json:"notes"`
-	PhotoKey  string    `json:"photo_key,omitempty"`
-	PhotoURL  string    `json:"photo_url,omitempty"`
-	HasPhoto  bool      `json:"has_photo"`
-	CreatedAt time.Time `json:"created_at"`
+	ID            string    `json:"id"`
+	Weight        float64   `json:"weight"`
+	Notes         string    `json:"notes"`
+	FrontPhotoKey string    `json:"front_photo_key,omitempty"`
+	FrontPhotoURL string    `json:"front_photo_url,omitempty"`
+	HasFrontPhoto bool      `json:"has_front_photo"`
+	SidePhotoKey  string    `json:"side_photo_key,omitempty"`
+	SidePhotoURL  string    `json:"side_photo_url,omitempty"`
+	HasSidePhoto  bool      `json:"has_side_photo"`
+	BackPhotoKey  string    `json:"back_photo_key,omitempty"`
+	BackPhotoURL  string    `json:"back_photo_url,omitempty"`
+	HasBackPhoto  bool      `json:"has_back_photo"`
+	HasPhoto      bool      `json:"has_photo"`
+	PhotoCount    int       `json:"photo_count"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // WeightEntryFromModel converts a models.WeightEntry into its
-// JSON DTO. The photo URL is resolved via utils.PublicURLFor
+// JSON DTO. Photo URLs are resolved via utils.PublicURLFor
 // so the iOS client never sees raw storage keys in the
-// photo_url field.
+// photo_url fields.
 func WeightEntryFromModel(e models.WeightEntry) WeightEntryDTO {
 	dto := WeightEntryDTO{
-		ID:        e.ID,
-		Weight:    e.Weight,
-		Notes:     e.Notes,
-		PhotoKey:  e.PhotoKey,
-		HasPhoto:  e.HasPhoto(),
-		CreatedAt: e.CreatedAt,
+		ID:            e.ID,
+		Weight:        e.Weight,
+		Notes:         e.Notes,
+		FrontPhotoKey: e.FrontPhotoKey,
+		HasFrontPhoto: e.HasPhotoForAngle(models.WeightPhotoFront),
+		SidePhotoKey:  e.SidePhotoKey,
+		HasSidePhoto:  e.HasPhotoForAngle(models.WeightPhotoSide),
+		BackPhotoKey:  e.BackPhotoKey,
+		HasBackPhoto:  e.HasPhotoForAngle(models.WeightPhotoBack),
+		HasPhoto:      e.HasPhoto(),
+		PhotoCount:    e.PhotoCount(),
+		CreatedAt:     e.CreatedAt,
 	}
-	if e.HasPhoto() {
-		dto.PhotoURL = utils.PublicURLFor(e.PhotoKey)
+	if e.HasPhotoForAngle(models.WeightPhotoFront) {
+		dto.FrontPhotoURL = utils.PublicURLFor(e.FrontPhotoKey)
+	}
+	if e.HasPhotoForAngle(models.WeightPhotoSide) {
+		dto.SidePhotoURL = utils.PublicURLFor(e.SidePhotoKey)
+	}
+	if e.HasPhotoForAngle(models.WeightPhotoBack) {
+		dto.BackPhotoURL = utils.PublicURLFor(e.BackPhotoKey)
 	}
 	return dto
 }
@@ -557,35 +579,39 @@ type WeightEntriesResponse struct {
 }
 
 // CreateWeightEntryRequest is the body for POST /api/v1/weight.
-// Mirrors the web form's three fields (weight, notes,
-// photo_key) and the optional `created_at` that lets the
-// client backdate an entry without manually re-issuing the
-// server's time.Now() default.
+// Carries the weight, notes, one optional photo key per angle, and
+// the optional `created_at` that lets the client backdate an entry
+// without manually re-issuing the server's time.Now() default.
 //
-// The numeric and length limits match the HTML form
-// (`weightFormInput` at `internal/routes/weight.go:19`) so
-// the JSON and HTML surfaces reject the same inputs.
+// The numeric and length limits match the HTML form heritage so
+// the JSON surface rejects the same inputs.
 type CreateWeightEntryRequest struct {
-	Weight    float64    `json:"weight"     validate:"required,gte=0,lte=1000"`
-	Notes     string     `json:"notes"      validate:"max=1000"`
-	PhotoKey  string     `json:"photo_key,omitempty"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
+	Weight        float64    `json:"weight"          validate:"required,gte=0,lte=1000"`
+	Notes         string     `json:"notes"           validate:"max=1000"`
+	FrontPhotoKey string     `json:"front_photo_key,omitempty"`
+	SidePhotoKey  string     `json:"side_photo_key,omitempty"`
+	BackPhotoKey  string     `json:"back_photo_key,omitempty"`
+	CreatedAt     *time.Time `json:"created_at,omitempty"`
 }
 
 // UpdateWeightEntryRequest is the body for PUT /api/v1/weight/:id.
-// Same shape as the create request, plus `remove_photo` so the
-// iOS editor can clear the existing photo without first having
-// to delete the entry and re-create it. When `remove_photo` is
-// true the server ignores `photo_key` and clears the
-// associated column. When `photo_key` is non-empty the server
-// replaces the existing key with the new one. When both are
-// empty / false the existing key is preserved.
+// Same shape as the create request, plus per-angle `remove_*_photo`
+// flags so the iOS editor can clear a single slot without first
+// having to delete the entry and re-create it. When a remove flag
+// is true the server ignores that angle's key and clears the
+// associated column. When a key is non-empty the server replaces
+// the existing key with the new one. When both are empty / false
+// the existing key is preserved.
 type UpdateWeightEntryRequest struct {
-	Weight      float64    `json:"weight"       validate:"required,gte=0,lte=1000"`
-	Notes       string     `json:"notes"        validate:"max=1000"`
-	PhotoKey    string     `json:"photo_key,omitempty"`
-	RemovePhoto bool       `json:"remove_photo,omitempty"`
-	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	Weight           float64    `json:"weight"             validate:"required,gte=0,lte=1000"`
+	Notes            string     `json:"notes"              validate:"max=1000"`
+	FrontPhotoKey    string     `json:"front_photo_key,omitempty"`
+	RemoveFrontPhoto bool       `json:"remove_front_photo,omitempty"`
+	SidePhotoKey     string     `json:"side_photo_key,omitempty"`
+	RemoveSidePhoto  bool       `json:"remove_side_photo,omitempty"`
+	BackPhotoKey     string     `json:"back_photo_key,omitempty"`
+	RemoveBackPhoto  bool       `json:"remove_back_photo,omitempty"`
+	CreatedAt        *time.Time `json:"created_at,omitempty"`
 }
 
 // WeightCompareResponse is the body for GET /api/v1/weight/compare.
@@ -593,12 +619,12 @@ type UpdateWeightEntryRequest struct {
 // timeline (Before/After) so the iOS view can render the slider
 // with the historical photo on the left and the more recent one
 // on the right without having to sort client-side.
-// `DeltaText` is the formatted "+2.5 kg" / "−1.5 kg" / ""
-// string the server already produces for the web compare
-// modal — see `formatWeightDelta` in `internal/routes/weight.go:241`.
+// `Angle` echoes the compared angle slot. `DeltaText` is the
+// formatted "+2.5 kg" / "−1.5 kg" / "" string for the weight delta.
 type WeightCompareResponse struct {
 	Before    WeightEntryDTO `json:"before"`
 	After     WeightEntryDTO `json:"after"`
+	Angle     string         `json:"angle"`
 	DeltaText string         `json:"delta_text"`
 }
 
@@ -607,9 +633,11 @@ type WeightCompareResponse struct {
 // `photoUploadRequest` at `internal/routes/photos.go:16` but
 // is exposed as a public type so the iOS DTO and the Go
 // validation tags live next to the rest of the weight API.
+// Angle optionally namespaces the storage key (front/side/back).
 type WeightPhotoUploadRequest struct {
 	Filename    string `json:"filename"     validate:"required"`
 	ContentType string `json:"content_type" validate:"required"`
+	Angle       string `json:"angle,omitempty" validate:"omitempty,oneof=front side back"`
 }
 
 // WeightPhotoUploadResponse is the JSON body returned by POST

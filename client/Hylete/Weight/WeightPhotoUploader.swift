@@ -9,17 +9,18 @@ import SwiftUI
 ///   2. PUT the file bytes directly to that URL (the
 ///      server is not in the loop).
 ///
-/// Uploaded bytes bypass the Go server entirely (the
-/// presigned URL carries the auth), so the server only
-/// sees the create / update request that names the new
-/// `photoKey`. This mirrors the web's flow in
-/// `internal/views/weight/photo_upload.templ`.
-///
-/// Errors are wrapped as `APIError`-compatible values so
-/// the calling view can surface them inline through the
-/// same `errorMessage` channel it already uses for the
-/// create / update round-trip.
-struct WeightPhotoUploader {
+    /// Uploaded bytes bypass the Go server entirely (the
+    /// presigned URL carries the auth), so the server only
+    /// sees the create / update request that names the new
+    /// photo key. `angle` optionally namespaces the storage
+    /// key (front/side/back) so R2 keys stay browsable per
+    /// slot.
+    ///
+    /// Errors are wrapped as `APIError`-compatible values so
+    /// the calling view can surface them inline through the
+    /// same `errorMessage` channel it already uses for the
+    /// create / update round-trip.
+    struct WeightPhotoUploader {
 
     /// The API client used to ask the server for the
     /// presigned PUT URL. The PUT itself goes through
@@ -57,10 +58,11 @@ struct WeightPhotoUploader {
     /// `contentType` is sent both in the presigned URL
     /// and on the PUT itself so R2 stores the right
     /// MIME type.
-    func upload(data: Data, filename: String, contentType: String) async throws -> String {
+    func upload(data: Data, filename: String, contentType: String, angle: String? = nil) async throws -> String {
         let presigned = try await api.requestWeightPhotoUploadURL(
             filename: filename,
-            contentType: contentType
+            contentType: contentType,
+            angle: angle
         )
 
         guard let url = URL(string: presigned.url) else {

@@ -111,14 +111,17 @@ func (in ExerciseSetInput) normalizeForExerciseType(exerciseType models.Exercise
 }
 
 // CreateExerciseEntries persists a group of sets in a single submission, all
-// sharing the same exercise, user, notes and the supplied createdAt timestamp.
-// The timestamp comes from the caller (parsed from the client's created_at
+// sharing the same exercise, user and notes. The supplied createdAt timestamp
+// is the base timestamp for the submission (parsed from the client's created_at
 // field, or time.Now() when absent) so a multi-set submission can be
-// back-dated as a single unit. Each set is validated against the exercise's
-// type and normalized (the non-applicable metric pair is zeroed) before being
-// written. On the first repository error the loop aborts and the error is
-// returned; partial-success semantics aren't worth the complexity for a
-// workout log.
+// back-dated as a single unit. Each exercise entry is stamped at
+// createdAt + 1s per set index so submission order is preserved: identical
+// timestamps otherwise leave ORDER BY created_at DESC ties undefined and the
+// "last set" lookup can return the first set. Each set is validated against
+// the exercise's type and normalized (the non-applicable metric pair is
+// zeroed) before being written. On the first repository error the loop aborts
+// and the error is returned; partial-success semantics aren't worth the
+// complexity for a workout log.
 func (ec *ExerciseEntryController) CreateExerciseEntries(userID, exerciseID string, exerciseType models.ExerciseType, notes string, createdAt time.Time, sets []ExerciseSetInput) ([]models.ExerciseEntry, error) {
 	for _, s := range sets {
 		if err := ValidateExerciseSetInput(exerciseType, s); err != nil {
@@ -127,7 +130,7 @@ func (ec *ExerciseEntryController) CreateExerciseEntries(userID, exerciseID stri
 	}
 
 	created := make([]models.ExerciseEntry, 0, len(sets))
-	for _, s := range sets {
+	for i, s := range sets {
 		s = s.normalizeForExerciseType(exerciseType)
 		exerciseEntry := &models.ExerciseEntry{
 			ExerciseID:      exerciseID,
@@ -140,7 +143,7 @@ func (ec *ExerciseEntryController) CreateExerciseEntries(userID, exerciseID stri
 			AvgHeartRate:    s.AvgHeartRate,
 			CaloriesBurned:  s.CaloriesBurned,
 			UserID:          userID,
-			CreatedAt:       createdAt,
+			CreatedAt:       createdAt.Add(time.Duration(i) * time.Second),
 		}
 		if err := ec.repo.CreateExerciseEntry(exerciseEntry); err != nil {
 			return nil, err
@@ -234,14 +237,18 @@ func (ec *ExerciseEntryController) GetExerciseEntriesByExercise(exerciseID strin
 	}, nil
 }
 
-// loadHistoryStats fetches the personal best and most recent set for the header
+// loadHistoryStats fetches the personal bests and most recent set for the header
 // stat cards, plus the cardio personal bests (fastest pace, longest distance).
-// Strength callers read MaxWeight; cardio callers read BestPaceSecPerKm /
-// LongestDistanceMeters — everything is always loaded so the caller only needs
-// the exercise's type to pick. Always reflects the user's full history, not
-// just the current page.
+// Strength callers read MaxWeight and BestSetVolume; cardio callers read
+// BestPaceSecPerKm / LongestDistanceMeters — everything is always loaded so the
+// caller only needs the exercise's type to pick. Always reflects the user's full
+// history, not just the current page.
 func (ec *ExerciseEntryController) loadHistoryStats(exerciseID string, userID string) (models.HistoryStats, error) {
 	maxWeight, err := ec.repo.GetMaxWeightByExercise(exerciseID, userID)
+	if err != nil {
+		return models.HistoryStats{}, err
+	}
+	bestSetVolume, err := ec.repo.GetMaxSetVolumeByExercise(exerciseID, userID)
 	if err != nil {
 		return models.HistoryStats{}, err
 	}
@@ -259,6 +266,7 @@ func (ec *ExerciseEntryController) loadHistoryStats(exerciseID string, userID st
 	}
 	stats := models.HistoryStats{
 		MaxWeight:             maxWeight,
+		BestSetVolume:         bestSetVolume,
 		BestPaceSecPerKm:      bestPace,
 		LongestDistanceMeters: longestDistance,
 	}

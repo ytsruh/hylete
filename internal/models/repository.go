@@ -42,17 +42,24 @@ type Repository interface {
 	// DeleteExerciseEntry removes an exercise entry by ID. Scopes to the given user ID.
 	DeleteExerciseEntry(id string, userID string) error
 
-	// ListExerciseEntries returns exercise entries ordered by created_at descending.
-	// If limit > 0, results are capped at that count. Scopes to the given user ID.
+	// ListExerciseEntries returns exercise entries ordered by created_at descending,
+	// breaking ties by insertion order (rowid descending). Scopes to the given user ID.
+	// If limit > 0, results are capped at that count.
 	ListExerciseEntries(userID string, limit int) ([]ExerciseEntry, error)
 
 	// GetExerciseEntriesByExercisePaginated returns a page of exercise entries for a specific
-	// exercise ID, ordered by created_at descending. Scopes to the given user ID.
+	// exercise ID, ordered by created_at descending with insertion order (rowid
+	// descending) as the tie-breaker. Scopes to the given user ID.
 	GetExerciseEntriesByExercisePaginated(exerciseID string, userID string, limit, offset int) ([]ExerciseEntry, error)
 
 	// GetMaxWeightByExercise returns the heaviest weight logged for the given exercise by
 	// the given user. Returns 0 when no exercise entries exist. Scopes to the given user ID.
 	GetMaxWeightByExercise(exerciseID string, userID string) (float64, error)
+
+	// GetMaxSetVolumeByExercise returns the best single-set volume (reps * weight)
+	// logged for the given exercise by the given user. Returns 0 when no exercise
+	// entries exist. Scopes to the given user ID.
+	GetMaxSetVolumeByExercise(exerciseID string, userID string) (float64, error)
 
 	// GetBestPaceByExercise returns the fastest pace (seconds per kilometre) across the
 	// given exercise's exercise entries for the given user. Entries without a positive
@@ -66,7 +73,8 @@ type Repository interface {
 	GetLongestDistanceByExercise(exerciseID string, userID string) (float64, error)
 
 	// GetLastSetByExercise returns the most recent exercise entry for the given exercise by
-	// the given user, or sql.ErrNoRows when no exercise entries exist. Scopes to the given user ID.
+	// the given user, or sql.ErrNoRows when no exercise entries exist. Ties on
+	// created_at are broken by insertion order (rowid descending). Scopes to the given user ID.
 	GetLastSetByExercise(exerciseID string, userID string) (*ExerciseEntry, error)
 
 	// GetExerciseEntriesByDateRange returns exercise entries within an inclusive date range.
@@ -74,7 +82,8 @@ type Repository interface {
 	GetExerciseEntriesByDateRange(start, end time.Time, userID string) ([]ExerciseEntry, error)
 
 	// ListExerciseEntriesLast7Days returns exercise entries from the last 7 days ordered by
-	// created_at descending. Scopes to the given user ID.
+	// created_at descending with insertion order (rowid descending) as the tie-breaker.
+	// Scopes to the given user ID.
 	ListExerciseEntriesLast7Days(userID string) ([]ExerciseEntry, error)
 }
 

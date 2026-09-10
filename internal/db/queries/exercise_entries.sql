@@ -27,14 +27,14 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.user_id = ?
-ORDER BY e.created_at DESC;
+ORDER BY e.created_at DESC, e.rowid DESC;
 
 -- name: ListExerciseEntriesWithLimit :many
 SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.created_at
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 LIMIT ?;
 
 -- name: ListExerciseEntriesLast7Days :many
@@ -42,19 +42,25 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.created_at >= datetime('now', '-7 days') AND e.user_id = ?
-ORDER BY e.created_at DESC;
+ORDER BY e.created_at DESC, e.rowid DESC;
 
 -- name: GetExerciseEntriesByExercisePaginated :many
 SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.created_at
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.exercise_id = ? AND e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 LIMIT ? OFFSET ?;
 
 -- name: GetMaxWeightByExercise :one
 -- Heaviest weight logged for a strength exercise. Returns 0 when no exercise entries exist.
 SELECT CAST(COALESCE(MAX(weight), 0) AS REAL) FROM exercise_entries
+WHERE exercise_id = ? AND user_id = ?;
+
+-- name: GetMaxSetVolumeByExercise :one
+-- Best single-set volume (reps * weight) logged for a strength exercise.
+-- Returns 0 when no exercise entries exist.
+SELECT CAST(COALESCE(MAX(reps * weight), 0) AS REAL) FROM exercise_entries
 WHERE exercise_id = ? AND user_id = ?;
 
 -- name: GetBestPaceByExercise :one
@@ -74,7 +80,7 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.exercise_id = ? AND e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 LIMIT 1;
 
 -- name: GetExerciseEntriesByDateRange :many
@@ -82,4 +88,4 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.created_at BETWEEN ? AND ? AND e.user_id = ?
-ORDER BY e.created_at DESC;
+ORDER BY e.created_at DESC, e.rowid DESC;
