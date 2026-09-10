@@ -325,7 +325,8 @@ func exerciseEntryValidationError(err error) (string, bool) {
 // Mirrors the web form's "create one or more sets at once"
 // behavior: the body contains an array of sets, and a single
 // exercise entry is created per set, all sharing the same
-// exercise, notes, and createdAt timestamp. Validation is keyed off
+// exercise and notes, with createdAt plus 1s per set index so
+// submission order is preserved. Validation is keyed off
 // the linked exercise's type: strength sets need reps >= 1, cardio
 // sets need duration_seconds > 0 and distance_meters > 0; the server
 // zeroes whichever metric pair does not apply.

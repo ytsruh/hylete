@@ -381,7 +381,8 @@ func TestExerciseEntryController_CreateExerciseEntries_Success(t *testing.T) {
 		{Reps: 5, Weight: 95, RestTime: 90},
 	}
 
-	created, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "felt good", time.Now(), sets)
+	base := time.Now()
+	created, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "felt good", base, sets)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -392,8 +393,8 @@ func TestExerciseEntryController_CreateExerciseEntries_Success(t *testing.T) {
 		t.Fatalf("expected 3 exercise entries in mock, got %d", len(mock.exerciseEntries))
 	}
 
-	// All exercise entries share the same exercise, user, notes and timestamp.
-	first := created[0]
+	// All exercise entries share the same exercise, user and notes, with
+	// timestamps offset by 1s per set index so submission order is preserved.
 	for i, e := range created {
 		if e.ExerciseID != "ex-1" {
 			t.Errorf("exercise entry %d: expected exercise 'ex-1', got %q", i, e.ExerciseID)
@@ -404,14 +405,50 @@ func TestExerciseEntryController_CreateExerciseEntries_Success(t *testing.T) {
 		if e.Notes != "felt good" {
 			t.Errorf("exercise entry %d: expected notes 'felt good', got %q", i, e.Notes)
 		}
-		if !e.CreatedAt.Equal(first.CreatedAt) {
-			t.Errorf("exercise entry %d: expected shared timestamp %v, got %v", i, first.CreatedAt, e.CreatedAt)
+		want := base.Add(time.Duration(i) * time.Second)
+		if !e.CreatedAt.Equal(want) {
+			t.Errorf("exercise entry %d: expected timestamp %v, got %v", i, want, e.CreatedAt)
 		}
 	}
 
 	// Per-set values are preserved in submission order.
 	if created[2].Weight != 95 || created[2].RestTime != 90 {
 		t.Errorf("third set values wrong: %+v", created[2])
+	}
+}
+
+// TestExerciseEntryController_CreateExerciseEntries_PreservesSubmissionOrder is
+// a regression test for the multi-set timestamp tie bug: 5x10..5x25 logged in
+// one submission must stamp the last set newest so the "last set" lookup
+// returns 25, not 10.
+func TestExerciseEntryController_CreateExerciseEntries_PreservesSubmissionOrder(t *testing.T) {
+	ec, _ := setupExerciseEntryController(t)
+	base := time.Date(2024, 5, 1, 12, 0, 0, 0, time.UTC)
+
+	sets := []ExerciseSetInput{
+		{Reps: 5, Weight: 10},
+		{Reps: 5, Weight: 15},
+		{Reps: 5, Weight: 20},
+		{Reps: 5, Weight: 25},
+	}
+
+	created, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "", base, sets)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(created) != 4 {
+		t.Fatalf("expected 4 exercise entries, got %d", len(created))
+	}
+	for i := 1; i < len(created); i++ {
+		if !created[i].CreatedAt.After(created[i-1].CreatedAt) {
+			t.Fatalf("exercise entry %d (%v) is not newer than exercise entry %d (%v)", i, created[i].CreatedAt, i-1, created[i-1].CreatedAt)
+		}
+	}
+	if created[3].Weight != 25 {
+		t.Errorf("expected last exercise entry weight 25, got %v", created[3].Weight)
+	}
+	if !created[3].CreatedAt.Equal(base.Add(3 * time.Second)) {
+		t.Errorf("expected last timestamp %v, got %v", base.Add(3*time.Second), created[3].CreatedAt)
 	}
 }
 
@@ -449,8 +486,9 @@ func TestExerciseEntryController_CreateExerciseEntries_RepositoryErrorShortCircu
 }
 
 // TestExerciseEntryController_CreateExerciseEntries_PassesCreatedAt verifies
-// that the caller-supplied createdAt is the exact value persisted on every
-// row, including a back-dated timestamp that is clearly not "now".
+// that the caller-supplied createdAt is the base timestamp persisted on the
+// first row (plus 1s per set index), including a back-dated timestamp that is
+// clearly not "now".
 func TestExerciseEntryController_CreateExerciseEntries_PassesCreatedAt(t *testing.T) {
 	ec, mock := setupExerciseEntryController(t)
 	want := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -468,16 +506,18 @@ func TestExerciseEntryController_CreateExerciseEntries_PassesCreatedAt(t *testin
 		t.Fatalf("expected 2 exercise entries, got %d", len(created))
 	}
 	for i, e := range created {
-		if !e.CreatedAt.Equal(want) {
-			t.Errorf("exercise entry %d: expected CreatedAt %v, got %v", i, want, e.CreatedAt)
+		wantTs := want.Add(time.Duration(i) * time.Second)
+		if !e.CreatedAt.Equal(wantTs) {
+			t.Errorf("exercise entry %d: expected CreatedAt %v, got %v", i, wantTs, e.CreatedAt)
 		}
 	}
 	if len(mock.exerciseEntries) != 2 {
 		t.Fatalf("expected 2 exercise entries in mock, got %d", len(mock.exerciseEntries))
 	}
 	for i, e := range mock.exerciseEntries {
-		if !e.CreatedAt.Equal(want) {
-			t.Errorf("mock exercise entry %d: expected CreatedAt %v, got %v", i, want, e.CreatedAt)
+		wantTs := want.Add(time.Duration(i) * time.Second)
+		if !e.CreatedAt.Equal(wantTs) {
+			t.Errorf("mock exercise entry %d: expected CreatedAt %v, got %v", i, wantTs, e.CreatedAt)
 		}
 	}
 }

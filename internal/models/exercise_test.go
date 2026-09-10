@@ -610,6 +610,50 @@ func TestExerciseRepository_GetLastSetByExercise(t *testing.T) {
 	}
 }
 
+// TestExerciseRepository_GetLastSetByExercise_TiedTimestamps is a regression
+// test for multi-set submissions that shared one timestamp: the tie must be
+// broken by insertion order so the last-submitted exercise entry wins.
+func TestExerciseRepository_GetLastSetByExercise_TiedTimestamps(t *testing.T) {
+	repo, _, database, userID := setupTestRepo(t)
+	defer database.Close()
+
+	squat, err := repo.Create(nil, "Squat")
+	if err != nil {
+		t.Fatalf("Create exercise failed: %v", err)
+	}
+
+	// Legacy shape: 4 exercise entries with an identical timestamp, inserted
+	// in submission order 5x10..5x25.
+	stamp := time.Now().Truncate(time.Second)
+	for _, w := range []float64{10, 15, 20, 25} {
+		if err := repo.CreateExerciseEntry(&ExerciseEntry{ExerciseID: squat, UserID: userID, Reps: 5, Weight: w, CreatedAt: stamp}); err != nil {
+			t.Fatalf("CreateExerciseEntry failed: %v", err)
+		}
+	}
+
+	last, err := repo.GetLastSetByExercise(squat, userID)
+	if err != nil {
+		t.Fatalf("GetLastSetByExercise failed: %v", err)
+	}
+	if last == nil {
+		t.Fatal("expected an exercise entry, got nil")
+	}
+	if last.Weight != 25 {
+		t.Errorf("expected last-submitted weight 25, got %v", last.Weight)
+	}
+
+	rows, err := repo.GetExerciseEntriesByExercisePaginated(squat, userID, 10, 0)
+	if err != nil {
+		t.Fatalf("GetExerciseEntriesByExercisePaginated failed: %v", err)
+	}
+	if len(rows) != 4 {
+		t.Fatalf("expected 4 exercise entries, got %d", len(rows))
+	}
+	if rows[0].Weight != 25 {
+		t.Errorf("expected newest-first order starting with 25, got %v", rows[0].Weight)
+	}
+}
+
 func TestExerciseRepository_GetLastSetByExercise_Empty(t *testing.T) {
 	repo, _, database, userID := setupTestRepo(t)
 	defer database.Close()

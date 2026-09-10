@@ -90,7 +90,7 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.created_at BETWEEN ? AND ? AND e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 `
 
 type GetExerciseEntriesByDateRangeParams struct {
@@ -159,7 +159,7 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.exercise_id = ? AND e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 LIMIT ? OFFSET ?
 `
 
@@ -286,7 +286,7 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.exercise_id = ? AND e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 LIMIT 1
 `
 
@@ -394,7 +394,7 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 `
 
 type ListExerciseEntriesRow struct {
@@ -457,7 +457,7 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.created_at >= datetime('now', '-7 days') AND e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 `
 
 type ListExerciseEntriesLast7DaysRow struct {
@@ -520,7 +520,7 @@ SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.user_id = ?
-ORDER BY e.created_at DESC
+ORDER BY e.created_at DESC, e.rowid DESC
 LIMIT ?
 `
 

@@ -319,8 +319,9 @@ type CreateSetInput struct {
 
 // CreateExerciseEntriesRequest is the body for
 // POST /api/v1/exercise-entries. Sets is the multi-set payload
-// (one entry created per set, all sharing the same exercise,
-// notes and timestamp — same semantics as the web form).
+// (one exercise entry created per set, all sharing the same exercise and
+// notes; timestamps are the base created_at plus 1s per set index so
+// submission order is preserved).
 // CreatedAt is optional and defaults to time.Now() on the
 // server when omitted, so a client that just wants "log it
 // now" can send an empty body field. For cardio exercises each
