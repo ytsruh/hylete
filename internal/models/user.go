@@ -100,9 +100,25 @@ type User struct {
 	// admin "send now" preview ("last fired 2 days ago") and for
 	// debugging in the server log.
 	ReminderLastFiredAt *time.Time
+	// AIOptIn is the server-side gate for Coach (the user-facing
+	// name for AI features). No workout data leaves the server
+	// for LLM processing unless this is true. It composes with
+	// the iOS BetaFeature master switch (UI visibility only) —
+	// both must be on for Coach to work.
+	AIOptIn bool
+	// AIGoalText is what the user is trying to achieve, in their
+	// own words (max AIGoalTextMaxLength chars, enforced
+	// app-side). Injected verbatim into the weekly prompt as
+	// {{USER_AIM}}; empty means "no stated aim".
+	AIGoalText string
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }
+
+// AIGoalTextMaxLength caps the free-text training aim at ~150-200
+// words. The prompt embeds it verbatim, so the cap bounds token
+// cost and keeps the weekly report focused.
+const AIGoalTextMaxLength = 1000
 
 // HasWeightGoal reports whether the user has set a target weight.
 func (u *User) HasWeightGoal() bool {

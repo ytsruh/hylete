@@ -9,6 +9,22 @@ import (
 	"time"
 )
 
+type AiReport struct {
+	ID            string
+	UserID        string
+	Type          string
+	PeriodStart   time.Time
+	PeriodEnd     time.Time
+	PromptVersion string
+	Model         string
+	PayloadJson   string
+	TokensIn      int64
+	TokensOut     int64
+	ReadAt        sql.NullTime
+	DismissedAt   sql.NullTime
+	CreatedAt     time.Time
+}
+
 type AuthToken struct {
 	ID        string
 	UserID    string
@@ -130,6 +146,8 @@ type User struct {
 	ReminderPushEnabled  int64
 	ReminderNextFireAt   sql.NullTime
 	ReminderLastFiredAt  sql.NullTime
+	AiOptIn              int64
+	AiGoalText           string
 	CreatedAt            sql.NullTime
 	UpdatedAt            sql.NullTime
 }

@@ -44,6 +44,27 @@ type EnvVar struct {
 	// Required: startup hard-fails if empty. Must be a
 	// valid http or https URL with no trailing slash.
 	PUBLIC_URL string `env:"PUBLIC_URL"`
+	// CLOUDFLARE_AI_ACCOUNT_ID is the Cloudflare account ID in
+	// the Workers AI OpenAI-compatible endpoint path
+	// (.../accounts/{ACCOUNT_ID}/ai/v1). Required: startup
+	// hard-fails if empty. Coach (AI features) is core
+	// functionality, so a missing key is a deploy error, not
+	// a degraded mode.
+	CLOUDFLARE_AI_ACCOUNT_ID string `env:"CLOUDFLARE_AI_ACCOUNT_ID"`
+	// CLOUDFLARE_AI_TOKEN is the API token used as the Bearer
+	// credential for Workers AI. Required: startup hard-fails
+	// if empty, same policy as the email token above.
+	CLOUDFLARE_AI_TOKEN string `env:"CLOUDFLARE_AI_TOKEN"`
+	// AI_BASE_URL is the Cloudflare API root the Workers AI
+	// OpenAI-compatible route lives under. Required (not
+	// defaulted) so every deploy states its endpoint
+	// explicitly; normally https://api.cloudflare.com/client/v4.
+	AI_BASE_URL string `env:"AI_BASE_URL"`
+	// AI_MODEL is the pinned Workers AI model, e.g.
+	// @cf/meta/llama-3.1-8b-instruct. Required and pinned (not
+	// "latest") so reports stay comparable; bump deliberately
+	// with a prompt review.
+	AI_MODEL string `env:"AI_MODEL"`
 }
 
 // LoadAndValidateEnv loads environment variables from a .env file (if present)
@@ -67,6 +88,10 @@ func LoadAndValidateEnv() (*EnvVar, error) {
 		STORAGE_PUBLIC_URL:     os.Getenv("STORAGE_PUBLIC_URL"),
 		CLOUDFLARE_EMAIL_TOKEN: os.Getenv("CLOUDFLARE_EMAIL_TOKEN"),
 		PUBLIC_URL:             os.Getenv("PUBLIC_URL"),
+		CLOUDFLARE_AI_ACCOUNT_ID: os.Getenv("CLOUDFLARE_AI_ACCOUNT_ID"),
+		CLOUDFLARE_AI_TOKEN:      os.Getenv("CLOUDFLARE_AI_TOKEN"),
+		AI_BASE_URL:              os.Getenv("AI_BASE_URL"),
+		AI_MODEL:                 os.Getenv("AI_MODEL"),
 	}
 
 	// Validate that all required environment variables are set

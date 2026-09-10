@@ -207,8 +207,50 @@ func (r *UserRepository) MarkUserReminderFired(ctx context.Context, userID strin
 	return nil
 }
 
-// ReminderPreferences is the controller-shaped struct the
-// /profile form posts. Decoupled from models.User so the form
+// UpdateUserAIPreferences writes the Coach opt-in toggle and
+// free-text aim. Narrow and single-purpose (same pattern as
+// UpdateUserReminder) so no other form can clobber AI consent
+// state. goalText must already be trimmed and length-checked
+// against AIGoalTextMaxLength by the caller.
+func (r *UserRepository) UpdateUserAIPreferences(userID string, optIn bool, goalText string) error {
+	if userID == "" {
+		return fmt.Errorf("failed to update AI preferences: user id is empty")
+	}
+	if len(goalText) > AIGoalTextMaxLength {
+		return fmt.Errorf("failed to update AI preferences: goal text exceeds %d characters", AIGoalTextMaxLength)
+	}
+	ctx := context.Background()
+	err := r.queries.UpdateUserAIPreferences(ctx, db.UpdateUserAIPreferencesParams{
+		AiOptIn:    boolToInt(optIn),
+		AiGoalText: goalText,
+		ID:         userID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update AI preferences: %w", err)
+	}
+	return nil
+}
+
+// ListAIOptedInUsers returns every user with ai_opt_in = 1. The
+// weekly Coach cron iterates this list; per-user report
+// generation is idempotent on (user_id, type, period_start) so
+// overlapping ticks are safe.
+func (r *UserRepository) ListAIOptedInUsers(ctx context.Context) ([]User, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rows, err := r.queries.ListAIOptedInUsers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list AI opted-in users: %w", err)
+	}
+	users := make([]User, len(rows))
+	for i, row := range rows {
+		users[i] = *mapUser(row)
+	}
+	return users, nil
+}
+
+// ReminderPreferences is the controller-shaped struct the// /profile form posts. Decoupled from models.User so the form
 // layer never accidentally touches unrelated fields and the
 // repo method's signature reads as "reminder preferences" at
 // a glance.
@@ -251,6 +293,8 @@ func mapUser(row db.User) *User {
 		ReminderTime:         row.ReminderTime,
 		ReminderNextFireAt:   nullTimeToTimePtr(row.ReminderNextFireAt),
 		ReminderLastFiredAt:  nullTimeToTimePtr(row.ReminderLastFiredAt),
+		AIOptIn:              row.AiOptIn == 1,
+		AIGoalText:           row.AiGoalText,
 		CreatedAt:            nullTimeToTime(row.CreatedAt),
 		UpdatedAt:            nullTimeToTime(row.UpdatedAt),
 	}

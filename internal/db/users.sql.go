@@ -38,7 +38,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (string,
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, created_at, updated_at
 FROM users
 WHERE email = ?
 `
@@ -63,6 +63,8 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.ReminderPushEnabled,
 		&i.ReminderNextFireAt,
 		&i.ReminderLastFiredAt,
+		&i.AiOptIn,
+		&i.AiGoalText,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -70,7 +72,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, created_at, updated_at
 FROM users
 WHERE id = ?
 `
@@ -95,14 +97,69 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.ReminderPushEnabled,
 		&i.ReminderNextFireAt,
 		&i.ReminderLastFiredAt,
+		&i.AiOptIn,
+		&i.AiGoalText,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
+const listAIOptedInUsers = `-- name: ListAIOptedInUsers :many
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, created_at, updated_at
+FROM users
+WHERE ai_opt_in = 1
+`
+
+// Every user with ai_opt_in = 1. The weekly Coach cron iterates
+// this list; per-user report generation is idempotent on
+// (user_id, type, period_start) so overlapping ticks are safe.
+func (q *Queries) ListAIOptedInUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listAIOptedInUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.PasswordHash,
+			&i.IsAdmin,
+			&i.TargetWeight,
+			&i.WeightUnit,
+			&i.DistanceUnit,
+			&i.ReminderEnabled,
+			&i.ReminderFrequency,
+			&i.ReminderDayOfWeek,
+			&i.ReminderTime,
+			&i.ReminderEmailEnabled,
+			&i.ReminderPushEnabled,
+			&i.ReminderNextFireAt,
+			&i.ReminderLastFiredAt,
+			&i.AiOptIn,
+			&i.AiGoalText,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, created_at, updated_at
 FROM users
 ORDER BY created_at DESC
 `
@@ -133,6 +190,8 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.ReminderPushEnabled,
 			&i.ReminderNextFireAt,
 			&i.ReminderLastFiredAt,
+			&i.AiOptIn,
+			&i.AiGoalText,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -150,7 +209,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 }
 
 const listUsersDueForReminder = `-- name: ListUsersDueForReminder :many
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, created_at, updated_at
 FROM users
 WHERE reminder_enabled = 1
   AND reminder_next_fire_at IS NOT NULL
@@ -188,6 +247,8 @@ func (q *Queries) ListUsersDueForReminder(ctx context.Context, reminderNextFireA
 			&i.ReminderPushEnabled,
 			&i.ReminderNextFireAt,
 			&i.ReminderLastFiredAt,
+			&i.AiOptIn,
+			&i.AiGoalText,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -283,6 +344,29 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) error {
 		arg.UpdatedAt,
 		arg.ID,
 	)
+	return err
+}
+
+const updateUserAIPreferences = `-- name: UpdateUserAIPreferences :exec
+UPDATE users
+SET ai_opt_in    = ?,
+    ai_goal_text = ?,
+    updated_at   = CURRENT_TIMESTAMP
+WHERE id = ?
+`
+
+type UpdateUserAIPreferencesParams struct {
+	AiOptIn    int64
+	AiGoalText string
+	ID         string
+}
+
+// Narrow write for the Coach opt-in toggle + free-text aim, kept
+// separate from UpdateUser / UpdateUserReminder so no other form
+// can clobber AI consent state. ai_goal_text is capped at 1000
+// chars app-side; the query stores it verbatim.
+func (q *Queries) UpdateUserAIPreferences(ctx context.Context, arg UpdateUserAIPreferencesParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserAIPreferences, arg.AiOptIn, arg.AiGoalText, arg.ID)
 	return err
 }
 

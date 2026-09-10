@@ -98,6 +98,18 @@ func (m *mockUserRepository) UpdateUserReminder(userID string, prefs models.Remi
 	return nil
 }
 
+// UpdateUserAIPreferences is a no-op here for the same reason:
+// auth flows never touch AI consent state.
+func (m *mockUserRepository) UpdateUserAIPreferences(userID string, optIn bool, goalText string) error {
+	return nil
+}
+
+// ListAIOptedInUsers returns an empty list; auth tests never
+// exercise the Coach cron.
+func (m *mockUserRepository) ListAIOptedInUsers(ctx context.Context) ([]models.User, error) {
+	return nil, nil
+}
+
 func setupAuthController(t *testing.T) (*AuthController, *mockUserRepository) {
 	t.Helper()
 	mockUser := newMockUserRepository()

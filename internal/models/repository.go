@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"time"
 )
-
 // Repository defines the interface for exercise data access.
 // This abstraction allows handlers to be tested with mock implementations
 // without requiring a real database connection.
@@ -97,6 +96,13 @@ type UserRepo interface {
 	// clobbering reminder state and keeps the SQL UPDATE
 	// focused on the columns it actually owns.
 	UpdateUserReminder(userID string, prefs ReminderPreferences) error
+	// UpdateUserAIPreferences writes the Coach opt-in toggle
+	// and free-text aim. Narrow so no other form can clobber
+	// AI consent state.
+	UpdateUserAIPreferences(userID string, optIn bool, goalText string) error
+	// ListAIOptedInUsers returns every user with ai_opt_in =
+	// 1. The weekly Coach cron iterates this list.
+	ListAIOptedInUsers(ctx context.Context) ([]User, error)
 }
 
 // AdminUserRepo defines the interface for admin user operations.

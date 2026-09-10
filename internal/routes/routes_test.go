@@ -492,6 +492,35 @@ func (m *mockUserRepository) UpdateUserReminder(userID string, prefs models.Remi
 	return errors.New("user not found")
 }
 
+// UpdateUserAIPreferences stores AI consent state on the matching
+// mock row so Coach preference route tests can assert via GetUserByID.
+func (m *mockUserRepository) UpdateUserAIPreferences(userID string, optIn bool, goalText string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, u := range m.users {
+		if u.ID == userID {
+			m.users[i].AIOptIn = optIn
+			m.users[i].AIGoalText = goalText
+			return nil
+		}
+	}
+	return errors.New("user not found")
+}
+
+// ListAIOptedInUsers returns mock users with AIOptIn set, mirroring
+// the real repository's WHERE ai_opt_in = 1 filter.
+func (m *mockUserRepository) ListAIOptedInUsers(ctx context.Context) ([]models.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []models.User
+	for _, u := range m.users {
+		if u.AIOptIn {
+			out = append(out, u)
+		}
+	}
+	return out, nil
+}
+
 // mockAuthTokenRepo is a no-op AuthTokenRepo used by the
 // route tests that don't exercise the password-reset flow.
 // The recovery controller's tests in

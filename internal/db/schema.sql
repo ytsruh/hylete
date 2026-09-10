@@ -26,6 +26,8 @@ CREATE TABLE users (
     reminder_push_enabled   INTEGER NOT NULL DEFAULT 1,
     reminder_next_fire_at   DATETIME,
     reminder_last_fired_at  DATETIME,
+    ai_opt_in INTEGER NOT NULL DEFAULT 0,
+    ai_goal_text TEXT NOT NULL DEFAULT '',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -160,3 +162,21 @@ CREATE TABLE goals (
 );
 CREATE INDEX idx_goals_user      ON goals(user_id);
 CREATE INDEX idx_goals_completed ON goals(user_id, completed_at);
+
+CREATE TABLE ai_reports (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id),
+    type       TEXT NOT NULL DEFAULT 'weekly' CHECK(type IN ('weekly', 'insight', 'monthly')),
+    period_start DATE NOT NULL,
+    period_end   DATE NOT NULL,
+    prompt_version TEXT NOT NULL DEFAULT '',
+    model        TEXT NOT NULL DEFAULT '',
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    tokens_in    INTEGER NOT NULL DEFAULT 0,
+    tokens_out   INTEGER NOT NULL DEFAULT 0,
+    read_at      DATETIME,
+    dismissed_at DATETIME,
+    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX idx_ai_reports_user_type_period ON ai_reports(user_id, type, period_start);
+CREATE INDEX idx_ai_reports_user ON ai_reports(user_id, type, period_start DESC);
