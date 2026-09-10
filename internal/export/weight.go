@@ -61,8 +61,12 @@ type manifest struct {
 // "fetch from R2" with "write to zip entry" while still having a
 // fully-formed CSV that references the photo names.
 type pendingPhoto struct {
-	name string
-	body []byte
+	name      string
+	body      []byte
+	entryIdx  int
+	angle     models.WeightPhotoAngle
+	key       string
+	createdAt time.Time
 }
 
 // BuildWeightZip writes a zip archive to w containing the user's
@@ -70,7 +74,7 @@ type pendingPhoto struct {
 //
 // Layout of the archive:
 //   - weight.csv          CSV with one row per entry (header included)
-//   - photos/<name>.<ext> one file per entry that has a retrievable photo
+//   - photos/<name>.<ext> one file per angle slot that has a retrievable photo
 //   - manifest.json       export metadata, including missing_photos
 //
 // Entries are sorted ascending by CreatedAt before being written so
@@ -78,8 +82,9 @@ type pendingPhoto struct {
 // repository.
 //
 // Photos whose R2 fetch fails are NOT written to the zip; the entry is
-// still included in weight.csv (with an empty photo_filename) and the
-// offending key is appended to manifest.json's missing_photos list.
+// still included in weight.csv (with an empty per-angle photo_filename)
+// and the offending key is appended to manifest.json's missing_photos
+// list.
 //
 // weightUnit is the user's preferred display unit ("kg" or "lbs").
 // The DB stores weights as a unit-agnostic number, so the CSV's
@@ -99,34 +104,49 @@ func BuildWeightZip(ctx context.Context, w io.Writer, entries []models.WeightEnt
 	// --- Phase 1: pre-fetch every photo. --------------------------------
 	// Successful fetches are buffered in memory so the zip-writing
 	// phase can do straight byte copies with no further R2 I/O. Failed
-	// fetches are recorded so the CSV row's photo_filename stays
+	// fetches are recorded so the CSV row's photo filename stays
 	// empty and the manifest reflects the gap.
 	//
 	// Memory cost: total bytes of photos the user has. For a personal
 	// fitness log this is typically tens to a few hundred MB. If that
 	// ever becomes a problem the next step is to spool to a temp file,
 	// but that's deferred until it actually matters.
-	pending := make([]pendingPhoto, 0, len(sorted))
+	pending := make([]pendingPhoto, 0, len(sorted)*3)
+	// photoNameFor maps entry index -> angle -> filename ("" if missing).
+	photoNameFor := make([]map[models.WeightPhotoAngle]string, len(sorted))
+	for i := range photoNameFor {
+		photoNameFor[i] = map[models.WeightPhotoAngle]string{}
+	}
+	angles := []models.WeightPhotoAngle{models.WeightPhotoFront, models.WeightPhotoSide, models.WeightPhotoBack}
 	for i, e := range sorted {
-		if e.PhotoKey == "" {
-			continue
+		for _, angle := range angles {
+			key := e.PhotoKeyForAngle(angle)
+			if key == "" {
+				continue
+			}
+			rc, err := photos.Get(ctx, key)
+			if err != nil {
+				result.MissingPhotos = append(result.MissingPhotos, key)
+				continue
+			}
+			body, err := io.ReadAll(rc)
+			_ = rc.Close()
+			if err != nil {
+				result.MissingPhotos = append(result.MissingPhotos, key)
+				continue
+			}
+			name := buildPhotoFilename(e, angle, i)
+			pending = append(pending, pendingPhoto{
+				name:      name,
+				body:      body,
+				entryIdx:  i,
+				angle:     angle,
+				key:       key,
+				createdAt: e.CreatedAt,
+			})
+			photoNameFor[i][angle] = name
+			result.PhotosWritten++
 		}
-		rc, err := photos.Get(ctx, e.PhotoKey)
-		if err != nil {
-			result.MissingPhotos = append(result.MissingPhotos, e.PhotoKey)
-			continue
-		}
-		body, err := io.ReadAll(rc)
-		_ = rc.Close()
-		if err != nil {
-			result.MissingPhotos = append(result.MissingPhotos, e.PhotoKey)
-			continue
-		}
-		pending = append(pending, pendingPhoto{
-			name: buildPhotoFilename(e, i),
-			body: body,
-		})
-		result.PhotosWritten++
 	}
 
 	// --- Phase 2: write the zip. ----------------------------------------
@@ -145,14 +165,9 @@ func BuildWeightZip(ctx context.Context, w io.Writer, entries []models.WeightEnt
 		return result, fmt.Errorf("export: create csv entry: %w", err)
 	}
 	cw := csv.NewWriter(csvBody)
-	if err := cw.Write([]string{"id", "created_at", "date", "weight", "weight_unit", "notes", "photo_filename"}); err != nil {
+	if err := cw.Write([]string{"id", "created_at", "date", "weight", "weight_unit", "notes", "front_photo_filename", "side_photo_filename", "back_photo_filename"}); err != nil {
 		_ = zw.Close()
 		return result, fmt.Errorf("export: write csv header: %w", err)
-	}
-	// Map of entry index -> photo filename ("" if missing/has no photo).
-	photoNameFor := make(map[int]string, len(pending))
-	for i, p := range pending {
-		photoNameFor[i] = p.name
 	}
 	for i, e := range sorted {
 		if err := cw.Write([]string{
@@ -162,7 +177,9 @@ func BuildWeightZip(ctx context.Context, w io.Writer, entries []models.WeightEnt
 			fmt.Sprintf("%.1f", e.Weight),
 			weightUnit,
 			e.Notes,
-			photoNameFor[i],
+			photoNameFor[i][models.WeightPhotoFront],
+			photoNameFor[i][models.WeightPhotoSide],
+			photoNameFor[i][models.WeightPhotoBack],
 		}); err != nil {
 			_ = zw.Close()
 			return result, fmt.Errorf("export: write csv row: %w", err)
@@ -175,11 +192,11 @@ func BuildWeightZip(ctx context.Context, w io.Writer, entries []models.WeightEnt
 	}
 
 	// --- Phase 2b: write the photos. ------------------------------------
-	for i, p := range pending {
+	for _, p := range pending {
 		photoFile, err := zw.CreateHeader(&zip.FileHeader{
 			Name:     "photos/" + p.name,
 			Method:   zip.Deflate,
-			Modified: sorted[i].CreatedAt,
+			Modified: p.createdAt,
 		})
 		if err != nil {
 			_ = zw.Close()
@@ -226,14 +243,14 @@ func BuildWeightZip(ctx context.Context, w io.Writer, entries []models.WeightEnt
 // buildPhotoFilename produces a stable, human-readable filename for a
 // photo inside the zip. The form is:
 //
-//	YYYY-MM-DD_<short-id>.<ext>
+//	YYYY-MM-DD_<short-id>_<angle>.<ext>
 //
 // where <short-id> is the first 8 characters of the entry ID and
 // <ext> is the lowercased extension of the original photo key (or .bin
 // when the key has no extension). Using the date in the filename keeps
 // photos in chronological order when the zip is extracted and viewed
-// in a file browser.
-func buildPhotoFilename(e models.WeightEntry, index int) string {
+// in a file browser; the angle suffix keeps the three slots distinct.
+func buildPhotoFilename(e models.WeightEntry, angle models.WeightPhotoAngle, index int) string {
 	date := e.CreatedAt.UTC().Format("2006-01-02")
 	shortID := e.ID
 	if len(shortID) > 8 {
@@ -242,9 +259,9 @@ func buildPhotoFilename(e models.WeightEntry, index int) string {
 	if shortID == "" {
 		shortID = fmt.Sprintf("row-%d", index)
 	}
-	ext := strings.ToLower(path.Ext(e.PhotoKey))
+	ext := strings.ToLower(path.Ext(e.PhotoKeyForAngle(angle)))
 	if ext == "" {
 		ext = ".bin"
 	}
-	return fmt.Sprintf("%s_%s%s", date, shortID, ext)
+	return fmt.Sprintf("%s_%s_%s%s", date, shortID, string(angle), ext)
 }

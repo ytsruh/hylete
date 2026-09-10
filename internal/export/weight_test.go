@@ -105,7 +105,7 @@ func TestBuildWeightZip_EmptyInput(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("expected 1 CSV row (header only), got %d", len(rows))
 	}
-	wantHeader := []string{"id", "created_at", "date", "weight", "weight_unit", "notes", "photo_filename"}
+	wantHeader := []string{"id", "created_at", "date", "weight", "weight_unit", "notes", "front_photo_filename", "side_photo_filename", "back_photo_filename"}
 	if !equalRow(rows[0], wantHeader) {
 		t.Errorf("csv header = %v, want %v", rows[0], wantHeader)
 	}
@@ -120,14 +120,15 @@ func TestBuildWeightZip_MixedEntries(t *testing.T) {
 	day3 := time.Date(2026, 1, 23, 8, 0, 0, 0, time.UTC)
 
 	entries := []models.WeightEntry{
-		{ID: "entry-2-photo", UserID: "u1", Weight: 80.5, Notes: "second", PhotoKey: "weight/u1/b.jpg", CreatedAt: day2},
-		{ID: "entry-1", UserID: "u1", Weight: 81.0, Notes: "first", PhotoKey: "", CreatedAt: day1},
-		{ID: "entry-3-photo", UserID: "u1", Weight: 80.0, Notes: "third", PhotoKey: "weight/u1/c.png", CreatedAt: day3},
+		{ID: "entry-2-photo", UserID: "u1", Weight: 80.5, Notes: "second", FrontPhotoKey: "weight/u1/b.jpg", CreatedAt: day2},
+		{ID: "entry-1", UserID: "u1", Weight: 81.0, Notes: "first", CreatedAt: day1},
+		{ID: "entry-3-photo", UserID: "u1", Weight: 80.0, Notes: "third", FrontPhotoKey: "weight/u1/c.png", SidePhotoKey: "weight/u1/c-side.png", CreatedAt: day3},
 	}
 	photos := &fakePhotos{
 		data: map[string][]byte{
-			"weight/u1/b.jpg": {0xFF, 0xD8, 0xFF, 0xE0}, // jpeg magic
-			"weight/u1/c.png": {0x89, 0x50, 0x4E, 0x47}, // png magic
+			"weight/u1/b.jpg":      {0xFF, 0xD8, 0xFF, 0xE0}, // jpeg magic
+			"weight/u1/c.png":      {0x89, 0x50, 0x4E, 0x47}, // png magic
+			"weight/u1/c-side.png": {0x89, 0x50, 0x4E, 0x48},
 		},
 	}
 
@@ -140,8 +141,8 @@ func TestBuildWeightZip_MixedEntries(t *testing.T) {
 	if res.Entries != 3 {
 		t.Errorf("Entries = %d, want 3", res.Entries)
 	}
-	if res.PhotosWritten != 2 {
-		t.Errorf("PhotosWritten = %d, want 2", res.PhotosWritten)
+	if res.PhotosWritten != 3 {
+		t.Errorf("PhotosWritten = %d, want 3", res.PhotosWritten)
 	}
 	if len(res.MissingPhotos) != 0 {
 		t.Errorf("MissingPhotos = %v, want empty", res.MissingPhotos)
@@ -168,15 +169,31 @@ func TestBuildWeightZip_MixedEntries(t *testing.T) {
 		}
 	}
 
-	// The middle entry has a photo; CSV should reference it.
+	// The middle entry has a front photo; CSV should reference it.
 	mid := rows[2]
 	if mid[6] == "" {
-		t.Errorf("expected photo_filename on the second entry, got empty")
+		t.Errorf("expected front_photo_filename on the second entry, got empty")
+	}
+	if mid[7] != "" || mid[8] != "" {
+		t.Errorf("expected empty side/back filenames on the second entry, got %q/%q", mid[7], mid[8])
 	}
 	// And that filename must exist inside the photos/ dir of the zip.
 	photoPath := "photos/" + mid[6]
 	if _, ok := files[photoPath]; !ok {
 		t.Errorf("expected %q in zip, but it's missing", photoPath)
+	}
+
+	// The third entry has front + side photos.
+	last := rows[3]
+	if last[6] == "" || last[7] == "" {
+		t.Errorf("expected front+side filenames on the third entry, got %q/%q", last[6], last[7])
+	}
+	if last[8] != "" {
+		t.Errorf("expected empty back filename on the third entry, got %q", last[8])
+	}
+	// Filenames carry the angle suffix so the slots stay distinct.
+	if !strings.Contains(last[6], "_front.") || !strings.Contains(last[7], "_side.") {
+		t.Errorf("photo filenames should carry angle suffixes, got %q/%q", last[6], last[7])
 	}
 
 	// Manifest matches the result totals.
@@ -192,8 +209,8 @@ func TestBuildWeightZip_MixedEntries(t *testing.T) {
 	if mf.UserID != "u1" {
 		t.Errorf("manifest.user_id = %q, want u1", mf.UserID)
 	}
-	if mf.EntryCount != 3 || mf.PhotoCount != 2 {
-		t.Errorf("manifest counts = (%d, %d), want (3, 2)", mf.EntryCount, mf.PhotoCount)
+	if mf.EntryCount != 3 || mf.PhotoCount != 3 {
+		t.Errorf("manifest counts = (%d, %d), want (3, 3)", mf.EntryCount, mf.PhotoCount)
 	}
 	if len(mf.MissingPhotos) != 0 {
 		t.Errorf("manifest.missing_photos = %v, want empty", mf.MissingPhotos)
@@ -207,15 +224,16 @@ func TestBuildWeightZip_MixedEntries(t *testing.T) {
 func TestBuildWeightZip_MissingPhotoInR2(t *testing.T) {
 	day := time.Date(2026, 1, 9, 8, 0, 0, 0, time.UTC)
 	entries := []models.WeightEntry{
-		{ID: "e1", UserID: "u1", Weight: 80, Notes: "ok", PhotoKey: "weight/u1/ok.jpg", CreatedAt: day},
-		{ID: "e2", UserID: "u1", Weight: 79, Notes: "broken", PhotoKey: "weight/u1/gone.jpg", CreatedAt: day.Add(24 * time.Hour)},
+		{ID: "e1", UserID: "u1", Weight: 80, Notes: "ok", FrontPhotoKey: "weight/u1/ok.jpg", CreatedAt: day},
+		{ID: "e2", UserID: "u1", Weight: 79, Notes: "broken", FrontPhotoKey: "weight/u1/gone.jpg", SidePhotoKey: "weight/u1/gone-side.jpg", CreatedAt: day.Add(24 * time.Hour)},
 	}
 	photos := &fakePhotos{
 		data: map[string][]byte{
 			"weight/u1/ok.jpg": {0x01, 0x02},
 		},
 		missing: map[string]bool{
-			"weight/u1/gone.jpg": true,
+			"weight/u1/gone.jpg":      true,
+			"weight/u1/gone-side.jpg": true,
 		},
 	}
 
@@ -227,8 +245,8 @@ func TestBuildWeightZip_MissingPhotoInR2(t *testing.T) {
 	if res.PhotosWritten != 1 {
 		t.Errorf("PhotosWritten = %d, want 1", res.PhotosWritten)
 	}
-	if len(res.MissingPhotos) != 1 || res.MissingPhotos[0] != "weight/u1/gone.jpg" {
-		t.Errorf("MissingPhotos = %v, want [weight/u1/gone.jpg]", res.MissingPhotos)
+	if len(res.MissingPhotos) != 2 {
+		t.Errorf("MissingPhotos = %v, want 2 missing keys", res.MissingPhotos)
 	}
 
 	files := readZip(t, buf.Bytes())
@@ -237,10 +255,10 @@ func TestBuildWeightZip_MissingPhotoInR2(t *testing.T) {
 		t.Fatalf("expected header + 2 rows, got %d", len(rows))
 	}
 	if rows[1][6] == "" {
-		t.Errorf("expected photo_filename on ok row, got empty")
+		t.Errorf("expected front_photo_filename on ok row, got empty")
 	}
-	if rows[2][6] != "" {
-		t.Errorf("expected empty photo_filename on broken row, got %q", rows[2][6])
+	if rows[2][6] != "" || rows[2][7] != "" {
+		t.Errorf("expected empty photo filenames on broken row, got %q/%q", rows[2][6], rows[2][7])
 	}
 	// weight_unit column is filled on every row with the value passed in.
 	if rows[1][4] != "lbs" || rows[2][4] != "lbs" {
@@ -257,8 +275,8 @@ func TestBuildWeightZip_MissingPhotoInR2(t *testing.T) {
 	if mf.PhotoCount != 1 {
 		t.Errorf("manifest.photo_count = %d, want 1", mf.PhotoCount)
 	}
-	if len(mf.MissingPhotos) != 1 || mf.MissingPhotos[0] != "weight/u1/gone.jpg" {
-		t.Errorf("manifest.missing_photos = %v", mf.MissingPhotos)
+	if len(mf.MissingPhotos) != 2 {
+		t.Errorf("manifest.missing_photos = %v, want 2 entries", mf.MissingPhotos)
 	}
 }
 
@@ -295,12 +313,13 @@ func TestBuildWeightZip_PhotosSortedByDate(t *testing.T) {
 	day2 := time.Date(2026, 1, 16, 8, 0, 0, 0, time.UTC)
 	entries := []models.WeightEntry{
 		// Out of order on purpose.
-		{ID: "second", UserID: "u1", Weight: 80, PhotoKey: "weight/u1/b.jpg", CreatedAt: day2},
-		{ID: "first", UserID: "u1", Weight: 81, PhotoKey: "weight/u1/a.jpg", CreatedAt: day1},
+		{ID: "second", UserID: "u1", Weight: 80, FrontPhotoKey: "weight/u1/b.jpg", CreatedAt: day2},
+		{ID: "first", UserID: "u1", Weight: 81, FrontPhotoKey: "weight/u1/a.jpg", SidePhotoKey: "weight/u1/a-side.jpg", CreatedAt: day1},
 	}
 	photos := &fakePhotos{data: map[string][]byte{
-		"weight/u1/a.jpg": {0xAA},
-		"weight/u1/b.jpg": {0xBB},
+		"weight/u1/a.jpg":      {0xAA},
+		"weight/u1/a-side.jpg": {0xAB},
+		"weight/u1/b.jpg":      {0xBB},
 	}}
 
 	var buf bytes.Buffer
@@ -315,11 +334,11 @@ func TestBuildWeightZip_PhotosSortedByDate(t *testing.T) {
 			names = append(names, n)
 		}
 	}
-	if len(names) != 2 {
-		t.Fatalf("expected 2 photo files, got %d (%v)", len(names), names)
+	if len(names) != 3 {
+		t.Fatalf("expected 3 photo files, got %d (%v)", len(names), names)
 	}
 	sort.Strings(names)
-	if !strings.HasPrefix(names[0], "photos/2026-01-09_") || !strings.HasPrefix(names[1], "photos/2026-01-16_") {
+	if !strings.HasPrefix(names[0], "photos/2026-01-09_") || !strings.HasPrefix(names[len(names)-1], "photos/2026-01-16_") {
 		t.Errorf("photos not in date-ascending order: %v", names)
 	}
 }

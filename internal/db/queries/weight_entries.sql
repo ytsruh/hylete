@@ -1,6 +1,6 @@
 -- name: CreateWeightEntry :one
-INSERT INTO weight_entries (id, user_id, weight, notes, photo_key, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO weight_entries (id, user_id, weight, notes, front_photo_key, side_photo_key, back_photo_key, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetWeightEntry :one
@@ -14,7 +14,7 @@ ORDER BY created_at DESC;
 
 -- name: UpdateWeightEntry :exec
 UPDATE weight_entries
-SET weight = ?, notes = ?, photo_key = ?, created_at = ?
+SET weight = ?, notes = ?, front_photo_key = ?, side_photo_key = ?, back_photo_key = ?, created_at = ?
 WHERE id = ? AND user_id = ?;
 
 -- name: DeleteWeightEntry :exec

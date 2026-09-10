@@ -155,10 +155,12 @@ type User struct {
 }
 
 type WeightEntry struct {
-	ID        string
-	UserID    string
-	Weight    float64
-	Notes     sql.NullString
-	PhotoKey  sql.NullString
-	CreatedAt time.Time
+	ID            string
+	UserID        string
+	Weight        float64
+	Notes         sql.NullString
+	FrontPhotoKey sql.NullString
+	SidePhotoKey  sql.NullString
+	BackPhotoKey  sql.NullString
+	CreatedAt     time.Time
 }

@@ -1,15 +1,41 @@
 import SwiftUI
 
-/// Portrait comparison sheet for two weight photos. The older
-/// photo is revealed over the newer photo with a draggable divider,
-/// matching the web comparison interaction without a third-party
-/// image viewer or image-loading dependency.
+/// Portrait comparison sheet for two weight photos in a single angle
+/// slot. The older photo is revealed over the newer photo with a
+/// draggable divider, matching the web comparison interaction
+/// without a third-party image viewer or image-loading dependency.
+///
+/// The compared angle is switchable via the segmented control when
+/// both entries share more than one angle; angles either entry
+/// lacks are disabled. Switching angles is local (both entries
+/// already carry every angle's URL) so no refetch is needed.
 struct WeightComparisonView: View {
     let comparison: WeightCompareResponse
     let weightUnit: String
 
     @Environment(\.dismiss) private var dismiss
     @State private var revealPosition: CGFloat = 0.5
+    @State private var selectedAngle: WeightEntryDTO.PhotoAngle
+
+    init(comparison: WeightCompareResponse, weightUnit: String) {
+        self.comparison = comparison
+        self.weightUnit = weightUnit
+        // Default to the server-compared angle; fall back to the
+        // first shared angle when the server string is unknown
+        // (e.g. an older build that omits it).
+        let initial = WeightEntryDTO.PhotoAngle(rawValue: comparison.angle) ?? .front
+        let shared = WeightComparisonView.sharedAngles(before: comparison.before, after: comparison.after)
+        _selectedAngle = State(initialValue: shared.contains(initial) ? initial : (shared.first ?? .front))
+    }
+
+    /// Angles both entries have photos for, in preference order.
+    private var sharedAngles: [WeightEntryDTO.PhotoAngle] {
+        Self.sharedAngles(before: comparison.before, after: comparison.after)
+    }
+
+    private static func sharedAngles(before: WeightEntryDTO, after: WeightEntryDTO) -> [WeightEntryDTO.PhotoAngle] {
+        WeightEntryDTO.PhotoAngle.allCases.filter { before.hasPhoto(for: $0) && after.hasPhoto(for: $0) }
+    }
 
     private var beforeLabel: String {
         comparison.before.createdAt.formatted(.dateTime.day().month(.abbreviated).year())
@@ -22,6 +48,18 @@ struct WeightComparisonView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: DSSpacing.md) {
+                if sharedAngles.count > 1 {
+                    Picker("Angle", selection: $selectedAngle) {
+                        ForEach(WeightEntryDTO.PhotoAngle.allCases, id: \.self) { angle in
+                            Text(angle.rawValue.capitalized)
+                                .tag(angle)
+                                .disabled(!sharedAngles.contains(angle))
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityLabel("Photo angle")
+                }
+
                 comparisonImage
                     .aspectRatio(3.0 / 4.0, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous))
@@ -29,6 +67,7 @@ struct WeightComparisonView: View {
                         RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous)
                             .stroke(DSColors.separator, lineWidth: 0.5)
                     )
+                    .id(selectedAngle)
 
                 HStack {
                     photoLabel(title: "Before", date: beforeLabel, entry: comparison.before)
@@ -43,7 +82,7 @@ struct WeightComparisonView: View {
             .padding(DSSpacing.md)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(DSColors.background.ignoresSafeArea())
-            .navigationTitle("Compare Photos")
+            .navigationTitle("Compare \(selectedAngle.rawValue.capitalized)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -66,14 +105,14 @@ struct WeightComparisonView: View {
                 // because the ZStack below clips and strokes the
                 // whole comparison as one rounded shape.
                 PortraitImage(
-                    url: URL(string: comparison.after.photoURL),
+                    url: URL(string: comparison.after.photoURL(for: selectedAngle)),
                     cornerRadius: 0,
                     showsLoadingIndicator: true
                 )
                 .frame(width: width, height: height)
 
                 PortraitImage(
-                    url: URL(string: comparison.before.photoURL),
+                    url: URL(string: comparison.before.photoURL(for: selectedAngle)),
                     cornerRadius: 0,
                     showsLoadingIndicator: true
                 )

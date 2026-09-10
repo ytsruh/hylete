@@ -1,22 +1,21 @@
 import PhotosUI
 import SwiftUI
 
-/// Create / edit sheet for a weight entry. Mirrors the
-/// web's `/weight/new` and `/weight/:id/edit` forms
-/// (`internal/views/weight/form.templ`): weight, notes,
-/// optional date, and an optional photo. Save POSTs
-/// (create) or PUTs (edit) via the shared `WeightStore`.
+/// Create / edit sheet for a weight entry. Fields: weight, notes,
+/// optional date, and up to three progress photos (front / side /
+/// back). Save POSTs (create) or PUTs (edit) via the shared
+/// `WeightStore`.
 ///
-/// Photos go through the `WeightPhotoUploader`, which
-/// asks the server for a presigned R2 PUT URL and uploads
-/// the bytes directly. The form stores the returned
-/// `photoKey` and submits it to the create / update
-/// endpoint alongside the rest of the entry.
+/// Photos go through the `WeightPhotoUploader`, which asks the
+/// server for a presigned R2 PUT URL (namespaced per angle) and
+/// uploads the bytes directly. The form stores the returned keys
+/// and submits them to the create / update endpoint alongside the
+/// rest of the entry. Each angle slot uploads independently, so a
+/// save can involve up to three upload round-trips followed by the
+/// single entry POST / PUT.
 ///
-/// The date input uses a `.compact` picker. The web form
-/// toggles between "Set" and "Clear" buttons inline; the
-/// iOS editor mirrors that with a "Clear" button that
-/// resets the entry's timestamp to the current time.
+/// The date input uses a `.compact` picker defaulting to today;
+/// picking an earlier date backdates the entry.
 struct WeightEditorView: View {
     enum Mode {
         case create
@@ -37,19 +36,18 @@ struct WeightEditorView: View {
     @State private var notes: String = ""
     @State private var createdAt: Date = Date()
 
-    /// Photo state. The editor seeds from the existing
-    /// entry (when editing) and lets the user pick a new
-    /// photo, remove the existing one, or leave it
-    /// unchanged. `pickedPhotoData` is the bytes the
-    /// PhotosPicker just handed us; `useExistingPhoto`
-    /// is true when the user wants to keep the existing
-    /// photo (the default) and false when they've
-    /// explicitly removed it.
-    @State private var pickedPhotoData: Data?
-    @State private var pickedPhotoContentType: String = "image/jpeg"
-    @State private var pickedPhotoFilename: String = "photo.jpg"
-    @State private var useExistingPhoto: Bool = true
-    @State private var isUploadingPhoto: Bool = false
+    /// Per-angle photo state. `pickedData` is the bytes the
+    /// PhotosPicker just handed us; `useExisting` is true when
+    /// the user wants to keep the existing photo in that slot
+    /// (the edit-mode default) and false once they've picked a
+    /// replacement or explicitly removed it.
+    @State private var frontSlot = PhotoSlot(angle: .front)
+    @State private var sideSlot = PhotoSlot(angle: .side)
+    @State private var backSlot = PhotoSlot(angle: .back)
+    @State private var frontPickerItem: PhotosPickerItem?
+    @State private var sidePickerItem: PhotosPickerItem?
+    @State private var backPickerItem: PhotosPickerItem?
+    @State private var uploadingAngles: Set<WeightEntryDTO.PhotoAngle> = []
 
     @State private var isSaving: Bool = false
     @State private var errorMessage: String?
@@ -81,6 +79,13 @@ struct WeightEditorView: View {
         return value
     }
 
+    /// `true` while any angle slot is uploading. Save is
+    /// disabled until uploads finish so the submission never
+    /// races the presigned PUTs.
+    private var isUploadingPhoto: Bool {
+        !uploadingAngles.isEmpty
+    }
+
     /// Save is enabled when the weight parses into the
     /// server's accepted range (0–1000) and we're not
     /// already saving. The server enforces the same caps
@@ -90,31 +95,6 @@ struct WeightEditorView: View {
         guard !isSaving, !isUploadingPhoto else { return false }
         guard let weight = parsedWeight, weight >= 0, weight <= 1000 else { return false }
         return true
-    }
-
-    /// `true` when the editor has a photo to upload — either
-    /// the user just picked one, or the existing entry has
-    /// a photo and the user hasn't removed it. Drives the
-    /// submitter's choice of `photoKey`.
-    private var hasPhotoToSubmit: Bool {
-        if pickedPhotoData != nil { return true }
-        if case .edit(let entry) = mode, entry.hasPhoto, useExistingPhoto {
-            return true
-        }
-        return false
-    }
-
-    /// `true` when the photo section should render the
-    /// preview thumbnail (and the "Tap to change" label)
-    /// instead of the "Add photo" affordance. Mirrors
-    /// `hasPhotoToSubmit` but stays separate so the picker
-    /// can offer a preview even when the user has marked
-    /// the existing photo for deletion (the preview still
-    /// shows what they're about to throw away).
-    private var hasPhotoToShow: Bool {
-        if pickedPhotoData != nil { return true }
-        if case .edit(let entry) = mode, entry.hasPhoto { return true }
-        return false
     }
 
     var body: some View {
@@ -165,7 +145,7 @@ struct WeightEditorView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This permanently removes the weight entry and its photo.")
+                Text("This permanently removes the weight entry and its photos.")
             }
             .onAppear { seedIfNeeded() }
         }
@@ -200,10 +180,7 @@ struct WeightEditorView: View {
     /// Date picker. The iOS-native approach: always show
     /// the date with a sensible default (today) so the
     /// user can simply pick a different day to log a
-    /// past entry. The web's explicit "backdate" toggle
-    /// was a web-form pattern that doesn't translate
-    /// well to iOS — a single compact picker is
-    /// recognisably native and stays out of the way.
+    /// past entry.
     private var dateSection: some View {
         Section {
             DatePicker(
@@ -219,64 +196,73 @@ struct WeightEditorView: View {
         }
     }
 
-    /// Photo picker. The current preview shows either the
-    /// newly-picked photo, the existing photo (when editing),
-    /// or a placeholder. The "Remove" button clears the
-    /// picked photo (and marks the existing photo for
-    /// deletion when editing).
+    /// Three photo slots (front / side / back). Each slot is an
+    /// independent picker + preview + remove control sharing one
+    /// upload pipeline at save time.
     private var photoSection: some View {
         Section {
-            PhotosPicker(
-                selection: $photoPickerItem,
-                matching: .images,
-                photoLibrary: .shared()
-            ) {
-                if hasPhotoToShow {
-                    HStack(spacing: DSSpacing.sm) {
-                        previewThumbnail
-                            .frame(width: 64, height: 64)
-                            .clipShape(RoundedRectangle(cornerRadius: DSSpacing.cornerRadiusSmall, style: .continuous))
-                        VStack(alignment: .leading) {
-                            Text(photoPickerLabel)
-                                .font(.subheadline)
-                                .foregroundStyle(DSColors.text)
-                            Text("Tap to change")
-                                .font(.caption)
-                                .foregroundStyle(DSColors.textSecondary)
-                        }
-                        Spacer()
-                    }
-                } else {
-                    Label("Add photo", systemImage: "photo")
-                        .foregroundStyle(DSColors.text)
-                }
-            }
-            .buttonStyle(.plain)
-            .onChange(of: photoPickerItem) { _, newValue in
-                handlePhotoSelection(newValue)
-            }
-
-            if hasPhotoToSubmit {
-                Button(role: .destructive) {
-                    clearPhotoSelection()
-                } label: {
-                    Label("Remove photo", systemImage: "xmark.circle")
-                }
-            }
+            photoSlotRow(angle: .front, slot: $frontSlot, pickerItem: $frontPickerItem)
+            photoSlotRow(angle: .side, slot: $sideSlot, pickerItem: $sidePickerItem)
+            photoSlotRow(angle: .back, slot: $backSlot, pickerItem: $backPickerItem)
 
             if isUploadingPhoto {
                 HStack {
                     ProgressView()
-                    Text("Uploading photo…")
+                    Text("Uploading photos…")
                         .font(.caption)
                         .foregroundStyle(DSColors.textSecondary)
                 }
             }
         } header: {
-            Text("Photo")
+            Text("Photos")
         } footer: {
-            Text("Optional. A photo is required to compare two entries.")
+            Text("Optional. Front is required for comparison; side/back add detail.")
         }
+    }
+
+    /// One angle slot: picker affordance with preview, plus a
+    /// per-slot remove button when the slot holds a photo.
+    private func photoSlotRow(
+        angle: WeightEntryDTO.PhotoAngle,
+        slot: Binding<PhotoSlot>,
+        pickerItem: Binding<PhotosPickerItem?>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: DSSpacing.xs) {
+            PhotosPicker(
+                selection: pickerItem,
+                matching: .images,
+                photoLibrary: .shared()
+            ) {
+                HStack(spacing: DSSpacing.sm) {
+                    slotThumbnail(angle: angle, slot: slot.wrappedValue)
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: DSSpacing.cornerRadiusSmall, style: .continuous))
+                    VStack(alignment: .leading) {
+                        Text(slotLabel(angle: angle, slot: slot.wrappedValue))
+                            .font(.subheadline)
+                            .foregroundStyle(DSColors.text)
+                        Text("Tap to change")
+                            .font(.caption)
+                            .foregroundStyle(DSColors.textSecondary)
+                    }
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            .onChange(of: pickerItem.wrappedValue) { _, newValue in
+                handlePhotoSelection(newValue, angle: angle)
+            }
+
+            if slotHasPhotoToSubmit(angle: angle, slot: slot.wrappedValue) {
+                Button(role: .destructive) {
+                    clearPhotoSelection(angle: angle)
+                } label: {
+                    Label("Remove \(angle.rawValue) photo", systemImage: "xmark.circle")
+                        .font(.subheadline)
+                }
+            }
+        }
+        .padding(.vertical, DSSpacing.xxs)
     }
 
     private var deleteSection: some View {
@@ -294,95 +280,143 @@ struct WeightEditorView: View {
     }
 
     @State private var showingDeleteConfirm: Bool = false
-    @State private var photoPickerItem: PhotosPickerItem?
 
-    /// The thumbnail shown in the photo section. Always
-    /// calls `.resizable()` so the parent can size it
-    /// freely — the unmodified image's intrinsic size
-    /// would otherwise drive the layout. New pickup wins,
-    /// otherwise the existing entry's photo (also resizable).
-    /// When neither is set, the placeholder thumbnail is
-    /// returned so the call site is always a single
-    /// uniform `.frame(...)` modifier chain.
+    // MARK: - Slot helpers
+
+    /// Binding-free accessor used by the save path.
+    private func slot(for angle: WeightEntryDTO.PhotoAngle) -> PhotoSlot {
+        switch angle {
+        case .front: return frontSlot
+        case .side: return sideSlot
+        case .back: return backSlot
+        }
+    }
+
+    /// `true` when the slot has a photo that will be submitted —
+    /// either freshly picked bytes or an existing photo the user
+    /// hasn't removed.
+    private func slotHasPhotoToSubmit(angle: WeightEntryDTO.PhotoAngle, slot: PhotoSlot) -> Bool {
+        if slot.pickedData != nil { return true }
+        if case .edit(let entry) = mode, entry.hasPhoto(for: angle), slot.useExisting {
+            return true
+        }
+        return false
+    }
+
+    /// `true` when the slot should render a preview thumbnail
+    /// instead of the empty "Add" affordance.
+    private func slotHasPhotoToShow(angle: WeightEntryDTO.PhotoAngle, slot: PhotoSlot) -> Bool {
+        if slot.pickedData != nil { return true }
+        if case .edit(let entry) = mode, entry.hasPhoto(for: angle) { return true }
+        return false
+    }
+
+    private func slotLabel(angle: WeightEntryDTO.PhotoAngle, slot: PhotoSlot) -> String {
+        let title = angle.rawValue.capitalized
+        if slot.pickedData != nil { return "\(title) — new photo selected" }
+        if case .edit(let entry) = mode, entry.hasPhoto(for: angle), slot.useExisting {
+            return "Current \(angle.rawValue) photo"
+        }
+        if slotHasPhotoToShow(angle: angle, slot: slot) {
+            return "\(title) photo"
+        }
+        return "Add \(angle.rawValue) photo"
+    }
+
     @ViewBuilder
-    private var previewThumbnail: some View {
-        if let pickedPhotoData, let uiImage = UIImage(data: pickedPhotoData) {
+    private func slotThumbnail(angle: WeightEntryDTO.PhotoAngle, slot: PhotoSlot) -> some View {
+        if let data = slot.pickedData, let uiImage = UIImage(data: data) {
             Image(uiImage: uiImage)
                 .resizable()
                 .scaledToFill()
-        } else if case .edit(let entry) = mode, entry.hasPhoto,
-                  let url = URL(string: entry.photoURL) {
+        } else if case .edit(let entry) = mode, entry.hasPhoto(for: angle),
+                  let url = URL(string: entry.photoURL(for: angle)) {
             AsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let image):
                     image.resizable().scaledToFill()
                 default:
-                    placeholderThumbnail
+                    slotPlaceholder(angle: angle)
                 }
             }
         } else {
-            placeholderThumbnail
+            slotPlaceholder(angle: angle)
         }
     }
 
-    private var placeholderThumbnail: some View {
+    private func slotPlaceholder(angle: WeightEntryDTO.PhotoAngle) -> some View {
         RoundedRectangle(cornerRadius: DSSpacing.cornerRadiusSmall, style: .continuous)
             .fill(DSColors.surfaceElevated)
             .overlay(
-                Image(systemName: "photo")
-                    .foregroundStyle(DSColors.textSecondary)
+                VStack(spacing: 2) {
+                    Image(systemName: "photo")
+                        .foregroundStyle(DSColors.textSecondary)
+                    Text(angle.rawValue.capitalized)
+                        .font(.caption2)
+                        .foregroundStyle(DSColors.textSecondary)
+                }
             )
     }
 
-    private var photoPickerLabel: String {
-        if pickedPhotoData != nil { return "New photo selected" }
-        if case .edit(let entry) = mode, entry.hasPhoto, useExistingPhoto {
-            return "Current photo"
-        }
-        return "Add photo"
-    }
-
-    // MARK: - Photo helpers
-
-    /// Handles the user picking a new photo. Stores the
-    /// bytes and the inferred content type / filename so
-    /// the upload step can reuse them. Marks the existing
-    /// photo as "not kept" so the submission doesn't carry
-    /// both the old and new keys.
-    private func handlePhotoSelection(_ item: PhotosPickerItem?) {
+    /// Handles the user picking a new photo for an angle slot.
+    /// Stores the bytes plus the inferred content type / filename
+    /// so the upload step can reuse them, and marks the existing
+    /// photo as replaced.
+    private func handlePhotoSelection(_ item: PhotosPickerItem?, angle: WeightEntryDTO.PhotoAngle) {
         guard let item else { return }
         Task { @MainActor in
             do {
                 if let data = try await item.loadTransferable(type: Data.self) {
-                    pickedPhotoData = data
-                    pickedPhotoContentType = item.supportedContentTypes.first?.preferredMIMEType ?? "image/jpeg"
+                    let contentType = item.supportedContentTypes.first?.preferredMIMEType ?? "image/jpeg"
                     let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
-                    pickedPhotoFilename = "weight-photo.\(ext)"
-                    useExistingPhoto = false
+                    var updated = slot(for: angle)
+                    updated.pickedData = data
+                    updated.pickedContentType = contentType
+                    updated.pickedFilename = "weight-\(angle.rawValue).\(ext)"
+                    updated.useExisting = false
+                    setSlot(updated, angle: angle)
+                    // Clear the picker item so the same photo can be
+                    // re-picked after a remove.
+                    clearPickerItem(angle: angle)
                 }
             } catch {
-                self.errorMessage = "Could not read the selected photo."
+                self.errorMessage = "Could not read the selected \(angle.rawValue) photo."
             }
         }
     }
 
-    /// Resets the user's photo selection. Clears the
-    /// picked bytes and (when editing) marks the existing
-    /// photo for deletion.
-    private func clearPhotoSelection() {
-        pickedPhotoData = nil
-        photoPickerItem = nil
-        if case .edit(let entry) = mode, entry.hasPhoto {
-            useExistingPhoto = false
+    /// Resets an angle slot. Clears picked bytes and (when editing)
+    /// marks the existing photo for deletion.
+    private func clearPhotoSelection(angle: WeightEntryDTO.PhotoAngle) {
+        var updated = slot(for: angle)
+        updated.pickedData = nil
+        updated.useExisting = false
+        setSlot(updated, angle: angle)
+        clearPickerItem(angle: angle)
+    }
+
+    private func setSlot(_ slot: PhotoSlot, angle: WeightEntryDTO.PhotoAngle) {
+        switch angle {
+        case .front: frontSlot = slot
+        case .side: sideSlot = slot
+        case .back: backSlot = slot
+        }
+    }
+
+    private func clearPickerItem(angle: WeightEntryDTO.PhotoAngle) {
+        switch angle {
+        case .front: frontPickerItem = nil
+        case .side: sidePickerItem = nil
+        case .back: backPickerItem = nil
         }
     }
 
     // MARK: - Save / Delete
 
-    /// Two-phase save: upload the photo (if any) first to
-    /// get the storage key, then POST / PUT the entry. Each
-    /// phase has its own spinner so the user can tell
-    /// which round-trip is in flight.
+    /// Multi-phase save: upload each picked photo first (namespaced
+    /// per angle) to get the storage keys, then POST / PUT the entry.
+    /// Each angle uploads sequentially so the spinner can name the
+    /// in-flight slot.
     private func save() async {
         errorMessage = nil
         guard let weight = parsedWeight, weight >= 0, weight <= 1000 else {
@@ -390,29 +424,35 @@ struct WeightEditorView: View {
             return
         }
 
-        var photoKey: String = ""
-        if let data = pickedPhotoData {
-            isUploadingPhoto = true
-            defer { isUploadingPhoto = false }
-            do {
-                photoKey = try await WeightPhotoUploader(api: api).upload(
-                    data: data,
-                    filename: pickedPhotoFilename,
-                    contentType: pickedPhotoContentType
-                )
-            } catch let error as APIError {
-                errorMessage = error.errorDescription
-                return
-            } catch {
-                errorMessage = "Photo upload failed."
-                return
+        var keys: [WeightEntryDTO.PhotoAngle: String] = [:]
+        for angle in WeightEntryDTO.PhotoAngle.allCases {
+            let current = slot(for: angle)
+            if let data = current.pickedData {
+                uploadingAngles.insert(angle)
+                do {
+                    keys[angle] = try await WeightPhotoUploader(api: api).upload(
+                        data: data,
+                        filename: current.pickedFilename,
+                        contentType: current.pickedContentType,
+                        angle: angle.rawValue
+                    )
+                } catch let error as APIError {
+                    uploadingAngles.remove(angle)
+                    errorMessage = error.errorDescription
+                    return
+                } catch {
+                    uploadingAngles.remove(angle)
+                    errorMessage = "\(angle.rawValue.capitalized) photo upload failed."
+                    return
+                }
+                uploadingAngles.remove(angle)
+            } else if case .edit(let entry) = mode, entry.hasPhoto(for: angle), current.useExisting {
+                keys[angle] = entry.photoKey(for: angle)
             }
-        } else if case .edit(let entry) = mode, entry.hasPhoto, useExistingPhoto {
-            photoKey = entry.photoKey
+            // Otherwise the key stays absent, which tells the server
+            // to clear that slot (when editing) or leave it empty
+            // (when creating).
         }
-        // Otherwise photoKey stays empty / cleared, which
-        // tells the server to remove the existing photo
-        // (when editing) or simply not set one (when creating).
 
         // Submit the picked date whenever the user has
         // nudged it off "today" — keeps the round-trip
@@ -422,26 +462,22 @@ struct WeightEditorView: View {
         let cal = Calendar.current
         let isToday = cal.isDateInToday(createdAt)
         let encodedCreatedAt: Date? = isToday ? nil : createdAt
-        let removePhoto: Bool
-        if case .edit(let entry) = mode {
-            removePhoto = entry.hasPhoto && !useExistingPhoto && pickedPhotoData == nil
-        } else {
-            removePhoto = false
-        }
 
         isSaving = true
         defer { isSaving = false }
 
         // `WeightStore` methods are non-throwing: they report
         // failure via a nil result / `errorMessage`, so no
-        // do/catch is needed here. (The photo upload above
-        // does throw and keeps its own do/catch.)
+        // do/catch is needed here. (The photo uploads above
+        // do throw and keep their own do/catch.)
         switch mode {
         case .create:
             let request = CreateWeightEntryRequest(
                 weight: weight,
                 notes: trimmedNotes,
-                photoKey: photoKey,
+                frontPhotoKey: keys[.front] ?? "",
+                sidePhotoKey: keys[.side] ?? "",
+                backPhotoKey: keys[.back] ?? "",
                 createdAt: encodedCreatedAt
             )
             let created = await store.create(request)
@@ -453,8 +489,12 @@ struct WeightEditorView: View {
             let request = UpdateWeightEntryRequest(
                 weight: weight,
                 notes: trimmedNotes,
-                photoKey: photoKey,
-                removePhoto: removePhoto,
+                frontPhotoKey: keys[.front] ?? "",
+                removeFrontPhoto: entry.hasPhoto(for: .front) && keys[.front] == nil,
+                sidePhotoKey: keys[.side] ?? "",
+                removeSidePhoto: entry.hasPhoto(for: .side) && keys[.side] == nil,
+                backPhotoKey: keys[.back] ?? "",
+                removeBackPhoto: entry.hasPhoto(for: .back) && keys[.back] == nil,
                 createdAt: encodedCreatedAt
             )
             await store.update(id: entry.id, request: request)
@@ -490,7 +530,9 @@ struct WeightEditorView: View {
         weightText = String(format: "%.1f", entry.weight)
         notes = entry.notes
         createdAt = entry.createdAt
-        useExistingPhoto = entry.hasPhoto
+        frontSlot.useExisting = entry.hasPhoto(for: .front)
+        sideSlot.useExisting = entry.hasPhoto(for: .side)
+        backSlot.useExisting = entry.hasPhoto(for: .back)
     }
 
     // MARK: - Computed dependencies
@@ -502,4 +544,20 @@ struct WeightEditorView: View {
     private var api: APIClient {
         env.api
     }
+}
+
+/// Per-angle photo slot state for the weight editor. A value type
+/// so each slot can live in its own `@State` without a view model.
+struct PhotoSlot: Equatable {
+    /// Which angle slot this state belongs to.
+    let angle: WeightEntryDTO.PhotoAngle
+    /// Freshly-picked bytes awaiting upload (nil = none).
+    var pickedData: Data?
+    /// MIME type inferred from the picked item.
+    var pickedContentType: String = "image/jpeg"
+    /// Filename sent with the presigned-URL request.
+    var pickedFilename: String = "photo.jpg"
+    /// Whether to keep the existing server-side photo in this
+    /// slot (edit mode default when the entry has one).
+    var useExisting: Bool = false
 }

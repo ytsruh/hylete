@@ -86,6 +86,51 @@ func TestMigrate_CreatesHealthSnapshotsTable(t *testing.T) {
 	}
 }
 
+// TestMigrate_WeightThreePhotoColumns boots a fresh local
+// database (running every embedded goose migration) and asserts
+// the weight_entries photo slots exist. Migration 00018 renames
+// photo_key to front_photo_key (all legacy photos are treated as
+// front-facing) and adds the side/back slots. This executes the
+// migration SQL itself — a syntax error there would otherwise
+// surface only at first boot.
+func TestMigrate_WeightThreePhotoColumns(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	database, err := NewLocalConnection(dbPath)
+	if err != nil {
+		t.Fatalf("NewLocalConnection: %v", err)
+	}
+	defer database.Close()
+
+	rows, err := database.Conn().Query(`PRAGMA table_info('weight_entries')`)
+	if err != nil {
+		t.Fatalf("PRAGMA table_info: %v", err)
+	}
+	defer rows.Close()
+	found := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			t.Fatalf("scan table_info: %v", err)
+		}
+		found[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("table_info rows: %v", err)
+	}
+	for _, want := range []string{"front_photo_key", "side_photo_key", "back_photo_key"} {
+		if !found[want] {
+			t.Errorf("weight_entries.%s column missing after migrate", want)
+		}
+	}
+	if found["photo_key"] {
+		t.Error("weight_entries.photo_key should have been renamed to front_photo_key")
+	}
+}
+
 // TestMigrate_AddsExerciseAliasesColumn boots a fresh local
 // database (running every embedded goose migration) and asserts
 // the exercises.aliases column exists. This executes the

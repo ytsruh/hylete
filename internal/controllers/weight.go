@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"sort"
+	"strings"
 	"time"
 
 	"hylete/internal/export"
@@ -33,13 +34,16 @@ func (wc *WeightController) ListWeightEntries(userID string) ([]models.WeightEnt
 }
 
 // CreateWeightEntry creates a new weight entry for the given user with the current timestamp.
-func (wc *WeightController) CreateWeightEntry(userID string, weight float64, notes string, photoKey string) (*models.WeightEntry, error) {
+// Each of the three photo keys is optional; pass "" for angles without a photo.
+func (wc *WeightController) CreateWeightEntry(userID string, weight float64, notes string, frontPhotoKey, sidePhotoKey, backPhotoKey string) (*models.WeightEntry, error) {
 	entry := &models.WeightEntry{
-		Weight:    weight,
-		Notes:     notes,
-		PhotoKey:  photoKey,
-		UserID:    userID,
-		CreatedAt: time.Now(),
+		Weight:        weight,
+		Notes:         notes,
+		FrontPhotoKey: frontPhotoKey,
+		SidePhotoKey:  sidePhotoKey,
+		BackPhotoKey:  backPhotoKey,
+		UserID:        userID,
+		CreatedAt:     time.Now(),
 	}
 	if err := wc.repo.Create(entry); err != nil {
 		return nil, err
@@ -54,12 +58,15 @@ func (wc *WeightController) GetWeightEntry(id, userID string) (*models.WeightEnt
 
 // GetWeightEntriesForCompare fetches two weight entries by ID for the
 // image-comparison feature. Both must belong to the given user and both
-// must have an associated photo. Returned slice is sorted by created_at
-// ascending so callers can treat [0] as "before" and [1] as "after".
-// Returns an error when the pair is incomplete, the entries are
-// missing, or either entry lacks a photo — these are presented to the
-// user as a toast, not as a 500.
-func (wc *WeightController) GetWeightEntriesForCompare(idA, idB, userID string) ([]models.WeightEntry, error) {
+// must have a photo in the requested angle slot. Returned slice is sorted
+// by created_at ascending so callers can treat [0] as "before" and [1]
+// as "after". Returns an error when the pair is incomplete, the entries
+// are missing, or either entry lacks that angle's photo — these are
+// presented to the user inline, not as a 500.
+func (wc *WeightController) GetWeightEntriesForCompare(idA, idB, userID string, angle models.WeightPhotoAngle) ([]models.WeightEntry, error) {
+	if !angle.IsValid() {
+		return nil, fmt.Errorf("unknown photo angle %q", string(angle))
+	}
 	if idA == "" || idB == "" || idA == idB {
 		return nil, fmt.Errorf("please choose two different weight entries to compare")
 	}
@@ -70,26 +77,37 @@ func (wc *WeightController) GetWeightEntriesForCompare(idA, idB, userID string) 
 	if len(entries) < 2 {
 		return nil, fmt.Errorf("could not find both weight entries")
 	}
-	for _, e := range entries {
-		if !e.HasPhoto() {
-			return nil, fmt.Errorf("both entries must have a photo to be compared")
-		}
-	}
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].CreatedAt.Before(entries[j].CreatedAt)
 	})
+	for _, e := range entries {
+		if !e.HasPhotoForAngle(angle) {
+			shared := models.SharedWeightPhotoAngles(&entries[0], &entries[1])
+			if len(shared) == 0 {
+				return nil, fmt.Errorf("these entries share no photo angle to compare")
+			}
+			names := make([]string, 0, len(shared))
+			for _, a := range shared {
+				names = append(names, string(a))
+			}
+			return nil, fmt.Errorf("one entry has no %s photo — both entries share: %s", string(angle), strings.Join(names, ", "))
+		}
+	}
 	return entries, nil
 }
 
 // UpdateWeightEntry updates an existing weight entry including its timestamp.
-func (wc *WeightController) UpdateWeightEntry(id, userID string, weight float64, notes string, photoKey string, createdAt time.Time) (*models.WeightEntry, error) {
+// Each photo key is set verbatim; pass "" to clear a slot.
+func (wc *WeightController) UpdateWeightEntry(id, userID string, weight float64, notes string, frontPhotoKey, sidePhotoKey, backPhotoKey string, createdAt time.Time) (*models.WeightEntry, error) {
 	entry := &models.WeightEntry{
-		ID:        id,
-		Weight:    weight,
-		Notes:     notes,
-		PhotoKey:  photoKey,
-		UserID:    userID,
-		CreatedAt: createdAt,
+		ID:            id,
+		Weight:        weight,
+		Notes:         notes,
+		FrontPhotoKey: frontPhotoKey,
+		SidePhotoKey:  sidePhotoKey,
+		BackPhotoKey:  backPhotoKey,
+		UserID:        userID,
+		CreatedAt:     createdAt,
 	}
 	if err := wc.repo.Update(entry, userID); err != nil {
 		return nil, err
@@ -98,16 +116,18 @@ func (wc *WeightController) UpdateWeightEntry(id, userID string, weight float64,
 }
 
 // DeleteWeightEntry removes a weight entry by ID, scoped to the user.
-// If the entry had an associated photo in R2, it is deleted best-effort
-// (errors are logged but do not block the DB delete).
+// Associated photos in R2 are deleted best-effort across all three
+// angle slots (errors are logged but do not block the DB delete).
 func (wc *WeightController) DeleteWeightEntry(id, userID string) error {
 	existing, err := wc.repo.GetByID(id, userID)
 	if err != nil {
 		return err
 	}
-	if existing != nil && existing.HasPhoto() {
-		if delErr := utils.DeleteObject(existing.PhotoKey); delErr != nil {
-			log.Printf("warning: failed to delete weight photo %q from R2: %v", existing.PhotoKey, delErr)
+	if existing != nil {
+		for _, key := range existing.PhotoKeys() {
+			if delErr := utils.DeleteObject(key); delErr != nil {
+				log.Printf("warning: failed to delete weight photo %q from R2: %v", key, delErr)
+			}
 		}
 	}
 	return wc.repo.Delete(id, userID)

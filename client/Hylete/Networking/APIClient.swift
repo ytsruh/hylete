@@ -286,9 +286,12 @@ public final class APIClient: @unchecked Sendable {
 
     /// Fetches two photo-bearing weight entries for the native
     /// comparison view. The server orders them chronologically
-    /// and supplies the display-ready photo URLs.
-    public func compareWeightEntries(a: String, b: String) async throws -> WeightCompareResponse {
-        try await send("GET", "weight/compare?a=\(a)&b=\(b)")
+    /// and supplies the display-ready photo URLs. `angle` is
+    /// one of front/side/back (defaults to front); both entries
+    /// must have a photo in that slot or the server returns a
+    /// 400 naming the angles they do share.
+    public func compareWeightEntries(a: String, b: String, angle: String = "front") async throws -> WeightCompareResponse {
+        try await send("GET", "weight/compare?a=\(a)&b=\(b)&angle=\(angle)")
     }
 
     /// Creates a new weight entry. `createdAt` is optional
@@ -310,13 +313,13 @@ public final class APIClient: @unchecked Sendable {
         try await send("GET", "weight/\(id)")
     }
 
-    /// Updates an existing weight entry. The photo-handling
-    /// precedence mirrors the HTML form: `removePhoto = true`
-    /// clears the photo, a non-empty `photoKey` replaces the
-    /// existing key, and otherwise the existing key is
-    /// preserved. `createdAt` is optional — when omitted the
-    /// server keeps the existing timestamp so the "edit a
-    /// recent entry" flow doesn't accidentally reset it.
+    /// Updates an existing weight entry. Photo handling is per
+    /// angle slot: `remove*Photo = true` clears that slot, a
+    /// non-empty `*PhotoKey` replaces the existing key, and
+    /// otherwise the existing key is preserved. `createdAt` is
+    /// optional — when omitted the server keeps the existing
+    /// timestamp so the "edit a recent entry" flow doesn't
+    /// accidentally reset it.
     public func updateWeightEntry(id: String, request: UpdateWeightEntryRequest) async throws -> WeightEntryDTO {
         try await send("PUT", "weight/\(id)", body: request)
     }
@@ -334,11 +337,14 @@ public final class APIClient: @unchecked Sendable {
     /// client can upload a photo file directly to R2 without
     /// proxying the bytes through the Go server. The
     /// returned `key` is what the iOS view submits back to
-    /// the create or update form as `photoKey`.
-    public func requestWeightPhotoUploadURL(filename: String, contentType: String) async throws -> WeightPhotoUploadResponse {
+    /// the create or update form as the angle's photo key.
+    /// `angle` optionally namespaces the storage key
+    /// (front/side/back).
+    public func requestWeightPhotoUploadURL(filename: String, contentType: String, angle: String? = nil) async throws -> WeightPhotoUploadResponse {
         try await send("POST", "weight/photo-upload", body: WeightPhotoUploadRequest(
             filename: filename,
-            contentType: contentType
+            contentType: contentType,
+            angle: angle
         ))
     }
 

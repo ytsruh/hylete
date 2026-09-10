@@ -684,6 +684,7 @@ func (h *Handler) APIListWeightEntries(c echo.Context) error {
 	claims := GetClaims(c)
 	entries, err := h.weightCtrl.ListWeightEntries(claims.UserID)
 	if err != nil {
+		c.Logger().Errorf("APIListWeightEntries user=%s: %v", claims.UserID, err)
 		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to load weight entries"})
 	}
 	return c.JSON(http.StatusOK, WeightEntriesResponse{Entries: WeightEntriesFromModels(entries)})
@@ -711,7 +712,7 @@ func (h *Handler) APICreateWeightEntry(c echo.Context) error {
 		createdAt = *in.CreatedAt
 	}
 
-	created, err := h.weightCtrl.CreateWeightEntry(claims.UserID, in.Weight, in.Notes, in.PhotoKey)
+	created, err := h.weightCtrl.CreateWeightEntry(claims.UserID, in.Weight, in.Notes, in.FrontPhotoKey, in.SidePhotoKey, in.BackPhotoKey)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to create weight entry"})
 	}
@@ -721,7 +722,7 @@ func (h *Handler) APICreateWeightEntry(c echo.Context) error {
 	// accept a createdAt argument, so we re-update in place
 	// when it differs from the server default.
 	if !createdAt.Equal(created.CreatedAt) {
-		updated, err := h.weightCtrl.UpdateWeightEntry(created.ID, claims.UserID, in.Weight, in.Notes, in.PhotoKey, createdAt)
+		updated, err := h.weightCtrl.UpdateWeightEntry(created.ID, claims.UserID, in.Weight, in.Notes, in.FrontPhotoKey, in.SidePhotoKey, in.BackPhotoKey, createdAt)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to backdate weight entry"})
 		}
@@ -748,11 +749,10 @@ func (h *Handler) APIGetWeightEntry(c echo.Context) error {
 	return c.JSON(http.StatusOK, WeightEntryFromModel(*entry))
 }
 
-// APIUpdateWeightEntry handles PUT /api/v1/weight/:id. Mirrors
-// the existing HTML PUT handler's photo-handling precedence:
-//   - remove_photo=true clears the photo_key (and best-effort
-//     deletes the underlying R2 object)
-//   - non-empty photo_key replaces the existing key
+// APIUpdateWeightEntry handles PUT /api/v1/weight/:id. Photo handling
+// is per angle slot:
+//   - remove_<angle>_photo=true clears that slot (the key is ignored)
+//   - non-empty <angle>_photo_key replaces the existing key
 //   - otherwise the existing key is preserved
 //
 // CreatedAt is optional; when omitted, the existing timestamp
@@ -778,14 +778,26 @@ func (h *Handler) APIUpdateWeightEntry(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, APIError{Error: "weight entry not found"})
 	}
 
-	// Resolve the final photo state following the same
-	// precedence the HTML PUT handler applies (see
-	// internal/routes/weight.go:157-169).
-	photoKey := existing.PhotoKey
-	if in.RemovePhoto {
-		photoKey = ""
-	} else if in.PhotoKey != "" {
-		photoKey = in.PhotoKey
+	// Resolve the final photo state per angle slot: a remove flag
+	// clears the slot, a non-empty key replaces it, otherwise the
+	// existing key is preserved.
+	frontPhotoKey := existing.FrontPhotoKey
+	if in.RemoveFrontPhoto {
+		frontPhotoKey = ""
+	} else if in.FrontPhotoKey != "" {
+		frontPhotoKey = in.FrontPhotoKey
+	}
+	sidePhotoKey := existing.SidePhotoKey
+	if in.RemoveSidePhoto {
+		sidePhotoKey = ""
+	} else if in.SidePhotoKey != "" {
+		sidePhotoKey = in.SidePhotoKey
+	}
+	backPhotoKey := existing.BackPhotoKey
+	if in.RemoveBackPhoto {
+		backPhotoKey = ""
+	} else if in.BackPhotoKey != "" {
+		backPhotoKey = in.BackPhotoKey
 	}
 
 	createdAt := existing.CreatedAt
@@ -793,7 +805,7 @@ func (h *Handler) APIUpdateWeightEntry(c echo.Context) error {
 		createdAt = *in.CreatedAt
 	}
 
-	updated, err := h.weightCtrl.UpdateWeightEntry(id, claims.UserID, in.Weight, in.Notes, photoKey, createdAt)
+	updated, err := h.weightCtrl.UpdateWeightEntry(id, claims.UserID, in.Weight, in.Notes, frontPhotoKey, sidePhotoKey, backPhotoKey, createdAt)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to update weight entry"})
 	}
@@ -815,19 +827,27 @@ func (h *Handler) APIDeleteWeightEntry(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-// APICompareWeight handles GET /api/v1/weight/compare?a=<id1>&b=<id2>.
+// APICompareWeight handles GET /api/v1/weight/compare?a=<id1>&b=<id2>&angle=<angle>.
 // Validates the pair (both must exist, both must belong to the
-// user, both must have a photo) and returns the sorted
-// (before, after) pair plus the formatted delta string. The
+// user, both must have a photo in the requested angle slot) and
+// returns the sorted (before, after) pair plus the compared angle
+// and the formatted delta string. Angle defaults to "front" when
+// omitted so older clients keep comparing front photos. The
 // controller's `GetWeightEntriesForCompare` returns a
 // human-readable error for the failure modes so the iOS view
-// can surface it inline.
+// can surface it inline (including which angles both entries do
+// share when the requested one is missing).
 func (h *Handler) APICompareWeight(c echo.Context) error {
 	idA := c.QueryParam("a")
 	idB := c.QueryParam("b")
 
+	angle, ok := models.ParseWeightPhotoAngle(c.QueryParam("angle"))
+	if !ok {
+		return c.JSON(http.StatusBadRequest, APIError{Error: "angle must be one of front, side, back"})
+	}
+
 	claims := GetClaims(c)
-	entries, err := h.weightCtrl.GetWeightEntriesForCompare(idA, idB, claims.UserID)
+	entries, err := h.weightCtrl.GetWeightEntriesForCompare(idA, idB, claims.UserID, angle)
 	if err != nil {
 		// 400 — the request is well-formed but the pair is
 		// not suitable for comparison (missing id, missing
@@ -853,6 +873,7 @@ func (h *Handler) APICompareWeight(c echo.Context) error {
 	return c.JSON(http.StatusOK, WeightCompareResponse{
 		Before:    WeightEntryFromModel(before),
 		After:     WeightEntryFromModel(after),
+		Angle:     string(angle),
 		DeltaText: formatWeightDelta(delta, unit),
 	})
 }
