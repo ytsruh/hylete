@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The "Profile" tab. Shows the signed-in user's basic info
+/// The "Profile" screen, pushed from the "More" hub. Shows the signed-in user's basic info
 /// and a sign-out button. Tapping the name, weight unit,
 /// target weight, or weight-reminders row opens a per-field
 /// editor as a sheet that PUTs the change and refreshes
@@ -85,9 +85,13 @@ struct ProfileView: View {
     @State private var coachStore: CoachStore?
     @State private var showingCoachSheet: Bool = false
 
+    /// Stack-less content: the owning tab's `NavigationStack`
+    /// (see `MainTabView`) provides the single stack. Sheet
+    /// editors below keep their own stacks — sheets present
+    /// outside the tab hierarchy, so those are correct and
+    /// must stay. Never re-add a stack around this `List`.
     var body: some View {
-        NavigationStack {
-            List {
+        List {
                 if let user = authStore.currentUser {
                     headerSection(user: user)
                     aboutSection(user: user)
@@ -265,7 +269,6 @@ struct ProfileView: View {
                     .presentationDetents([.large])
                 }
             }
-        }
     }
 
     // MARK: - Sections
@@ -539,7 +542,9 @@ struct ProfileView: View {
 }
 
 #Preview {
-    ProfileView()
+    NavigationStack {
+        ProfileView()
+    }
         .environmentObject(AppEnvironment.live(baseURL: URL(string: "http://localhost:8080/api/v1")!))
         .environmentObject(AuthStore(api: APIClient(
             baseURL: URL(string: "http://localhost:8080/api/v1")!,

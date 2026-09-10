@@ -60,26 +60,29 @@ struct SplashView: View {
     }
 }
 
-/// The main app shell — five tabs: dashboard, exercises,
-/// weight, goals, and profile. The "new set" flow is a
-/// sheet from the dashboard's toolbar so it's always one
-/// tap away.
+/// The main app shell — five fixed tabs: dashboard,
+/// exercises, weight, goals, and more. The count NEVER
+/// exceeds five: iOS collapses tab 6+ into an auto-generated
+/// system `More` list, whose own navigation controller stacked
+/// on top of each tab's `NavigationStack` and produced the
+/// double nav-bar + stray back-button bug. `Profile`, `Coach`,
+/// and `Health` live as rows inside the `More` hub instead —
+/// new destinations scale there, never as new tabs.
 ///
-/// `GoalStore` and `WeightStore` are constructed once here
-/// (instead of inside their respective list views) so they
-/// outlive view rebuilds and can be shared with the
-/// editor — both views observe the same store, so a save
-/// in the editor updates the list immediately.
+/// Each tab owns exactly one `NavigationStack`: `Dashboard`
+/// brings its own (it needs a `path` binding), the other four
+/// are wrapped here. Tab content itself is stack-less by
+/// convention — never add a `NavigationStack` inside a pushed
+/// destination. Sheets present outside the tab hierarchy, so
+/// sheet editors keep their own stacks.
+///
+/// `GoalStore`, `WeightStore`, and `CoachStore` are constructed
+/// once here (instead of inside their respective views) so they
+/// outlive view rebuilds and can be shared with editors and
+/// the More hub — every observer sees the same store, so a
+/// save updates all rows immediately.
 struct MainTabView: View {
     @EnvironmentObject private var env: AppEnvironment
-
-    /// Master beta opt-in (mirrors `ProfileView`'s toggle).
-    /// Read here so the Health tab itself is only *present*
-    /// when opted in — wrapping a `tabItem` in `BetaFeature`
-    /// would still leave an empty tab, so the tab is gated by
-    /// this flag AND its content is wrapped in `BetaFeature`
-    /// for defense-in-depth.
-    @AppStorage("betaFeaturesEnabled") private var betaFeaturesEnabled: Bool = false
 
     @StateObject private var goalStore: GoalStore
     @StateObject private var weightStore: WeightStore
@@ -102,38 +105,30 @@ struct MainTabView: View {
 
     var body: some View {
         TabView {
+            // Dashboard owns its stack (path-bound for
+            // exercise-history pushes) — do NOT wrap it.
             DashboardView(distanceUnit: env.authStore.currentUser?.distanceUnit ?? "km")
                 .tabItem { Label("Dashboard", systemImage: "house") }
 
-            ExerciseListView()
-                .tabItem { Label("Exercises", systemImage: "dumbbell") }
-
-            WeightListView(store: weightStore)
-                .tabItem { Label("Weight", systemImage: Icons.weight) }
-
-            GoalsListView(store: goalStore)
-                .tabItem { Label("Goals", systemImage: Icons.goals) }
-
-            if betaFeaturesEnabled {
-                BetaFeature {
-                    CoachView(store: coachStore)
-                }
-                .tabItem { Label("Coach", systemImage: "sparkles") }
+            NavigationStack {
+                ExerciseListView()
             }
+            .tabItem { Label("Exercises", systemImage: "dumbbell") }
 
-            if betaFeaturesEnabled {
-                BetaFeature {
-                    HealthView(
-                        weightUnit: env.authStore.currentUser?.weightUnit ?? "kg",
-                        distanceUnit: env.authStore.currentUser?.distanceUnit ?? "km",
-                        api: env.api
-                    )
-                }
-                .tabItem { Label("Health", systemImage: "heart.text.square") }
+            NavigationStack {
+                WeightListView(store: weightStore)
             }
+            .tabItem { Label("Weight", systemImage: Icons.weight) }
 
-            ProfileView()
-                .tabItem { Label("Profile", systemImage: "person.crop.circle") }
+            NavigationStack {
+                GoalsListView(store: goalStore)
+            }
+            .tabItem { Label("Goals", systemImage: Icons.goals) }
+
+            NavigationStack {
+                MoreView(coachStore: coachStore)
+            }
+            .tabItem { Label("More", systemImage: Icons.more) }
         }
         .onAppear {
             // The stores need the real `APIClient` (which

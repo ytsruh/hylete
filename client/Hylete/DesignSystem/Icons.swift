@@ -20,6 +20,12 @@ public enum Icons {
     /// app's iconography.
     public static let weight    = "figure.stand"
     public static let profile   = "person.crop.circle"
+    /// "More" hub tab — the explicit replacement for the old
+    /// auto-generated system `More` tab. New destinations are
+    /// added as rows inside `MoreView`, never as new tabs, so
+    /// the tab bar stays at five and the double nav-bar bug
+    /// cannot return.
+    public static let more      = "ellipsis.circle"
 
     // MARK: - Dashboard
 

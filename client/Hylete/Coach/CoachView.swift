@@ -15,14 +15,12 @@ public struct CoachView: View {
         self.store = store
     }
 
+    /// Stack-less content: the Menu hub's `NavigationStack`
+    /// provides the single stack. Never wrap this view in its
+    /// own stack — nested stacks produce the double nav-bar /
+    /// back-button bug the tab redesign fixed.
     public var body: some View {
-        // The stack lives here (not at the tab site) so there is
-        // exactly one in the hierarchy — every other tab
-        // (Goals, Weight, Health) owns its NavigationStack the
-        // same way. A second, outer stack would stack back
-        // buttons on the detail screen.
-        NavigationStack {
-            Group {
+        Group {
                 if store.preferences == nil {
                     // First load hasn't completed: never flash the
                     // opted-out screen (nil prefs read as opted-out).
@@ -72,7 +70,6 @@ public struct CoachView: View {
             .task {
                 await store.load()
             }
-        }
     }
 
     // MARK: - Card list

@@ -29,25 +29,27 @@ public struct HealthView: View {
         self.api = api
     }
 
+    /// Stack-less content: the Menu hub's `NavigationStack`
+    /// provides the single stack. Never wrap this view in its
+    /// own stack — nested stacks produce the double nav-bar /
+    /// back-button bug the tab redesign fixed.
     public var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Health")
-                .task {
-                    if viewModel.status == .loading {
-                        await viewModel.refresh()
-                    }
-                    // Opportunistic catch-up: uploads any past
-                    // days missing server confirmation (no-op
-                    // unless sync consent is on). Closed-app
-                    // time just means delayed uploads — HealthKit
-                    // keeps recording regardless.
-                    await syncStore.syncIfNeeded(api: api)
-                }
-                .refreshable {
+        content
+            .navigationTitle("Health")
+            .task {
+                if viewModel.status == .loading {
                     await viewModel.refresh()
                 }
-        }
+                // Opportunistic catch-up: uploads any past
+                // days missing server confirmation (no-op
+                // unless sync consent is on). Closed-app
+                // time just means delayed uploads — HealthKit
+                // keeps recording regardless.
+                await syncStore.syncIfNeeded(api: api)
+            }
+            .refreshable {
+                await viewModel.refresh()
+            }
     }
 
     @ViewBuilder
@@ -198,22 +200,26 @@ public struct HealthView: View {
 }
 
 #Preview("Loaded") {
-    HealthView(
-        provider: MockHealthStore(readings: [
-            .steps: HealthSample(value: 8_432, date: Date()),
-            .heartRate: HealthSample(value: 72, date: Date()),
-            .weight: HealthSample(value: 82.4, date: Date()),
-            .sleep: HealthSample(value: 7.2, date: Date()),
-        ]),
-        weightUnit: "kg",
-        distanceUnit: "km",
-        api: MockSnapshotAPI()
-    )
+    NavigationStack {
+        HealthView(
+            provider: MockHealthStore(readings: [
+                .steps: HealthSample(value: 8_432, date: Date()),
+                .heartRate: HealthSample(value: 72, date: Date()),
+                .weight: HealthSample(value: 82.4, date: Date()),
+                .sleep: HealthSample(value: 7.2, date: Date()),
+            ]),
+            weightUnit: "kg",
+            distanceUnit: "km",
+            api: MockSnapshotAPI()
+        )
+    }
 }
 
 #Preview("Connect") {
-    HealthView(
-        provider: MockHealthStore(status: .notRequested),
-        api: MockSnapshotAPI()
-    )
+    NavigationStack {
+        HealthView(
+            provider: MockHealthStore(status: .notRequested),
+            api: MockSnapshotAPI()
+        )
+    }
 }

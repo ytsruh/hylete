@@ -26,27 +26,29 @@ struct GoalsListView: View {
     @State private var completedExpanded: Bool = false
     @State private var completionCelebrationTrigger: Int = 0
 
+    /// Stack-less content: the Menu hub's `NavigationStack`
+    /// provides the single stack. Never wrap this view in its
+    /// own stack — nested stacks produce the double nav-bar /
+    /// back-button bug the tab redesign fixed.
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Goals")
-                .toolbar { toolbarContent }
-                .sheet(isPresented: $showingNewGoal) {
-                    GoalEditorView(mode: .create, store: store)
-                        .environmentObject(env)
-                }
-                .sheet(item: $editingGoal) { goal in
-                    GoalEditorView(mode: .edit(goal), store: store)
-                        .environmentObject(env)
-                }
-        }
-        .overlay {
-            GoalCompletionCelebration(trigger: completionCelebrationTrigger)
-                .allowsHitTesting(false)
-                .ignoresSafeArea()
-        }
-        .task { await store.load() }
-        .refreshable { await store.load() }
+        content
+            .navigationTitle("Goals")
+            .toolbar { toolbarContent }
+            .sheet(isPresented: $showingNewGoal) {
+                GoalEditorView(mode: .create, store: store)
+                    .environmentObject(env)
+            }
+            .sheet(item: $editingGoal) { goal in
+                GoalEditorView(mode: .edit(goal), store: store)
+                    .environmentObject(env)
+            }
+            .overlay {
+                GoalCompletionCelebration(trigger: completionCelebrationTrigger)
+                    .allowsHitTesting(false)
+                    .ignoresSafeArea()
+            }
+            .task { await store.load() }
+            .refreshable { await store.load() }
     }
 
     // MARK: - Toolbar
@@ -260,10 +262,12 @@ struct GoalsListView: View {
 }
 
 #Preview {
-    GoalsListView(store: GoalStore(api: APIClient(
-        baseURL: URL(string: "http://localhost:8080/api/v1")!,
-        tokenProvider: { nil }
-    )))
+    NavigationStack {
+        GoalsListView(store: GoalStore(api: APIClient(
+            baseURL: URL(string: "http://localhost:8080/api/v1")!,
+            tokenProvider: { nil }
+        )))
+    }
     .environmentObject(AppEnvironment.live(baseURL: URL(string: "http://localhost:8080/api/v1")!))
     .environmentObject(AuthStore(api: APIClient(
         baseURL: URL(string: "http://localhost:8080/api/v1")!,

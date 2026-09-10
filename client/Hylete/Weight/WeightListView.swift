@@ -65,36 +65,38 @@ struct WeightListView: View {
         return min(max(pct, 0), 100)
     }
 
+    /// Stack-less content: the owning tab (or the Menu hub's
+    /// stack) provides the single `NavigationStack`. Never wrap
+    /// this view in its own stack — nested stacks produce the
+    /// double nav-bar / back-button bug the tab redesign fixed.
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Weight")
-                .toolbar { toolbarContent }
-                .sheet(isPresented: $showingNewWeight, onDismiss: {
-                    Task { await store.load() }
-                }) {
-                    WeightEditorView(mode: .create, store: store)
-                        .environmentObject(env)
-                        .environmentObject(authStore)
+        content
+            .navigationTitle("Weight")
+            .toolbar { toolbarContent }
+            .sheet(isPresented: $showingNewWeight, onDismiss: {
+                Task { await store.load() }
+            }) {
+                WeightEditorView(mode: .create, store: store)
+                    .environmentObject(env)
+                    .environmentObject(authStore)
+            }
+            .sheet(item: $editingEntry, onDismiss: {
+                Task { await store.load() }
+            }) { entry in
+                WeightEditorView(mode: .edit(entry), store: store)
+                    .environmentObject(env)
+                    .environmentObject(authStore)
+            }
+            .sheet(isPresented: $showingComparison) {
+                if let comparison {
+                    WeightComparisonView(
+                        comparison: comparison,
+                        weightUnit: weightUnit
+                    )
                 }
-                .sheet(item: $editingEntry, onDismiss: {
-                    Task { await store.load() }
-                }) { entry in
-                    WeightEditorView(mode: .edit(entry), store: store)
-                        .environmentObject(env)
-                        .environmentObject(authStore)
-                }
-                .sheet(isPresented: $showingComparison) {
-                    if let comparison {
-                        WeightComparisonView(
-                            comparison: comparison,
-                            weightUnit: weightUnit
-                        )
-                    }
-                }
-        }
-        .task { await store.load() }
-        .refreshable { await store.load() }
+            }
+            .task { await store.load() }
+            .refreshable { await store.load() }
     }
 
     // MARK: - Toolbar

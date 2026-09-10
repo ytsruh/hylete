@@ -17,14 +17,19 @@ struct ExerciseListView: View {
     @State private var search: String = ""
     @State private var typeFilter: ExerciseTypeFilter = .all
 
+    /// Stack-less content: the owning tab (or the Menu hub's
+    /// stack) provides the single `NavigationStack`. Never wrap
+    /// this view in its own stack — nested stacks produce the
+    /// double nav-bar / back-button bug the tab redesign fixed.
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Exercises")
-                .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search exercises")
-        }
-        .task { await load() }
-        .refreshable { await load() }
+        content
+            .navigationTitle("Exercises")
+            .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search exercises")
+            .navigationDestination(for: ExerciseDTO.self) { exercise in
+                ExerciseHistoryView(exercise: exercise)
+            }
+            .task { await load() }
+            .refreshable { await load() }
     }
 
     @ViewBuilder
@@ -61,9 +66,6 @@ struct ExerciseListView: View {
                 }
                 .listStyle(.insetGrouped)
                 .listRowSeparator(.hidden)
-            }
-            .navigationDestination(for: ExerciseDTO.self) { exercise in
-                ExerciseHistoryView(exercise: exercise)
             }
         }
     }
@@ -235,7 +237,9 @@ private extension String {
 }
 
 #Preview {
-    ExerciseListView()
+    NavigationStack {
+        ExerciseListView()
+    }
         .environmentObject(AppEnvironment.live(baseURL: URL(string: "http://localhost:8080/api/v1")!))
         .environmentObject(AuthStore(api: APIClient(
             baseURL: URL(string: "http://localhost:8080/api/v1")!,

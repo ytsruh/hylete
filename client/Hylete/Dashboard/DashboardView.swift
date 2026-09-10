@@ -1,6 +1,8 @@
 import SwiftUI
 
-/// The "Today" tab. The layout mirrors the web dashboard:
+/// The "Today" tab. Its internal `NavigationStack(path:)` IS the tab's
+/// single stack (see `MainTabView` — do NOT wrap this view in another
+/// one). The layout mirrors the web dashboard:
 /// action cards at the top, a "Last 7 Days" stats row, the
 /// "Most Popular Exercises (7d)" donut, and a week calendar
 /// whose selected day lists that day's sets. Tapping a set row

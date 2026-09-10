@@ -83,8 +83,23 @@ the work. The only times you need to open Xcode are:
 - `Networking/` — `APIClient` (URLSession + async/await), Codable DTOs,
   `AuthStore` (token in Keychain), error types
 - `DesignSystem/` — colors, spacing, button styles
-- `Auth/`, `Dashboard/`, `NewSet/`, `Exercises/`, `Profile/` — one
-  folder per feature, each with its own views
+- `Auth/`, `Dashboard/`, `NewSet/`, `Exercises/`, `Profile/`,
+  `Menu/` — one folder per feature, each with its own views
+
+## Navigation (do not regress)
+
+- Five fixed tabs: `Dashboard`, `Exercises`, `Weight`, `Goals`,
+  `More` (`MainTabView` in `App/HyleteApp.swift`). Never add a sixth
+  tab — iOS collapses 6+ into a system `More` list whose own nav
+  controller stacks on each tab's `NavigationStack` (double nav-bar
+  + stray back button).
+- One `NavigationStack` per tab, owned by `MainTabView` (`Dashboard`
+  brings its own path-bound stack; the rest are wrapped there). Tab
+  content and pushed destinations are stack-less; sheets keep their
+  own stacks (they present outside the tab hierarchy).
+- New destinations scale as rows in `More/MoreView.swift` (gate with
+  `BetaFeature` while experimental), never as tabs. `Profile` lives
+  there today as an account card alongside the `Insights` section.
 
 No third-party Swift packages. No CocoaPods. Just the system SDK.
 
