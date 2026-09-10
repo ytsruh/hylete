@@ -48,6 +48,7 @@ type mockRepository struct {
 	errGetExerciseEntriesByDateRange        error
 	errGetExerciseByID              error
 	errGetMaxWeightByExercise       error
+	errGetMaxSetVolumeByExercise    error
 	errGetBestPaceByExercise        error
 	errGetLongestDistanceByExercise error
 	errGetLastSetByExercise         error
@@ -310,6 +311,23 @@ func (m *mockRepository) GetMaxWeightByExercise(exerciseID string, userID string
 	for _, e := range m.exerciseEntries {
 		if e.ExerciseID == exerciseID && e.UserID == userID && e.Weight > max {
 			max = e.Weight
+		}
+	}
+	return max, nil
+}
+
+func (m *mockRepository) GetMaxSetVolumeByExercise(exerciseID string, userID string) (float64, error) {
+	if m.errGetMaxSetVolumeByExercise != nil {
+		return 0, m.errGetMaxSetVolumeByExercise
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var max float64
+	for _, e := range m.exerciseEntries {
+		if e.ExerciseID == exerciseID && e.UserID == userID {
+			if v := float64(e.Reps) * e.Weight; v > max {
+				max = v
+			}
 		}
 	}
 	return max, nil

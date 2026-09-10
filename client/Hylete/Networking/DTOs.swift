@@ -598,6 +598,10 @@ public struct UpdateExerciseEntryRequest: Encodable {
 
 public struct HistoryStatsDTO: Codable, Equatable {
     public let maxWeight: Double
+    /// Best single-set volume (reps * weight) ever recorded for the
+    /// exercise, in the user's weight unit. 0 when no exercise entries
+    /// exist. Strength only — cardio clients ignore it.
+    public let bestSetVolume: Double
     /// Fastest pace ever recorded for the exercise, in seconds per
     /// kilometre. 0 when no entry has both a duration and a distance.
     public let bestPaceSecPerKm: Double
@@ -606,9 +610,36 @@ public struct HistoryStatsDTO: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case maxWeight = "max_weight"
+        case bestSetVolume = "best_set_volume"
         case bestPaceSecPerKm = "best_pace_sec_per_km"
         case longestDistanceMeters = "longest_distance_meters"
         case lastSet = "last_set"
+    }
+
+    public init(
+        maxWeight: Double,
+        bestSetVolume: Double = 0,
+        bestPaceSecPerKm: Double,
+        longestDistanceMeters: Double,
+        lastSet: ExerciseEntryDTO?
+    ) {
+        self.maxWeight = maxWeight
+        self.bestSetVolume = bestSetVolume
+        self.bestPaceSecPerKm = bestPaceSecPerKm
+        self.longestDistanceMeters = longestDistanceMeters
+        self.lastSet = lastSet
+    }
+
+    /// Custom decoder. `best_set_volume` is omitted by older server
+    /// builds, so a missing key maps to 0 rather than failing the
+    /// decode — the card renders "—" in that case.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        maxWeight = try container.decode(Double.self, forKey: .maxWeight)
+        bestSetVolume = try container.decodeIfPresent(Double.self, forKey: .bestSetVolume) ?? 0
+        bestPaceSecPerKm = try container.decode(Double.self, forKey: .bestPaceSecPerKm)
+        longestDistanceMeters = try container.decode(Double.self, forKey: .longestDistanceMeters)
+        lastSet = try container.decodeIfPresent(ExerciseEntryDTO.self, forKey: .lastSet)
     }
 }
 

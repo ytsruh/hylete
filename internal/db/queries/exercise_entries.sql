@@ -57,6 +57,12 @@ LIMIT ? OFFSET ?;
 SELECT CAST(COALESCE(MAX(weight), 0) AS REAL) FROM exercise_entries
 WHERE exercise_id = ? AND user_id = ?;
 
+-- name: GetMaxSetVolumeByExercise :one
+-- Best single-set volume (reps * weight) logged for a strength exercise.
+-- Returns 0 when no exercise entries exist.
+SELECT CAST(COALESCE(MAX(reps * weight), 0) AS REAL) FROM exercise_entries
+WHERE exercise_id = ? AND user_id = ?;
+
 -- name: GetBestPaceByExercise :one
 -- Fastest pace in seconds per kilometre across a user's cardio exercise entries
 -- (duration divided by distance). Entries without distance are excluded;

@@ -942,6 +942,10 @@ func TestAPIGetExerciseHistory(t *testing.T) {
 	if page.Stats.MaxWeight != 110 {
 		t.Fatalf("max weight = %.1f, want 110", page.Stats.MaxWeight)
 	}
+	// Best single-set volume: 5x110=550 beats 5x100=500.
+	if page.Stats.BestSetVolume != 550 {
+		t.Fatalf("best set volume = %.1f, want 550", page.Stats.BestSetVolume)
+	}
 	if page.Page != 1 {
 		t.Fatalf("page = %d, want 1", page.Page)
 	}

@@ -54,6 +54,11 @@ type Repository interface {
 	// the given user. Returns 0 when no exercise entries exist. Scopes to the given user ID.
 	GetMaxWeightByExercise(exerciseID string, userID string) (float64, error)
 
+	// GetMaxSetVolumeByExercise returns the best single-set volume (reps * weight)
+	// logged for the given exercise by the given user. Returns 0 when no exercise
+	// entries exist. Scopes to the given user ID.
+	GetMaxSetVolumeByExercise(exerciseID string, userID string) (float64, error)
+
 	// GetBestPaceByExercise returns the fastest pace (seconds per kilometre) across the
 	// given exercise's exercise entries for the given user. Entries without a positive
 	// duration and distance are excluded. Returns 0 when no qualifying exercise entries

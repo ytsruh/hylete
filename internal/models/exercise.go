@@ -344,6 +344,21 @@ func (r *ExerciseRepository) GetMaxWeightByExercise(exerciseID string, userID st
 	return max, nil
 }
 
+// GetMaxSetVolumeByExercise returns the best single-set volume (reps * weight)
+// logged for the given exercise by the given user, or 0 when no exercise entries
+// exist. Scopes to the given user ID.
+func (r *ExerciseRepository) GetMaxSetVolumeByExercise(exerciseID string, userID string) (float64, error) {
+	ctx := context.Background()
+	max, err := r.queries.GetMaxSetVolumeByExercise(ctx, db.GetMaxSetVolumeByExerciseParams{
+		ExerciseID: exerciseID,
+		UserID:     sql.NullString{String: userID, Valid: true},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to get max set volume by exercise: %w", err)
+	}
+	return max, nil
+}
+
 // GetBestPaceByExercise returns the fastest pace (seconds per kilometre) logged for
 // the given exercise by the given user, or 0 when no qualifying exercise entries exist.
 // Scopes to the given user ID.

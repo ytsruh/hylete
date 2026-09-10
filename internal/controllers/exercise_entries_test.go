@@ -29,6 +29,7 @@ type mockRepository struct {
 	errGetExerciseEntriesByDateRange       error
 	errGetExerciseByID                     error
 	errGetMaxWeightByExercise              error
+	errGetMaxSetVolumeByExercise           error
 	errGetBestPaceByExercise               error
 	errGetLongestDistanceByExercise        error
 	errGetLastSetByExercise                error
@@ -209,6 +210,23 @@ func (m *mockRepository) GetMaxWeightByExercise(exerciseID string, userID string
 	for _, e := range m.exerciseEntries {
 		if e.ExerciseID == exerciseID && e.UserID == userID && e.Weight > max {
 			max = e.Weight
+		}
+	}
+	return max, nil
+}
+
+func (m *mockRepository) GetMaxSetVolumeByExercise(exerciseID string, userID string) (float64, error) {
+	if m.errGetMaxSetVolumeByExercise != nil {
+		return 0, m.errGetMaxSetVolumeByExercise
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var max float64
+	for _, e := range m.exerciseEntries {
+		if e.ExerciseID == exerciseID && e.UserID == userID {
+			if v := float64(e.Reps) * e.Weight; v > max {
+				max = v
+			}
 		}
 	}
 	return max, nil
@@ -697,6 +715,10 @@ func TestExerciseEntryController_GetExerciseEntriesByExercise(t *testing.T) {
 	if page.Stats.MaxWeight != 110 {
 		t.Errorf("expected max weight 110, got %v", page.Stats.MaxWeight)
 	}
+	// Best single-set volume: 5x100=500 beats 3x110=330.
+	if page.Stats.BestSetVolume != 500 {
+		t.Errorf("expected best set volume 500, got %v", page.Stats.BestSetVolume)
+	}
 	if page.Stats.LastSet.Weight != 110 {
 		t.Errorf("expected last set weight 110, got %v", page.Stats.LastSet.Weight)
 	}
@@ -737,6 +759,10 @@ func TestExerciseEntryController_GetExerciseEntriesByExercise_Pagination(t *test
 	// Stats should reflect the full history, not the slice.
 	if page1.Stats.MaxWeight != 129 {
 		t.Errorf("expected max weight 129 across all 30 exercise entries, got %v", page1.Stats.MaxWeight)
+	}
+	// Best single-set volume: 5 reps x 129 = 645 on the heaviest entry.
+	if page1.Stats.BestSetVolume != 645 {
+		t.Errorf("expected best set volume 645 across all 30 exercise entries, got %v", page1.Stats.BestSetVolume)
 	}
 
 	page2, err := ec.GetExerciseEntriesByExercise("ex-1", "user-1", 2)
@@ -792,6 +818,9 @@ func TestExerciseEntryController_GetExerciseEntriesByExercise_EmptyStats(t *test
 	}
 	if page.Stats.MaxWeight != 0 {
 		t.Errorf("expected max weight 0 for empty history, got %v", page.Stats.MaxWeight)
+	}
+	if page.Stats.BestSetVolume != 0 {
+		t.Errorf("expected best set volume 0 for empty history, got %v", page.Stats.BestSetVolume)
 	}
 	if page.Stats.LastSet.ID != "" {
 		t.Errorf("expected zero-value last set for empty history, got %+v", page.Stats.LastSet)

@@ -352,12 +352,14 @@ type UpdateExerciseEntryRequest struct {
 }
 
 // HistoryStatsDTO is the lifetime-stats header shown above
-// the history list. Strength clients read max_weight; cardio
-// clients read best_pace_sec_per_km (0 = none) and
+// the history list. Strength clients read max_weight and
+// best_set_volume (best single-set reps * weight, 0 = none);
+// cardio clients read best_pace_sec_per_km (0 = none) and
 // longest_distance_meters. Both sets are always populated so
 // the client only needs exercise_type to pick.
 type HistoryStatsDTO struct {
 	MaxWeight             float64           `json:"max_weight"`
+	BestSetVolume         float64           `json:"best_set_volume"`
 	BestPaceSecPerKm      float64           `json:"best_pace_sec_per_km"`
 	LongestDistanceMeters float64           `json:"longest_distance_meters"`
 	LastSet               *ExerciseEntryDTO `json:"last_set,omitempty"`
@@ -370,6 +372,7 @@ type HistoryStatsDTO struct {
 func HistoryStatsFromModel(s models.HistoryStats) HistoryStatsDTO {
 	out := HistoryStatsDTO{
 		MaxWeight:             s.MaxWeight,
+		BestSetVolume:         s.BestSetVolume,
 		BestPaceSecPerKm:      s.BestPaceSecPerKm,
 		LongestDistanceMeters: s.LongestDistanceMeters,
 	}

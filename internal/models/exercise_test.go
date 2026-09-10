@@ -551,6 +551,35 @@ func TestExerciseRepository_GetMaxWeightByExercise(t *testing.T) {
 	}
 }
 
+func TestExerciseRepository_GetMaxSetVolumeByExercise(t *testing.T) {
+	repo, _, database, userID := setupTestRepo(t)
+	defer database.Close()
+
+	squat, err := repo.Create(nil, "Squat")
+	if err != nil {
+		t.Fatalf("Create exercise failed: %v", err)
+	}
+	// 5x100=500, 3x140=420, 5x120=600 (best). Best volume differs from
+	// max weight on purpose: the heaviest set is not the highest volume.
+	if err := repo.CreateExerciseEntry(&ExerciseEntry{ExerciseID: squat, UserID: userID, Reps: 5, Weight: 100, CreatedAt: time.Now()}); err != nil {
+		t.Fatalf("CreateExerciseEntry failed: %v", err)
+	}
+	if err := repo.CreateExerciseEntry(&ExerciseEntry{ExerciseID: squat, UserID: userID, Reps: 3, Weight: 140, CreatedAt: time.Now()}); err != nil {
+		t.Fatalf("CreateExerciseEntry failed: %v", err)
+	}
+	if err := repo.CreateExerciseEntry(&ExerciseEntry{ExerciseID: squat, UserID: userID, Reps: 5, Weight: 120, CreatedAt: time.Now()}); err != nil {
+		t.Fatalf("CreateExerciseEntry failed: %v", err)
+	}
+
+	best, err := repo.GetMaxSetVolumeByExercise(squat, userID)
+	if err != nil {
+		t.Fatalf("GetMaxSetVolumeByExercise failed: %v", err)
+	}
+	if best != 600 {
+		t.Fatalf("expected best set volume 600, got %v", best)
+	}
+}
+
 func TestExerciseRepository_GetLastSetByExercise(t *testing.T) {
 	repo, _, database, userID := setupTestRepo(t)
 	defer database.Close()
@@ -604,6 +633,14 @@ func TestExerciseRepository_GetLastSetByExercise_Empty(t *testing.T) {
 	}
 	if max != 0 {
 		t.Errorf("expected max weight 0 for empty history, got %v", max)
+	}
+
+	best, err := repo.GetMaxSetVolumeByExercise(squat, userID)
+	if err != nil {
+		t.Fatalf("GetMaxSetVolumeByExercise failed: %v", err)
+	}
+	if best != 0 {
+		t.Errorf("expected best set volume 0 for empty history, got %v", best)
 	}
 }
 

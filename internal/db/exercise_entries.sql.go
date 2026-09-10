@@ -352,6 +352,25 @@ func (q *Queries) GetLongestDistanceByExercise(ctx context.Context, arg GetLonge
 	return column_1, err
 }
 
+const getMaxSetVolumeByExercise = `-- name: GetMaxSetVolumeByExercise :one
+SELECT CAST(COALESCE(MAX(reps * weight), 0) AS REAL) FROM exercise_entries
+WHERE exercise_id = ? AND user_id = ?
+`
+
+type GetMaxSetVolumeByExerciseParams struct {
+	ExerciseID string
+	UserID     sql.NullString
+}
+
+// Best single-set volume (reps * weight) logged for a strength exercise.
+// Returns 0 when no exercise entries exist.
+func (q *Queries) GetMaxSetVolumeByExercise(ctx context.Context, arg GetMaxSetVolumeByExerciseParams) (float64, error) {
+	row := q.db.QueryRowContext(ctx, getMaxSetVolumeByExercise, arg.ExerciseID, arg.UserID)
+	var column_1 float64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const getMaxWeightByExercise = `-- name: GetMaxWeightByExercise :one
 SELECT CAST(COALESCE(MAX(weight), 0) AS REAL) FROM exercise_entries
 WHERE exercise_id = ? AND user_id = ?

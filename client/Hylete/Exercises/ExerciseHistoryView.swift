@@ -9,8 +9,9 @@ import SwiftUI
 /// description and type chip, a Swift Charts progress
 /// chart (area-filled, gradient line, PR reference line,
 /// and visible x-axis), a 2-column grid of stat cards
-/// (Personal Best highlighted), and a paginated history
-/// list. The nav-bar `+` button opens `NewSetView`
+/// (strength: Personal Best, Best Volume, Last Set,
+/// Last Activity), and a paginated history list. The nav-bar
+/// `+` button opens `NewSetView`
 /// pre-set to this exercise so the user can log a new set
 /// without leaving the context.
 ///
@@ -583,6 +584,14 @@ struct ExerciseHistoryView: View {
         metricText(value)
     }
 
+    /// Formats best single-set volume (reps × weight) as "800 kg".
+    /// No decimal — fractional volume precision is noise at this scale.
+    /// "—" when nothing qualifies yet.
+    static func bestVolumeText(_ volume: Double, unit: String) -> String {
+        guard volume > 0 else { return "—" }
+        return String(format: "%.0f %@", volume, unit)
+    }
+
     /// Renders a seconds-per-unit pace as "M:SS /unit".
     static func paceText(_ secPerKm: Double, unit: String) -> String {
         let seconds = unit == "mi" ? secPerKm * 1.609344 : secPerKm
@@ -633,12 +642,18 @@ struct ExerciseHistoryView: View {
                             )
                         }
                     } else {
+                        // 2×2 grid: the two all-time bests on the top row,
+                        // the two recency cards below.
                         StatCard(
-                            label: "Personal Best",
+                            label: "Max Weight",
                             value: String(format: "%.1f %@", stats.maxWeight, weightUnit),
                             icon: Icons.trophy
                         )
-                        .gridCellColumns(2)
+                        StatCard(
+                            label: "Max Volume",
+                            value: Self.bestVolumeText(stats.bestSetVolume, unit: weightUnit),
+                            icon: Icons.volume
+                        )
 
                         if let lastSet = stats.lastSet {
                             StatCard(

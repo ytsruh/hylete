@@ -64,6 +64,9 @@ type Querier interface {
 	GetLatestAIReport(ctx context.Context, arg GetLatestAIReportParams) (AiReport, error)
 	// Longest distance in metres logged for an exercise. Returns 0 when no exercise entries exist.
 	GetLongestDistanceByExercise(ctx context.Context, arg GetLongestDistanceByExerciseParams) (float64, error)
+	// Best single-set volume (reps * weight) logged for a strength exercise.
+	// Returns 0 when no exercise entries exist.
+	GetMaxSetVolumeByExercise(ctx context.Context, arg GetMaxSetVolumeByExerciseParams) (float64, error)
 	// Heaviest weight logged for a strength exercise. Returns 0 when no exercise entries exist.
 	GetMaxWeightByExercise(ctx context.Context, arg GetMaxWeightByExerciseParams) (float64, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)

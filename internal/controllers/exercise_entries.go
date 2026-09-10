@@ -234,14 +234,18 @@ func (ec *ExerciseEntryController) GetExerciseEntriesByExercise(exerciseID strin
 	}, nil
 }
 
-// loadHistoryStats fetches the personal best and most recent set for the header
+// loadHistoryStats fetches the personal bests and most recent set for the header
 // stat cards, plus the cardio personal bests (fastest pace, longest distance).
-// Strength callers read MaxWeight; cardio callers read BestPaceSecPerKm /
-// LongestDistanceMeters — everything is always loaded so the caller only needs
-// the exercise's type to pick. Always reflects the user's full history, not
-// just the current page.
+// Strength callers read MaxWeight and BestSetVolume; cardio callers read
+// BestPaceSecPerKm / LongestDistanceMeters — everything is always loaded so the
+// caller only needs the exercise's type to pick. Always reflects the user's full
+// history, not just the current page.
 func (ec *ExerciseEntryController) loadHistoryStats(exerciseID string, userID string) (models.HistoryStats, error) {
 	maxWeight, err := ec.repo.GetMaxWeightByExercise(exerciseID, userID)
+	if err != nil {
+		return models.HistoryStats{}, err
+	}
+	bestSetVolume, err := ec.repo.GetMaxSetVolumeByExercise(exerciseID, userID)
 	if err != nil {
 		return models.HistoryStats{}, err
 	}
@@ -259,6 +263,7 @@ func (ec *ExerciseEntryController) loadHistoryStats(exerciseID string, userID st
 	}
 	stats := models.HistoryStats{
 		MaxWeight:             maxWeight,
+		BestSetVolume:         bestSetVolume,
 		BestPaceSecPerKm:      bestPace,
 		LongestDistanceMeters: longestDistance,
 	}

@@ -74,6 +74,10 @@ public enum Icons {
     /// string as `exercises` but is declared separately so
     /// the two can diverge if the symbol set changes.
     public static let dumbbellSmall = "dumbbell.fill"
+    /// "Best Volume" stat card on the exercise history
+    /// view. A bar chart reads as aggregate workload,
+    /// distinct from the trophy used for Personal Best.
+    public static let volume = "chart.bar.fill"
 
     // MARK: - Status
 
