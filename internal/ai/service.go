@@ -187,7 +187,7 @@ func (s *Service) BuildWeeklyReport(ctx context.Context, userID string, now time
 		if err != nil {
 			return nil, fmt.Errorf("ai: failed to encode stats: %w", err)
 		}
-		prompt := RenderWeekly(string(statsJSON), user.AIGoalText, goalsList(goals), prefsLine(user))
+		prompt := RenderWeekly(string(statsJSON), user.AIGoalText, goalsList(goals), prefsLine(user), profileLine(user))
 		raw, tokensIn, tokensOut, err := s.client.Chat(ctx, prompt)
 		if err != nil {
 			return nil, err
@@ -353,4 +353,15 @@ func goalsList(goals []models.Goal) string {
 // paces the way the user sees them elsewhere in the app.
 func prefsLine(u *models.User) string {
 	return "weight_unit=" + u.WeightUnitDisplay() + " distance_unit=" + u.DistanceUnitDisplay()
+}
+
+// profileLine carries the optional height/age/gender context for the
+// USER_PROFILE prompt block. Unset fields are omitted; an entirely
+// empty profile yields "" and RenderWeekly falls back to
+// "No profile details provided." so the LLM never sees invented values.
+func profileLine(u *models.User) string {
+	if u == nil {
+		return ""
+	}
+	return RenderUserProfile(u.HeightCm, u.Gender, u.Age)
 }

@@ -28,6 +28,9 @@ CREATE TABLE users (
     reminder_last_fired_at  DATETIME,
     ai_opt_in INTEGER NOT NULL DEFAULT 0,
     ai_goal_text TEXT NOT NULL DEFAULT '',
+    height_cm REAL,
+    gender TEXT NOT NULL DEFAULT '',
+    age INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

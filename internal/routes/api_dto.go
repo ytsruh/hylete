@@ -66,6 +66,13 @@ type UserDTO struct {
 	WeightUnit   string   `json:"weight_unit"`
 	DistanceUnit string   `json:"distance_unit"`
 	TargetWeight *float64 `json:"target_weight,omitempty"`
+	// HeightCm is the user's height in centimetres; nil means unset.
+	HeightCm *float64 `json:"height_cm,omitempty"`
+	// Gender is one of "male" | "female" | "non-binary" |
+	// "prefer-not-to-say"; empty means unset.
+	Gender string `json:"gender,omitempty"`
+	// Age is the user's age in years; nil means unset.
+	Age *int `json:"age,omitempty"`
 }
 
 // UserFromModel converts a models.User into the safe UserDTO.
@@ -83,25 +90,31 @@ func UserFromModel(u *models.User) UserDTO {
 		WeightUnit:   u.WeightUnitDisplay(),
 		DistanceUnit: u.DistanceUnitDisplay(),
 		TargetWeight: u.TargetWeight,
+		HeightCm:     u.HeightCm,
+		Gender:       u.GenderDisplay(),
+		Age:          u.Age,
 	}
 }
 
 // UpdateMeRequest is the JSON body for PUT /api/v1/me. Mirrors
 // the user-editable subset of the HTML profile form (name,
-// target weight, weight unit, distance unit) so the iOS app can update the
-// same fields the web app exposes. Reminder preferences are
-// deliberately omitted: they live on the dedicated
-// GET/PUT /api/v1/me/reminders endpoints so an older client
+// target weight, weight unit, distance unit, height, gender, age)
+// so the iOS app can update the same fields the web app exposes.
+// Reminder preferences are deliberately omitted: they live on the
+// dedicated GET/PUT /api/v1/me/reminders endpoints so an older client
 // PUTting /me without reminder fields can never clobber them.
 //
-// TargetWeight is a pointer so an omitted JSON field (or an
-// explicit null) clears the user's goal, matching the form's
-// empty-input semantics.
+// TargetWeight / HeightCm / Age are pointers so an omitted JSON field
+// (or an explicit null) clears the value, matching the form's
+// empty-input semantics. Gender is a string where empty means unset.
 type UpdateMeRequest struct {
 	Name         string   `json:"name"          validate:"required,min=2,max=100"`
 	TargetWeight *float64 `json:"target_weight" validate:"omitempty,gte=0,lte=1000"`
 	WeightUnit   string   `json:"weight_unit"   validate:"omitempty,oneof=kg lbs"`
 	DistanceUnit string   `json:"distance_unit" validate:"omitempty,oneof=km mi"`
+	HeightCm     *float64 `json:"height_cm"     validate:"omitempty,gte=0,lte=300"`
+	Gender       string   `json:"gender"        validate:"omitempty,oneof=male female non-binary prefer-not-to-say"`
+	Age          *int     `json:"age"           validate:"omitempty,gte=10,lte=120"`
 }
 
 // ReminderPreferencesDTO is the JSON shape for the user's

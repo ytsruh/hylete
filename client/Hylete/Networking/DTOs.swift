@@ -62,6 +62,16 @@ public struct UserDTO: Codable, Equatable, Identifiable {
     public let weightUnit: String
     public let distanceUnit: String
     public let targetWeight: Double?
+    /// Height in centimetres. Nil means unset. Optional so entries
+    /// from older server builds (which omit the key via `omitempty`)
+    /// still decode.
+    public let heightCm: Double?
+    /// One of "male" | "female" | "non-binary" | "prefer-not-to-say".
+    /// Empty means unset. Defaults to "" when the key is absent
+    /// (older server builds).
+    public let gender: String
+    /// Age in years. Nil means unset.
+    public let age: Int?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -71,6 +81,9 @@ public struct UserDTO: Codable, Equatable, Identifiable {
         case weightUnit = "weight_unit"
         case distanceUnit = "distance_unit"
         case targetWeight = "target_weight"
+        case heightCm = "height_cm"
+        case gender
+        case age
     }
 
     public init(
@@ -80,7 +93,10 @@ public struct UserDTO: Codable, Equatable, Identifiable {
         isAdmin: Bool,
         weightUnit: String,
         distanceUnit: String,
-        targetWeight: Double?
+        targetWeight: Double?,
+        heightCm: Double? = nil,
+        gender: String = "",
+        age: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -89,6 +105,23 @@ public struct UserDTO: Codable, Equatable, Identifiable {
         self.weightUnit = weightUnit
         self.distanceUnit = distanceUnit
         self.targetWeight = targetWeight
+        self.heightCm = heightCm
+        self.gender = gender
+        self.age = age
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        email = try container.decode(String.self, forKey: .email)
+        isAdmin = try container.decode(Bool.self, forKey: .isAdmin)
+        weightUnit = try container.decode(String.self, forKey: .weightUnit)
+        distanceUnit = try container.decode(String.self, forKey: .distanceUnit)
+        targetWeight = try container.decodeIfPresent(Double.self, forKey: .targetWeight)
+        heightCm = try container.decodeIfPresent(Double.self, forKey: .heightCm)
+        gender = try container.decodeIfPresent(String.self, forKey: .gender) ?? ""
+        age = try container.decodeIfPresent(Int.self, forKey: .age)
     }
 }
 
@@ -106,29 +139,43 @@ public struct UserDTO: Codable, Equatable, Identifiable {
 /// clears the goal (matching the HTML form's empty-input
 /// behavior). The iOS edit form binds the field to a `String`
 /// and converts to a `Double?` so the user can leave it blank.
+/// `heightCm` / `age` follow the same nil-clears semantics;
+/// `gender` uses "" for unset.
 public struct UpdateMeRequest: Encodable, Equatable {
     public let name: String
     public let targetWeight: Double?
     public let weightUnit: String
     public let distanceUnit: String
+    public let heightCm: Double?
+    public let gender: String
+    public let age: Int?
 
     enum CodingKeys: String, CodingKey {
         case name
         case targetWeight = "target_weight"
         case weightUnit = "weight_unit"
         case distanceUnit = "distance_unit"
+        case heightCm = "height_cm"
+        case gender
+        case age
     }
 
     public init(
         name: String,
         targetWeight: Double?,
         weightUnit: String,
-        distanceUnit: String
+        distanceUnit: String,
+        heightCm: Double?,
+        gender: String,
+        age: Int?
     ) {
         self.name = name
         self.targetWeight = targetWeight
         self.weightUnit = weightUnit
         self.distanceUnit = distanceUnit
+        self.heightCm = heightCm
+        self.gender = gender
+        self.age = age
     }
 }
 

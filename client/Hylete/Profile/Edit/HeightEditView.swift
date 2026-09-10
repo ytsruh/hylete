@@ -1,39 +1,49 @@
 import SwiftUI
 
-/// Editor for the user's preferred weight unit. Renders as
-/// a segmented picker so the choice is one tap. Save is
-/// always enabled because the unit is always set to a
-/// valid value (the picker has no "off" state).
-struct WeightUnitEditView: View {
+/// Editor for the user's height in centimetres. The underlying
+/// value is a `Double?` on the server (an empty field clears the
+/// height), so the form binds to a `String` and only converts to
+/// a number on save — the same pattern as `TargetWeightEditView`.
+struct HeightEditView: View {
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var authStore: AuthStore
     @Environment(\.dismiss) private var dismiss
 
     let user: UserDTO
 
-    @State private var unit: String = "kg"
+    @State private var heightText: String = ""
     @State private var isSaving: Bool = false
     @State private var errorMessage: String?
 
-    private static let supportedUnits: [String] = ["kg", "lbs"]
+    @FocusState private var heightFocused: Bool
+
+    private var parsedHeight: Double? {
+        let trimmed = heightText.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? nil : Double(trimmed)
+    }
 
     private var canSave: Bool {
-        !isSaving && Self.supportedUnits.contains(unit)
+        guard !isSaving else { return false }
+        let trimmed = heightText.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return true }
+        guard let value = Double(trimmed) else { return false }
+        return value >= 0 && value <= 300
     }
 
     var body: some View {
         Form {
             Section {
-                Picker("Unit", selection: $unit) {
-                    ForEach(Self.supportedUnits, id: \.self) { value in
-                        Text(value).tag(value)
-                    }
+                HStack {
+                    TextField("180.0", text: $heightText)
+                        .keyboardType(.decimalPad)
+                        .focused($heightFocused)
+                    Text("cm")
+                        .foregroundStyle(DSColors.textSecondary)
                 }
-                .pickerStyle(.segmented)
             } header: {
-                Text("Preferred unit")
+                Text("Height")
             } footer: {
-                Text("Used everywhere weight is shown: dashboard, charts, exports etc.")
+                Text("Leave blank to clear.")
             }
             if let errorMessage {
                 Section {
@@ -43,7 +53,7 @@ struct WeightUnitEditView: View {
                 }
             }
         }
-        .navigationTitle("Weight unit")
+        .navigationTitle("Height")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -64,22 +74,27 @@ struct WeightUnitEditView: View {
             }
         }
         .onAppear {
-            // Seed only on first appear so a mid-edit
-            // re-render doesn't snap the picker back to
-            // the stored value. Falls back to the current
-            // value if the stored value is somehow not in
-            // the supported set.
-            if !Self.supportedUnits.contains(unit) {
-                unit = Self.supportedUnits.contains(user.weightUnit) ? user.weightUnit : "kg"
+            if heightText.isEmpty, let height = user.heightCm {
+                heightText = String(format: "%.1f", height)
             }
+            heightFocused = true
         }
     }
 
     private func save() async {
         errorMessage = nil
-        guard Self.supportedUnits.contains(unit) else {
-            errorMessage = "Pick a supported weight unit."
-            return
+        let trimmed = heightText.trimmingCharacters(in: .whitespaces)
+        var height: Double? = nil
+        if !trimmed.isEmpty {
+            guard let value = Double(trimmed) else {
+                errorMessage = "Height must be a number."
+                return
+            }
+            guard value >= 0, value <= 300 else {
+                errorMessage = "Height must be between 0 and 300 cm."
+                return
+            }
+            height = value
         }
         isSaving = true
         defer { isSaving = false }
@@ -87,9 +102,9 @@ struct WeightUnitEditView: View {
             let request = UpdateMeRequest(
                 name: user.name,
                 targetWeight: user.targetWeight,
-                weightUnit: unit,
+                weightUnit: user.weightUnit,
                 distanceUnit: user.distanceUnit,
-                heightCm: user.heightCm,
+                heightCm: height,
                 gender: user.gender,
                 age: user.age
             )
@@ -99,21 +114,24 @@ struct WeightUnitEditView: View {
         } catch let error as APIError {
             errorMessage = error.errorDescription
         } catch {
-            errorMessage = "Could not save your weight unit."
+            errorMessage = "Could not save your height."
         }
     }
 }
 
 #Preview {
     NavigationStack {
-        WeightUnitEditView(user: UserDTO(
+        HeightEditView(user: UserDTO(
             id: "u1",
             name: "Alice",
             email: "alice@example.com",
             isAdmin: false,
             weightUnit: "kg",
             distanceUnit: "km",
-            targetWeight: 75.0
+            targetWeight: 75.0,
+            heightCm: 170.0,
+            gender: "",
+            age: nil
         ))
     }
     .environmentObject(AppEnvironment.live(baseURL: URL(string: "http://localhost:8080/api/v1")!))

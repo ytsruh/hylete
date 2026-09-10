@@ -111,8 +111,76 @@ type User struct {
 	// app-side). Injected verbatim into the weekly prompt as
 	// {{USER_AIM}}; empty means "no stated aim".
 	AIGoalText string
+	// HeightCm is the user's height in centimetres. nil means unset.
+	// Stored as a plain number and displayed as "%.1f cm" — no
+	// conversion happens, mirroring how weight is a number labelled
+	// by the user's preferred unit.
+	HeightCm *float64
+	// Gender is one of the ValidGenders values ("male" | "female" |
+	// "non-binary" | "prefer-not-to-say"). Empty means unset.
+	Gender string
+	// Age is the user's age in years. nil means unset.
+	Age *int
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+}
+
+// Gender values accepted for User.Gender. Empty string means unset
+// and is valid everywhere except where explicitly required (profile
+// fields are all optional, so empty is always accepted).
+const (
+	GenderMale          = "male"
+	GenderFemale        = "female"
+	GenderNonBinary     = "non-binary"
+	GenderPreferNotSay  = "prefer-not-to-say"
+)
+
+// ValidGenders enumerates the allowed non-empty values for
+// User.Gender, in the order the pickers render them.
+var ValidGenders = []string{GenderMale, GenderFemale, GenderNonBinary, GenderPreferNotSay}
+
+// Age bounds for User.Age. 10–120 enforced app-side (validator tags
+// on the web form and API DTO); nil means unset.
+const (
+	AgeMin = 10
+	AgeMax = 120
+)
+
+// Height bounds for User.HeightCm in centimetres. 0–300 enforced
+// app-side; nil means unset.
+const (
+	HeightCmMin = 0.0
+	HeightCmMax = 300.0
+)
+
+// NormalizeGender returns a clean gender value: one of ValidGenders
+// or "" when the input is empty or unrecognised. Use at trust
+// boundaries (form, API, DB) so downstream code can rely on a
+// normalised value.
+func NormalizeGender(g string) string {
+	switch g {
+	case GenderMale, GenderFemale, GenderNonBinary, GenderPreferNotSay:
+		return g
+	default:
+		return ""
+	}
+}
+
+// GenderDisplay returns the user's gender, normalised so an
+// unrecognised stored value reads as unset. Empty means the user
+// has not provided a gender.
+func (u *User) GenderDisplay() string {
+	if u == nil {
+		return ""
+	}
+	return NormalizeGender(u.Gender)
+}
+
+// FormatHeight returns a human-readable height in centimetres,
+// e.g. "180.0 cm". No conversion happens — the value is labelled
+// cm everywhere by design.
+func FormatHeight(cm float64) string {
+	return fmt.Sprintf("%.1f cm", cm)
 }
 
 // AIGoalTextMaxLength caps the free-text training aim at ~150-200

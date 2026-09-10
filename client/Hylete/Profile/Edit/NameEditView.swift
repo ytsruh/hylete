@@ -41,8 +41,6 @@ struct NameEditView: View {
                     .focused($nameFocused)
             } header: {
                 Text("Display name")
-            } footer: {
-                Text("Shown across the app and is only visible to you.")
             }
             if let errorMessage {
                 Section {
@@ -97,7 +95,10 @@ struct NameEditView: View {
                 name: trimmed,
                 targetWeight: user.targetWeight,
                 weightUnit: user.weightUnit,
-                distanceUnit: user.distanceUnit
+                distanceUnit: user.distanceUnit,
+                heightCm: user.heightCm,
+                gender: user.gender,
+                age: user.age
             )
             let updated = try await env.api.updateProfile(request)
             authStore.updateCurrentUser(updated)

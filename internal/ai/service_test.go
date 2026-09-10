@@ -17,8 +17,8 @@ func TestValidatePromptVersion(t *testing.T) {
 }
 
 func TestRenderWeeklySubstitutes(t *testing.T) {
-	out := RenderWeekly(`{"thin_data":false}`, "Bench 100kg", "- Bench 100 (active)", "weight_unit=kg distance_unit=km")
-	for _, want := range []string{"Bench 100kg", "Bench 100 (active)", "weight_unit=kg", `{"thin_data":false}`} {
+	out := RenderWeekly(`{"thin_data":false}`, "Bench 100kg", "- Bench 100 (active)", "weight_unit=kg distance_unit=km", "height=180.0 cm gender=male age=30")
+	for _, want := range []string{"Bench 100kg", "Bench 100 (active)", "weight_unit=kg", `{"thin_data":false}`, "height=180.0 cm gender=male age=30"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q", want)
 		}
@@ -29,9 +29,35 @@ func TestRenderWeeklySubstitutes(t *testing.T) {
 }
 
 func TestRenderWeeklyEmptyAim(t *testing.T) {
-	out := RenderWeekly(`{}`, "  ", "", "")
+	out := RenderWeekly(`{}`, "  ", "", "", "")
 	if !strings.Contains(out, "No stated aim.") || !strings.Contains(out, "(no goals recorded)") {
 		t.Fatal("defaults missing")
+	}
+	if !strings.Contains(out, "No profile details provided.") {
+		t.Fatal("profile default missing")
+	}
+}
+
+func TestRenderUserProfile(t *testing.T) {
+	// All unset → empty (caller falls back to the default line).
+	if got := RenderUserProfile(nil, "", nil); got != "" {
+		t.Fatalf("empty profile = %q, want empty", got)
+	}
+	height := 180.0
+	age := 30
+	got := RenderUserProfile(&height, "female", &age)
+	for _, want := range []string{"height=180.0 cm", "gender=female", "age=30"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("profile %q missing %q", got, want)
+		}
+	}
+	// Unknown gender is dropped, never echoed.
+	if got := RenderUserProfile(nil, "unknown", nil); got != "" {
+		t.Fatalf("unknown gender must be omitted, got %q", got)
+	}
+	// Partial profile renders only the set fields.
+	if got := RenderUserProfile(nil, "male", nil); got != "gender=male" {
+		t.Fatalf("partial profile = %q, want %q", got, "gender=male")
 	}
 }
 

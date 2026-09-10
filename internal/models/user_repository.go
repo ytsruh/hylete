@@ -95,10 +95,12 @@ func (r *UserRepository) GetUserByID(id string) (*User, error) {
 	return mapUser(row), nil
 }
 
-// UpdateUser updates an existing user's name, target weight, weight unit, and
-// distance unit.
-// The target weight is written as NULL when the user has cleared their goal,
-// so the form can be reset by submitting an empty input.
+// UpdateUser updates an existing user's name, target weight, weight unit,
+// distance unit, height, gender and age.
+// The target weight / height / age are written as NULL when the user has
+// cleared them, so the form can be reset by submitting an empty input.
+// Gender is normalised (unknown → "") before persistence so the row never
+// carries a value the pickers cannot render.
 func (r *UserRepository) UpdateUser(user *User) error {
 	ctx := context.Background()
 	err := r.queries.UpdateUser(ctx, db.UpdateUserParams{
@@ -106,6 +108,9 @@ func (r *UserRepository) UpdateUser(user *User) error {
 		TargetWeight: ptrToNullFloat64(user.TargetWeight),
 		WeightUnit:   user.WeightUnit,
 		DistanceUnit: user.DistanceUnit,
+		HeightCm:     ptrToNullFloat64(user.HeightCm),
+		Gender:       NormalizeGender(user.Gender),
+		Age:          intPtrToNullInt64(user.Age),
 		UpdatedAt:    sql.NullTime{Time: time.Now(), Valid: true},
 		ID:           user.ID,
 	})
@@ -295,6 +300,9 @@ func mapUser(row db.User) *User {
 		ReminderLastFiredAt:  nullTimeToTimePtr(row.ReminderLastFiredAt),
 		AIOptIn:              row.AiOptIn == 1,
 		AIGoalText:           row.AiGoalText,
+		HeightCm:             nullFloat64ToPtr(row.HeightCm),
+		Gender:               NormalizeGender(row.Gender),
+		Age:                  nullInt64ToIntPtr(row.Age),
 		CreatedAt:            nullTimeToTime(row.CreatedAt),
 		UpdatedAt:            nullTimeToTime(row.UpdatedAt),
 	}
@@ -328,6 +336,16 @@ func nullInt64ToIntPtr(ni sql.NullInt64) *int {
 	}
 	v := int(ni.Int64)
 	return &v
+}
+
+// intPtrToNullInt64 converts a *int to a sql.NullInt64. nil becomes
+// SQL NULL, &value becomes Valid: true. Used for the nullable integer
+// profile fields (currently age).
+func intPtrToNullInt64(p *int) sql.NullInt64 {
+	if p == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: int64(*p), Valid: true}
 }
 
 // boolToInt converts a bool to the 0/1 the SQLite INTEGER columns

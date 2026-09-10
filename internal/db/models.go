@@ -147,6 +147,9 @@ type User struct {
 	ReminderLastFiredAt  sql.NullTime
 	AiOptIn              int64
 	AiGoalText           string
+	HeightCm             sql.NullFloat64
+	Gender               string
+	Age                  sql.NullInt64
 	CreatedAt            sql.NullTime
 	UpdatedAt            sql.NullTime
 }

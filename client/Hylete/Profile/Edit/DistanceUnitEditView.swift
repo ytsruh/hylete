@@ -1,21 +1,23 @@
 import SwiftUI
 
-/// Editor for the user's preferred weight unit. Renders as
+/// Editor for the user's preferred distance unit. Renders as
 /// a segmented picker so the choice is one tap. Save is
 /// always enabled because the unit is always set to a
-/// valid value (the picker has no "off" state).
-struct WeightUnitEditView: View {
+/// valid value (the picker has no "off" state). Mirrors
+/// `WeightUnitEditView` — the server stores distances in
+/// metres and this preference only controls display.
+struct DistanceUnitEditView: View {
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var authStore: AuthStore
     @Environment(\.dismiss) private var dismiss
 
     let user: UserDTO
 
-    @State private var unit: String = "kg"
+    @State private var unit: String = "km"
     @State private var isSaving: Bool = false
     @State private var errorMessage: String?
 
-    private static let supportedUnits: [String] = ["kg", "lbs"]
+    private static let supportedUnits: [String] = ["km", "mi"]
 
     private var canSave: Bool {
         !isSaving && Self.supportedUnits.contains(unit)
@@ -33,7 +35,7 @@ struct WeightUnitEditView: View {
             } header: {
                 Text("Preferred unit")
             } footer: {
-                Text("Used everywhere weight is shown: dashboard, charts, exports etc.")
+                Text("Used everywhere distance and pace are shown: history, charts, exports etc.")
             }
             if let errorMessage {
                 Section {
@@ -43,7 +45,7 @@ struct WeightUnitEditView: View {
                 }
             }
         }
-        .navigationTitle("Weight unit")
+        .navigationTitle("Distance unit")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -70,7 +72,7 @@ struct WeightUnitEditView: View {
             // value if the stored value is somehow not in
             // the supported set.
             if !Self.supportedUnits.contains(unit) {
-                unit = Self.supportedUnits.contains(user.weightUnit) ? user.weightUnit : "kg"
+                unit = Self.supportedUnits.contains(user.distanceUnit) ? user.distanceUnit : "km"
             }
         }
     }
@@ -78,7 +80,7 @@ struct WeightUnitEditView: View {
     private func save() async {
         errorMessage = nil
         guard Self.supportedUnits.contains(unit) else {
-            errorMessage = "Pick a supported weight unit."
+            errorMessage = "Pick a supported distance unit."
             return
         }
         isSaving = true
@@ -87,8 +89,8 @@ struct WeightUnitEditView: View {
             let request = UpdateMeRequest(
                 name: user.name,
                 targetWeight: user.targetWeight,
-                weightUnit: unit,
-                distanceUnit: user.distanceUnit,
+                weightUnit: user.weightUnit,
+                distanceUnit: unit,
                 heightCm: user.heightCm,
                 gender: user.gender,
                 age: user.age
@@ -99,14 +101,14 @@ struct WeightUnitEditView: View {
         } catch let error as APIError {
             errorMessage = error.errorDescription
         } catch {
-            errorMessage = "Could not save your weight unit."
+            errorMessage = "Could not save your distance unit."
         }
     }
 }
 
 #Preview {
     NavigationStack {
-        WeightUnitEditView(user: UserDTO(
+        DistanceUnitEditView(user: UserDTO(
             id: "u1",
             name: "Alice",
             email: "alice@example.com",

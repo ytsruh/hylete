@@ -1,39 +1,43 @@
 import SwiftUI
 
-/// Editor for the user's preferred weight unit. Renders as
-/// a segmented picker so the choice is one tap. Save is
-/// always enabled because the unit is always set to a
-/// valid value (the picker has no "off" state).
-struct WeightUnitEditView: View {
+/// Editor for the user's age in years. The underlying value is an
+/// `Int?` on the server (an empty field clears the age), so the
+/// form binds to a `String` and only converts to a number on save.
+struct AgeEditView: View {
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var authStore: AuthStore
     @Environment(\.dismiss) private var dismiss
 
     let user: UserDTO
 
-    @State private var unit: String = "kg"
+    @State private var ageText: String = ""
     @State private var isSaving: Bool = false
     @State private var errorMessage: String?
 
-    private static let supportedUnits: [String] = ["kg", "lbs"]
+    @FocusState private var ageFocused: Bool
 
     private var canSave: Bool {
-        !isSaving && Self.supportedUnits.contains(unit)
+        guard !isSaving else { return false }
+        let trimmed = ageText.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { return true }
+        guard let value = Int(trimmed) else { return false }
+        return value >= 10 && value <= 120
     }
 
     var body: some View {
         Form {
             Section {
-                Picker("Unit", selection: $unit) {
-                    ForEach(Self.supportedUnits, id: \.self) { value in
-                        Text(value).tag(value)
-                    }
+                HStack {
+                    TextField("30", text: $ageText)
+                        .keyboardType(.numberPad)
+                        .focused($ageFocused)
+                    Text("years")
+                        .foregroundStyle(DSColors.textSecondary)
                 }
-                .pickerStyle(.segmented)
             } header: {
-                Text("Preferred unit")
+                Text("Age")
             } footer: {
-                Text("Used everywhere weight is shown: dashboard, charts, exports etc.")
+                Text("Leave blank to clear.")
             }
             if let errorMessage {
                 Section {
@@ -43,7 +47,7 @@ struct WeightUnitEditView: View {
                 }
             }
         }
-        .navigationTitle("Weight unit")
+        .navigationTitle("Age")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -64,22 +68,27 @@ struct WeightUnitEditView: View {
             }
         }
         .onAppear {
-            // Seed only on first appear so a mid-edit
-            // re-render doesn't snap the picker back to
-            // the stored value. Falls back to the current
-            // value if the stored value is somehow not in
-            // the supported set.
-            if !Self.supportedUnits.contains(unit) {
-                unit = Self.supportedUnits.contains(user.weightUnit) ? user.weightUnit : "kg"
+            if ageText.isEmpty, let age = user.age {
+                ageText = String(age)
             }
+            ageFocused = true
         }
     }
 
     private func save() async {
         errorMessage = nil
-        guard Self.supportedUnits.contains(unit) else {
-            errorMessage = "Pick a supported weight unit."
-            return
+        let trimmed = ageText.trimmingCharacters(in: .whitespaces)
+        var age: Int? = nil
+        if !trimmed.isEmpty {
+            guard let value = Int(trimmed) else {
+                errorMessage = "Age must be a whole number."
+                return
+            }
+            guard value >= 10, value <= 120 else {
+                errorMessage = "Age must be between 10 and 120."
+                return
+            }
+            age = value
         }
         isSaving = true
         defer { isSaving = false }
@@ -87,11 +96,11 @@ struct WeightUnitEditView: View {
             let request = UpdateMeRequest(
                 name: user.name,
                 targetWeight: user.targetWeight,
-                weightUnit: unit,
+                weightUnit: user.weightUnit,
                 distanceUnit: user.distanceUnit,
                 heightCm: user.heightCm,
                 gender: user.gender,
-                age: user.age
+                age: age
             )
             let updated = try await env.api.updateProfile(request)
             authStore.updateCurrentUser(updated)
@@ -99,21 +108,24 @@ struct WeightUnitEditView: View {
         } catch let error as APIError {
             errorMessage = error.errorDescription
         } catch {
-            errorMessage = "Could not save your weight unit."
+            errorMessage = "Could not save your age."
         }
     }
 }
 
 #Preview {
     NavigationStack {
-        WeightUnitEditView(user: UserDTO(
+        AgeEditView(user: UserDTO(
             id: "u1",
             name: "Alice",
             email: "alice@example.com",
             isAdmin: false,
             weightUnit: "kg",
             distanceUnit: "km",
-            targetWeight: 75.0
+            targetWeight: 75.0,
+            heightCm: nil,
+            gender: "",
+            age: 30
         ))
     }
     .environmentObject(AppEnvironment.live(baseURL: URL(string: "http://localhost:8080/api/v1")!))
