@@ -96,11 +96,11 @@ func (r *UserRepository) GetUserByID(id string) (*User, error) {
 }
 
 // UpdateUser updates an existing user's name, target weight, weight unit,
-// distance unit, height, gender and age.
-// The target weight / height / age are written as NULL when the user has
-// cleared them, so the form can be reset by submitting an empty input.
-// Gender is normalised (unknown → "") before persistence so the row never
-// carries a value the pickers cannot render.
+// distance unit, height, gender and date of birth.
+// The target weight / height / date of birth are written as NULL when the
+// user has cleared them, so the form can be reset by submitting an empty
+// input. Gender is normalised (unknown → "") before persistence so the row
+// never carries a value the pickers cannot render.
 func (r *UserRepository) UpdateUser(user *User) error {
 	ctx := context.Background()
 	err := r.queries.UpdateUser(ctx, db.UpdateUserParams{
@@ -110,7 +110,7 @@ func (r *UserRepository) UpdateUser(user *User) error {
 		DistanceUnit: user.DistanceUnit,
 		HeightCm:     ptrToNullFloat64(user.HeightCm),
 		Gender:       NormalizeGender(user.Gender),
-		Age:          intPtrToNullInt64(user.Age),
+		DateOfBirth:  strPtrToNullString(user.DateOfBirth),
 		UpdatedAt:    sql.NullTime{Time: time.Now(), Valid: true},
 		ID:           user.ID,
 	})
@@ -302,7 +302,7 @@ func mapUser(row db.User) *User {
 		AIGoalText:           row.AiGoalText,
 		HeightCm:             nullFloat64ToPtr(row.HeightCm),
 		Gender:               NormalizeGender(row.Gender),
-		Age:                  nullInt64ToIntPtr(row.Age),
+		DateOfBirth:          nullStringToStrPtr(row.DateOfBirth),
 		CreatedAt:            nullTimeToTime(row.CreatedAt),
 		UpdatedAt:            nullTimeToTime(row.UpdatedAt),
 	}
@@ -338,14 +338,24 @@ func nullInt64ToIntPtr(ni sql.NullInt64) *int {
 	return &v
 }
 
-// intPtrToNullInt64 converts a *int to a sql.NullInt64. nil becomes
-// SQL NULL, &value becomes Valid: true. Used for the nullable integer
-// profile fields (currently age).
-func intPtrToNullInt64(p *int) sql.NullInt64 {
+// strPtrToNullString converts a *string to a sql.NullString. nil
+// becomes SQL NULL, &value becomes Valid: true. Used for the nullable
+// text profile fields (currently date_of_birth).
+func strPtrToNullString(p *string) sql.NullString {
 	if p == nil {
-		return sql.NullInt64{}
+		return sql.NullString{}
 	}
-	return sql.NullInt64{Int64: int64(*p), Valid: true}
+	return sql.NullString{String: *p, Valid: true}
+}
+
+// nullStringToStrPtr converts a sql.NullString to a *string. nil for
+// SQL NULL, &value otherwise.
+func nullStringToStrPtr(ns sql.NullString) *string {
+	if !ns.Valid {
+		return nil
+	}
+	v := ns.String
+	return &v
 }
 
 // boolToInt converts a bool to the 0/1 the SQLite INTEGER columns

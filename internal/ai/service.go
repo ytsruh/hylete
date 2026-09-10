@@ -187,7 +187,7 @@ func (s *Service) BuildWeeklyReport(ctx context.Context, userID string, now time
 		if err != nil {
 			return nil, fmt.Errorf("ai: failed to encode stats: %w", err)
 		}
-		prompt := RenderWeekly(string(statsJSON), user.AIGoalText, goalsList(goals), prefsLine(user), profileLine(user))
+		prompt := RenderWeekly(string(statsJSON), user.AIGoalText, goalsList(goals), prefsLine(user), profileLine(user, periodEnd))
 		raw, tokensIn, tokensOut, err := s.client.Chat(ctx, prompt)
 		if err != nil {
 			return nil, err
@@ -359,9 +359,11 @@ func prefsLine(u *models.User) string {
 // USER_PROFILE prompt block. Unset fields are omitted; an entirely
 // empty profile yields "" and RenderWeekly falls back to
 // "No profile details provided." so the LLM never sees invented values.
-func profileLine(u *models.User) string {
+// The birth date itself is never sent — only the whole-years age derived
+// at now — so the raw DOB stays server-side.
+func profileLine(u *models.User, now time.Time) string {
 	if u == nil {
 		return ""
 	}
-	return RenderUserProfile(u.HeightCm, u.Gender, u.Age)
+	return RenderUserProfile(u.HeightCm, u.Gender, u.DateOfBirth, now)
 }

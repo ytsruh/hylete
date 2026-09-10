@@ -30,7 +30,7 @@ CREATE TABLE users (
     ai_goal_text TEXT NOT NULL DEFAULT '',
     height_cm REAL,
     gender TEXT NOT NULL DEFAULT '',
-    age INTEGER,
+    date_of_birth TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -119,8 +120,11 @@ type User struct {
 	// Gender is one of the ValidGenders values ("male" | "female" |
 	// "non-binary" | "prefer-not-to-say"). Empty means unset.
 	Gender string
-	// Age is the user's age in years. nil means unset.
-	Age *int
+	// DateOfBirth is the user's date of birth as "YYYY-MM-DD" (matching
+	// health_snapshots.snapshot_date). nil means unset. Age is never
+	// stored — derive it with AgeAt wherever it is displayed or sent
+	// to the Coach prompt.
+	DateOfBirth *string
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }
@@ -139,12 +143,66 @@ const (
 // User.Gender, in the order the pickers render them.
 var ValidGenders = []string{GenderMale, GenderFemale, GenderNonBinary, GenderPreferNotSay}
 
-// Age bounds for User.Age. 10–120 enforced app-side (validator tags
-// on the web form and API DTO); nil means unset.
+// Date-of-birth bounds for User.DateOfBirth. Dates must be real
+// calendar dates on/after 1900-01-01 and not in the future (checked
+// by ParseDateOfBirth); the minimum-age rule (10 years) is enforced
+// by callers via AgeAt so "how old" stays correct as time passes.
+// nil means unset.
 const (
-	AgeMin = 10
-	AgeMax = 120
+	// DateOfBirthMin is the earliest accepted birth date. Guards
+	// against typos (e.g. year 99) rather than expressing policy.
+	DateOfBirthMin = "1900-01-01"
+	// MinAgeYears is the minimum derived age accepted at the profile
+	// and API trust boundaries.
+	MinAgeYears = 10
 )
+
+// ParseDateOfBirth validates a "YYYY-MM-DD" birth date: it must be a
+// real calendar date, on/after DateOfBirthMin, and not after now
+// (compared as dates, so "today" is accepted — a newborn's parent
+// could theoretically register them, the min-age rule is separate).
+// Returns the normalised string. Empty input returns ("", nil) so
+// callers can treat blank as "clear the field".
+func ParseDateOfBirth(s string, now time.Time) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	dob, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return "", fmt.Errorf("date of birth %q is not a valid YYYY-MM-DD date", s)
+	}
+	if s < DateOfBirthMin {
+		return "", fmt.Errorf("date of birth %q is before %s", s, DateOfBirthMin)
+	}
+	// Compare as dates: anything after today's date is in the future.
+	y, m, d := now.Date()
+	today := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	if dob.After(today) {
+		return "", fmt.Errorf("date of birth %q is in the future", s)
+	}
+	return dob.Format("2006-01-02"), nil
+}
+
+// AgeAt derives the whole-years age for a "YYYY-MM-DD" birth date at
+// the given instant. Returns -1 when the input is empty or malformed
+// so callers can treat "no usable DOB" uniformly without a second
+// error branch. Handles leap birthdays (Feb 29 ages up on Mar 1 in
+// non-leap years) and the birthday-today boundary (ages up today).
+func AgeAt(dob string, now time.Time) int {
+	born, err := time.Parse("2006-01-02", strings.TrimSpace(dob))
+	if err != nil {
+		return -1
+	}
+	y, m, d := now.Date()
+	age := y - born.Year()
+	// Not yet had this year's birthday → one less.
+	if time.Date(y, m, d, 0, 0, 0, 0, time.UTC).Before(
+		time.Date(y, born.Month(), born.Day(), 0, 0, 0, 0, time.UTC)) {
+		age--
+	}
+	return age
+}
 
 // Height bounds for User.HeightCm in centimetres. 0–300 enforced
 // app-side; nil means unset.

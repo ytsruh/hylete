@@ -17,15 +17,16 @@ import (
 // initial selection; distanceUnit is the same for cardio distances
 // ("km" / "mi").
 //
-// heightCm, gender and age are the optional "About you" fields; nil /
-// empty means unset, in which case the form inputs render empty.
-// Height is a plain number in centimetres (no conversion).
+// heightCm, gender and dateOfBirth are the optional "About you"
+// fields; nil / empty means unset, in which case the form inputs
+// render empty. Height is a plain number in centimetres (no
+// conversion); dateOfBirth is "YYYY-MM-DD" (nil = unset).
 //
 // The reminder section surfaces the user's per-user weight-reminder
 // preferences: master switch, frequency (off / daily / weekly /
 // biweekly), day-of-week (weekly + biweekly only), time-of-day
 // (hour-only), and the email channel checkbox.
-templ ProfilePage(userName string, email string, isAdmin bool, targetWeight *float64, weightUnit string, distanceUnit string, heightCm *float64, gender string, age *int, reminder ReminderFormState) {
+templ ProfilePage(userName string, email string, isAdmin bool, targetWeight *float64, weightUnit string, distanceUnit string, heightCm *float64, gender string, dateOfBirth *string, reminder ReminderFormState) {
 	@views.Layout(views.PageData{Title: "Profile", UserName: userName, IsAuthenticated: true, IsAdmin: isAdmin, CurrentPath: "/profile"}) {
 		@components.Title(components.TitleProps{Size: "lg", Color: "default", Title: "Profile"})
 		<form
@@ -119,19 +120,15 @@ templ ProfilePage(userName string, email string, isAdmin bool, targetWeight *flo
 					</select>
 				</div>
 				<div class="grid gap-2">
-					<label for="age">Age</label>
+					<label for="date_of_birth">Date of birth</label>
 					<input
 						class="input"
-						type="number"
-						inputmode="numeric"
-						id="age"
-						name="age"
-						step="1"
-						min="10"
-						max="120"
-						placeholder="30"
-						if age != nil {
-							value={ fmt.Sprintf("%d", *age) }
+						type="date"
+						id="date_of_birth"
+						name="date_of_birth"
+						min="1900-01-01"
+						if dateOfBirth != nil {
+							value={ *dateOfBirth }
 						}
 					/>
 				</div>

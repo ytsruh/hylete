@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"strings"
+	"time"
 
 	"hylete/internal/models"
 )
@@ -49,8 +50,10 @@ func RenderWeekly(statsJSON, aim, goalsList, prefs, userProfile string) string {
 // user's optional profile fields. Each set field renders as
 // "key=value" joined by " "; every field unset yields "" so the
 // caller falls back to "No profile details provided.". Height
-// renders with one decimal in cm (e.g. "height=180.0 cm").
-func RenderUserProfile(heightCm *float64, gender string, age *int) string {
+// renders with one decimal in cm (e.g. "height=180.0 cm"); the birth
+// date is never sent — only the whole-years age derived via
+// models.AgeAt at now (e.g. "age=30"), so the LLM sees no raw DOB.
+func RenderUserProfile(heightCm *float64, gender string, dob *string, now time.Time) string {
 	parts := make([]string, 0, 3)
 	if heightCm != nil {
 		parts = append(parts, "height="+models.FormatHeight(*heightCm))
@@ -58,8 +61,10 @@ func RenderUserProfile(heightCm *float64, gender string, age *int) string {
 	if g := models.NormalizeGender(gender); g != "" {
 		parts = append(parts, "gender="+g)
 	}
-	if age != nil {
-		parts = append(parts, fmt.Sprintf("age=%d", *age))
+	if dob != nil {
+		if age := models.AgeAt(*dob, now); age >= 0 {
+			parts = append(parts, fmt.Sprintf("age=%d", age))
+		}
 	}
 	return strings.Join(parts, " ")
 }

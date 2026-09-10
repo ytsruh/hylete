@@ -264,9 +264,9 @@ func TestProfileUpdate_DailyReminder_NoDayOfWeek(t *testing.T) {
 	}
 }
 
-// TestProfileUpdate_ProfileFields asserts height/gender/age round-trip
-// through the /profile form into the user row. All three are optional;
-// this posts every field set.
+// TestProfileUpdate_ProfileFields asserts height/gender/date-of-birth
+// round-trip through the /profile form into the user row. All three are
+// optional; this posts every field set.
 func TestProfileUpdate_ProfileFields(t *testing.T) {
 	h, mockUser, e := profileTestHarness(t)
 	mockUser.users = []models.User{
@@ -281,7 +281,7 @@ func TestProfileUpdate_ProfileFields(t *testing.T) {
 	form.Set("weight_unit", "kg")
 	form.Set("height_cm", "180.5")
 	form.Set("gender", "female")
-	form.Set("age", "30")
+	form.Set("date_of_birth", "1996-03-04")
 	form.Set("reminder_frequency", "off")
 	form.Set("reminder_time", "09:00")
 	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(form.Encode()))
@@ -307,21 +307,21 @@ func TestProfileUpdate_ProfileFields(t *testing.T) {
 	if got.Gender != "female" {
 		t.Errorf("Gender = %q, want female", got.Gender)
 	}
-	if got.Age == nil || *got.Age != 30 {
-		t.Errorf("Age = %v, want 30", got.Age)
+	if got.DateOfBirth == nil || *got.DateOfBirth != "1996-03-04" {
+		t.Errorf("DateOfBirth = %v, want 1996-03-04", got.DateOfBirth)
 	}
 }
 
-// TestProfileUpdate_ClearProfileFields asserts empty height/age inputs
+// TestProfileUpdate_ClearProfileFields asserts empty height/DOB inputs
 // clear the stored values (NULL) and an empty gender clears to unset.
 func TestProfileUpdate_ClearProfileFields(t *testing.T) {
 	h, mockUser, e := profileTestHarness(t)
 	height := 170.0
-	age := 40
+	dob := "1986-05-06"
 	mockUser.users = []models.User{
 		{
 			ID: "user-1", Name: "Test User", Email: "test@example.com",
-			PasswordHash: "hash", HeightCm: &height, Gender: "male", Age: &age,
+			PasswordHash: "hash", HeightCm: &height, Gender: "male", DateOfBirth: &dob,
 			CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		},
 	}
@@ -329,7 +329,7 @@ func TestProfileUpdate_ClearProfileFields(t *testing.T) {
 	form := url.Values{}
 	form.Set("name", "Test User")
 	form.Set("weight_unit", "kg")
-	// height_cm / age omitted → cleared; gender omitted → unset.
+	// height_cm / date_of_birth omitted → cleared; gender omitted → unset.
 	form.Set("reminder_frequency", "off")
 	form.Set("reminder_time", "09:00")
 	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(form.Encode()))
@@ -351,13 +351,14 @@ func TestProfileUpdate_ClearProfileFields(t *testing.T) {
 	if got.Gender != "" {
 		t.Errorf("Gender = %q, want empty after clear", got.Gender)
 	}
-	if got.Age != nil {
-		t.Errorf("Age = %v, want nil after clear", *got.Age)
+	if got.DateOfBirth != nil {
+		t.Errorf("DateOfBirth = %v, want nil after clear", *got.DateOfBirth)
 	}
 }
 
-// TestProfileUpdate_RejectsBadProfileFields asserts out-of-range
-// height/age values are rejected with a friendly error.
+// TestProfileUpdate_RejectsBadProfileFields asserts malformed
+// height/DOB values are rejected with a friendly error. The clock is
+// pinned so the future-date and min-age cases are deterministic.
 func TestProfileUpdate_RejectsBadProfileFields(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -367,12 +368,17 @@ func TestProfileUpdate_RejectsBadProfileFields(t *testing.T) {
 	}{
 		{"height too high", "height_cm", "400", "at most 300"},
 		{"height not a number", "height_cm", "tall", "Height must be a valid positive number"},
-		{"age too young", "age", "5", "at least 10"},
-		{"age too old", "age", "200", "at most 120"},
-		{"age not a number", "age", "old", "Age must be a whole number"},
+		{"dob malformed", "date_of_birth", "old", "not a valid YYYY-MM-DD date"},
+		{"dob impossible", "date_of_birth", "1996-02-30", "not a valid YYYY-MM-DD date"},
+		{"dob too early", "date_of_birth", "1899-12-31", "before 1900-01-01"},
+		{"dob in future", "date_of_birth", "2026-09-11", "in the future"},
+		{"dob too young", "date_of_birth", "2020-01-01", "at least 10 years old"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, mockUser2, e := profileTestHarness(t)
+			// Pin the clock: the future-date and min-age DOB
+			// cases are relative to "today".
+			h.clock = &fixedClock{t: time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)}
 			mockUser2.users = []models.User{
 				{
 					ID: "user-1", Name: "Test User", Email: "test@example.com",

@@ -74,7 +74,7 @@ struct ProfileView: View {
     @State private var showingTargetSheet: Bool = false
     @State private var showingHeightSheet: Bool = false
     @State private var showingGenderSheet: Bool = false
-    @State private var showingAgeSheet: Bool = false
+    @State private var showingDateOfBirthSheet: Bool = false
 
     /// Coach settings store + sheet. Owned here (not in the
     /// section view) so the editor sheet can live on the stable
@@ -257,10 +257,10 @@ struct ProfileView: View {
                     .presentationDetents([.large])
                 }
             }
-            .sheet(isPresented: $showingAgeSheet) {
+            .sheet(isPresented: $showingDateOfBirthSheet) {
                 if let user = authStore.currentUser {
                     NavigationStack {
-                        AgeEditView(user: user)
+                        DateOfBirthEditView(user: user)
                     }
                     .presentationDetents([.large])
                 }
@@ -371,9 +371,9 @@ struct ProfileView: View {
     }
 
     /// "About you" section. Holds the name row plus the optional
-    /// height, gender and age rows (which feed the Coach prompt's
-    /// USER_PROFILE block); unset values render as "Not set" so
-    /// the row never looks broken.
+    /// height, gender and date-of-birth rows (the birth date feeds
+    /// the Coach prompt's USER_PROFILE block as a derived age);
+    /// unset values render as "Not set" so the row never looks broken.
     private func aboutSection(user: UserDTO) -> some View {
         Section("About you") {
             Button {
@@ -424,14 +424,14 @@ struct ProfileView: View {
                 }
             }
             Button {
-                showingAgeSheet = true
+                showingDateOfBirthSheet = true
             } label: {
                 HStack {
-                    Text("Age")
+                    Text("Date of birth")
                         .foregroundStyle(DSColors.text)
                     Spacer()
-                    if let age = user.age {
-                        Text("\(age)")
+                    if let dob = user.dateOfBirth {
+                        Text(dob)
                             .foregroundStyle(DSColors.textSecondary)
                     } else {
                         Text("Not set")

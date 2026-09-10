@@ -345,17 +345,17 @@ func TestAPIUpdateMe_DistanceUnit(t *testing.T) {
 	decodeAPIError(t, bad, http.StatusBadRequest)
 }
 
-// TestAPIUpdateMe_ProfileFields verifies height/gender/age round-trip
-// through PUT /api/v1/me.
+// TestAPIUpdateMe_ProfileFields verifies height/gender/date-of-birth
+// round-trip through PUT /api/v1/me.
 func TestAPIUpdateMe_ProfileFields(t *testing.T) {
 	h, _, mockUser, e := setupHandler(t)
 	token, _ := loginUser(t, h, mockUser, "pf@example.com", "PF")
 
 	rec := apiDo(t, e, http.MethodPut, "/api/v1/me", token, UpdateMeRequest{
-		Name:     "PF",
-		HeightCm: ptrFloat(180.5),
-		Gender:   "non-binary",
-		Age:      ptrInt(30),
+		Name:        "PF",
+		HeightCm:    ptrFloat(180.5),
+		Gender:      "non-binary",
+		DateOfBirth: ptrString("1996-03-04"),
 	})
 	dto := decodeAPI[UserDTO](t, rec, http.StatusOK)
 	if dto.HeightCm == nil || *dto.HeightCm != 180.5 {
@@ -364,8 +364,8 @@ func TestAPIUpdateMe_ProfileFields(t *testing.T) {
 	if dto.Gender != "non-binary" {
 		t.Fatalf("gender = %q, want non-binary", dto.Gender)
 	}
-	if dto.Age == nil || *dto.Age != 30 {
-		t.Fatalf("age = %v, want 30", dto.Age)
+	if dto.DateOfBirth == nil || *dto.DateOfBirth != "1996-03-04" {
+		t.Fatalf("date_of_birth = %v, want 1996-03-04", dto.DateOfBirth)
 	}
 
 	// Clearing: omitted pointer fields read back as nil, empty gender
@@ -380,8 +380,8 @@ func TestAPIUpdateMe_ProfileFields(t *testing.T) {
 	if dto.Gender != "" {
 		t.Fatalf("gender = %q, want empty after clear", dto.Gender)
 	}
-	if dto.Age != nil {
-		t.Fatalf("age = %v, want nil after clear", *dto.Age)
+	if dto.DateOfBirth != nil {
+		t.Fatalf("date_of_birth = %v, want nil after clear", *dto.DateOfBirth)
 	}
 }
 
@@ -395,8 +395,10 @@ func TestAPIUpdateMe_Validation_ProfileFields(t *testing.T) {
 		{"height too high", UpdateMeRequest{Name: "PV", HeightCm: ptrFloat(400)}},
 		{"height negative", UpdateMeRequest{Name: "PV", HeightCm: ptrFloat(-1)}},
 		{"bad gender", UpdateMeRequest{Name: "PV", Gender: "unknown"}},
-		{"age too young", UpdateMeRequest{Name: "PV", Age: ptrInt(9)}},
-		{"age too old", UpdateMeRequest{Name: "PV", Age: ptrInt(121)}},
+		{"dob malformed", UpdateMeRequest{Name: "PV", DateOfBirth: ptrString("yesterday")}},
+		{"dob impossible", UpdateMeRequest{Name: "PV", DateOfBirth: ptrString("1996-02-30")}},
+		{"dob too early", UpdateMeRequest{Name: "PV", DateOfBirth: ptrString("1899-12-31")}},
+		{"dob in future", UpdateMeRequest{Name: "PV", DateOfBirth: ptrString("2999-01-01")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := apiDo(t, e, http.MethodPut, "/api/v1/me", token, tc.body)
@@ -405,8 +407,8 @@ func TestAPIUpdateMe_Validation_ProfileFields(t *testing.T) {
 	}
 }
 
-// ptrInt is a tiny helper for the age assertions above.
-func ptrInt(v int) *int { return &v }
+// ptrString is a tiny helper for the date-of-birth assertions above.
+func ptrString(v string) *string { return &v }
 
 func TestAPIUpdateMe_Validation_NameTooShort(t *testing.T) {
 	h, _, mockUser, e := setupHandler(t)

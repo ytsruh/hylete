@@ -149,7 +149,7 @@ type User struct {
 	AiGoalText           string
 	HeightCm             sql.NullFloat64
 	Gender               string
-	Age                  sql.NullInt64
+	DateOfBirth          sql.NullString
 	CreatedAt            sql.NullTime
 	UpdatedAt            sql.NullTime
 }

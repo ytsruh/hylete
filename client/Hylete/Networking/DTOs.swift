@@ -70,8 +70,9 @@ public struct UserDTO: Codable, Equatable, Identifiable {
     /// Empty means unset. Defaults to "" when the key is absent
     /// (older server builds).
     public let gender: String
-    /// Age in years. Nil means unset.
-    public let age: Int?
+    /// Date of birth as "YYYY-MM-DD". Nil means unset. Age is never
+    /// sent — the server derives it where needed.
+    public let dateOfBirth: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -83,7 +84,7 @@ public struct UserDTO: Codable, Equatable, Identifiable {
         case targetWeight = "target_weight"
         case heightCm = "height_cm"
         case gender
-        case age
+        case dateOfBirth = "date_of_birth"
     }
 
     public init(
@@ -96,7 +97,7 @@ public struct UserDTO: Codable, Equatable, Identifiable {
         targetWeight: Double?,
         heightCm: Double? = nil,
         gender: String = "",
-        age: Int? = nil
+        dateOfBirth: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -107,7 +108,7 @@ public struct UserDTO: Codable, Equatable, Identifiable {
         self.targetWeight = targetWeight
         self.heightCm = heightCm
         self.gender = gender
-        self.age = age
+        self.dateOfBirth = dateOfBirth
     }
 
     public init(from decoder: Decoder) throws {
@@ -121,7 +122,9 @@ public struct UserDTO: Codable, Equatable, Identifiable {
         targetWeight = try container.decodeIfPresent(Double.self, forKey: .targetWeight)
         heightCm = try container.decodeIfPresent(Double.self, forKey: .heightCm)
         gender = try container.decodeIfPresent(String.self, forKey: .gender) ?? ""
-        age = try container.decodeIfPresent(Int.self, forKey: .age)
+        // Tolerate the pre-DOB `age` key from older caches: it has
+        // no field to land on, so it is ignored.
+        dateOfBirth = try container.decodeIfPresent(String.self, forKey: .dateOfBirth)
     }
 }
 
@@ -139,8 +142,8 @@ public struct UserDTO: Codable, Equatable, Identifiable {
 /// clears the goal (matching the HTML form's empty-input
 /// behavior). The iOS edit form binds the field to a `String`
 /// and converts to a `Double?` so the user can leave it blank.
-/// `heightCm` / `age` follow the same nil-clears semantics;
-/// `gender` uses "" for unset.
+/// `heightCm` / `dateOfBirth` follow the same nil-clears semantics;
+/// `gender` uses "" for unset. `dateOfBirth` is "YYYY-MM-DD".
 public struct UpdateMeRequest: Encodable, Equatable {
     public let name: String
     public let targetWeight: Double?
@@ -148,7 +151,7 @@ public struct UpdateMeRequest: Encodable, Equatable {
     public let distanceUnit: String
     public let heightCm: Double?
     public let gender: String
-    public let age: Int?
+    public let dateOfBirth: String?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -157,7 +160,7 @@ public struct UpdateMeRequest: Encodable, Equatable {
         case distanceUnit = "distance_unit"
         case heightCm = "height_cm"
         case gender
-        case age
+        case dateOfBirth = "date_of_birth"
     }
 
     public init(
@@ -167,7 +170,7 @@ public struct UpdateMeRequest: Encodable, Equatable {
         distanceUnit: String,
         heightCm: Double?,
         gender: String,
-        age: Int?
+        dateOfBirth: String?
     ) {
         self.name = name
         self.targetWeight = targetWeight
@@ -175,7 +178,7 @@ public struct UpdateMeRequest: Encodable, Equatable {
         self.distanceUnit = distanceUnit
         self.heightCm = heightCm
         self.gender = gender
-        self.age = age
+        self.dateOfBirth = dateOfBirth
     }
 }
 

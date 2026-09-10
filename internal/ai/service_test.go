@@ -39,24 +39,34 @@ func TestRenderWeeklyEmptyAim(t *testing.T) {
 }
 
 func TestRenderUserProfile(t *testing.T) {
+	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
 	// All unset → empty (caller falls back to the default line).
-	if got := RenderUserProfile(nil, "", nil); got != "" {
+	if got := RenderUserProfile(nil, "", nil, now); got != "" {
 		t.Fatalf("empty profile = %q, want empty", got)
 	}
 	height := 180.0
-	age := 30
-	got := RenderUserProfile(&height, "female", &age)
+	dob := "1996-03-04"
+	got := RenderUserProfile(&height, "female", &dob, now)
 	for _, want := range []string{"height=180.0 cm", "gender=female", "age=30"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("profile %q missing %q", got, want)
 		}
 	}
+	// The raw birth date is never echoed — only the derived age.
+	if strings.Contains(got, "1996-03-04") {
+		t.Fatalf("profile must not contain the raw DOB: %q", got)
+	}
 	// Unknown gender is dropped, never echoed.
-	if got := RenderUserProfile(nil, "unknown", nil); got != "" {
+	if got := RenderUserProfile(nil, "unknown", nil, now); got != "" {
 		t.Fatalf("unknown gender must be omitted, got %q", got)
 	}
+	// Malformed DOB is dropped, never echoed.
+	bad := "not-a-date"
+	if got := RenderUserProfile(nil, "", &bad, now); got != "" {
+		t.Fatalf("malformed DOB must be omitted, got %q", got)
+	}
 	// Partial profile renders only the set fields.
-	if got := RenderUserProfile(nil, "male", nil); got != "gender=male" {
+	if got := RenderUserProfile(nil, "male", nil, now); got != "gender=male" {
 		t.Fatalf("partial profile = %q, want %q", got, "gender=male")
 	}
 }

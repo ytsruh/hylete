@@ -4,17 +4,17 @@ VALUES (?, ?, ?, ?, ?)
 RETURNING id;
 
 -- name: GetUserByEmail :one
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, age, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 WHERE email = ?;
 
 -- name: GetUserByID :one
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, age, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 WHERE id = ?;
 
 -- name: ListUsers :many
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, age, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 ORDER BY created_at DESC;
 
@@ -26,7 +26,7 @@ SET name = ?,
     distance_unit = ?,
     height_cm = ?,
     gender = ?,
-    age = ?,
+    date_of_birth = ?,
     updated_at = ?
 WHERE id = ?;
 
@@ -77,7 +77,7 @@ WHERE id = ?;
 -- the indexed next_fire_at column keeps the scan small even when the
 -- users table grows. We pull back the full row so the orchestrator can
 -- build its email payload without an extra round-trip.
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, age, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 WHERE reminder_enabled = 1
   AND reminder_next_fire_at IS NOT NULL
@@ -110,6 +110,6 @@ WHERE id = ?;
 -- Every user with ai_opt_in = 1. The weekly Coach cron iterates
 -- this list; per-user report generation is idempotent on
 -- (user_id, type, period_start) so overlapping ticks are safe.
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, age, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 WHERE ai_opt_in = 1;

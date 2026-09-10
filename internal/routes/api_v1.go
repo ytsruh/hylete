@@ -114,9 +114,9 @@ func (h *Handler) APIMe(c echo.Context) error {
 
 // APIUpdateMe handles PUT /api/v1/me. Updates the same
 // user-editable fields the HTML profile form exposes (name,
-// target weight, weight unit, distance unit, height, gender, age)
-// and returns the updated UserDTO. Reminder preferences are
-// intentionally NOT updated here
+// target weight, weight unit, distance unit, height, gender,
+// date of birth) and returns the updated UserDTO. Reminder
+// preferences are intentionally NOT updated here
 // — they live on GET/PUT /api/v1/me/reminders so a client
 // PUTting /me without reminder fields can never clobber them.
 //
@@ -144,6 +144,21 @@ func (h *Handler) APIUpdateMe(c echo.Context) error {
 		// default is "km", so an omitted field means "km".
 		in.DistanceUnit = models.DistanceUnitKm
 	}
+	// Date of birth is a "YYYY-MM-DD" string validated by
+	// ParseDateOfBirth plus the min-age rule — the validator tags
+	// can't express "real past date, at least 10 years ago", the
+	// same pattern as the web form. Omitted/null clears the value.
+	var dob *string
+	if in.DateOfBirth != nil {
+		parsed, err := models.ParseDateOfBirth(*in.DateOfBirth, h.clock.Now())
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, APIError{Error: err.Error()})
+		}
+		if models.AgeAt(parsed, h.clock.Now()) < models.MinAgeYears {
+			return c.JSON(http.StatusBadRequest, APIError{Error: "you must be at least 10 years old"})
+		}
+		dob = &parsed
+	}
 
 	claims := GetClaims(c)
 	user := &models.User{
@@ -156,7 +171,7 @@ func (h *Handler) APIUpdateMe(c echo.Context) error {
 		DistanceUnit: in.DistanceUnit,
 		HeightCm:     in.HeightCm,
 		Gender:       models.NormalizeGender(in.Gender),
-		Age:          in.Age,
+		DateOfBirth:  dob,
 	}
 	if err := h.userRepo.UpdateUser(user); err != nil {
 		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to update profile"})

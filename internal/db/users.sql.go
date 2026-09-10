@@ -38,7 +38,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (string,
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, age, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 WHERE email = ?
 `
@@ -67,7 +67,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.AiGoalText,
 		&i.HeightCm,
 		&i.Gender,
-		&i.Age,
+		&i.DateOfBirth,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -75,7 +75,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, age, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 WHERE id = ?
 `
@@ -104,7 +104,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.AiGoalText,
 		&i.HeightCm,
 		&i.Gender,
-		&i.Age,
+		&i.DateOfBirth,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -112,7 +112,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 }
 
 const listAIOptedInUsers = `-- name: ListAIOptedInUsers :many
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, age, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 WHERE ai_opt_in = 1
 `
@@ -150,7 +150,7 @@ func (q *Queries) ListAIOptedInUsers(ctx context.Context) ([]User, error) {
 			&i.AiGoalText,
 			&i.HeightCm,
 			&i.Gender,
-			&i.Age,
+			&i.DateOfBirth,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -168,7 +168,7 @@ func (q *Queries) ListAIOptedInUsers(ctx context.Context) ([]User, error) {
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, age, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 ORDER BY created_at DESC
 `
@@ -203,7 +203,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.AiGoalText,
 			&i.HeightCm,
 			&i.Gender,
-			&i.Age,
+			&i.DateOfBirth,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -221,7 +221,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 }
 
 const listUsersDueForReminder = `-- name: ListUsersDueForReminder :many
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, age, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 WHERE reminder_enabled = 1
   AND reminder_next_fire_at IS NOT NULL
@@ -263,7 +263,7 @@ func (q *Queries) ListUsersDueForReminder(ctx context.Context, reminderNextFireA
 			&i.AiGoalText,
 			&i.HeightCm,
 			&i.Gender,
-			&i.Age,
+			&i.DateOfBirth,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -339,7 +339,7 @@ SET name = ?,
     distance_unit = ?,
     height_cm = ?,
     gender = ?,
-    age = ?,
+    date_of_birth = ?,
     updated_at = ?
 WHERE id = ?
 `
@@ -351,7 +351,7 @@ type UpdateUserParams struct {
 	DistanceUnit string
 	HeightCm     sql.NullFloat64
 	Gender       string
-	Age          sql.NullInt64
+	DateOfBirth  sql.NullString
 	UpdatedAt    sql.NullTime
 	ID           string
 }
@@ -364,7 +364,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) error {
 		arg.DistanceUnit,
 		arg.HeightCm,
 		arg.Gender,
-		arg.Age,
+		arg.DateOfBirth,
 		arg.UpdatedAt,
 		arg.ID,
 	)

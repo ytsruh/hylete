@@ -13,9 +13,11 @@ import (
 
 // profileInput represents the parsed and validated form data for profile updates.
 // TargetWeight is a pointer so an empty form value can be distinguished from a
-// real "0" entry and stored as SQL NULL (i.e. "no goal"). HeightCm and Age
-// follow the same optional-pointer semantics; Gender is a string where empty
-// means unset.
+// real "0" entry and stored as SQL NULL (i.e. "no goal"). HeightCm and
+// DateOfBirth follow the same optional-pointer semantics; Gender is a string
+// where empty means unset. DateOfBirth is a "YYYY-MM-DD" string validated by
+// models.ParseDateOfBirth (plus the min-age rule) rather than by tags, the
+// same pattern as reminder_time.
 type profileInput struct {
 	Name         string   `validate:"required,min=2,max=100"`
 	TargetWeight *float64 `validate:"omitempty,gte=0,lte=1000"`
@@ -23,7 +25,7 @@ type profileInput struct {
 	DistanceUnit string   `validate:"omitempty,oneof=km mi"`
 	HeightCm     *float64 `validate:"omitempty,gte=0,lte=300"`
 	Gender       string   `validate:"omitempty,oneof=male female non-binary prefer-not-to-say"`
-	Age          *int     `validate:"omitempty,gte=10,lte=120"`
+	DateOfBirth  *string
 	// ReminderEnabled is the master switch. The form
 	// posts the literal "1" or ""; "" reads as false.
 	ReminderEnabled bool
@@ -70,7 +72,7 @@ func (h *Handler) Profile(c echo.Context) error {
 	distanceUnit := defaultDistanceUnit
 	var heightCm *float64
 	gender := ""
-	var age *int
+	var dob *string
 	reminderState := profile.ReminderFormState{
 		Frequency: models.ReminderWeekly,
 		Time:      defaultReminderTime,
@@ -81,7 +83,7 @@ func (h *Handler) Profile(c echo.Context) error {
 		distanceUnit = user.DistanceUnitDisplay()
 		heightCm = user.HeightCm
 		gender = user.GenderDisplay()
-		age = user.Age
+		dob = user.DateOfBirth
 		// The user's stored preferences seed the form's
 		// first-paint state. Frequency falls back to off
 		// when the stored value is the empty string (a row
@@ -106,7 +108,7 @@ func (h *Handler) Profile(c echo.Context) error {
 		distanceUnit,
 		heightCm,
 		gender,
-		age,
+		dob,
 		reminderState,
 	))
 }
@@ -178,13 +180,19 @@ func (h *Handler) UpdateProfile(c echo.Context) error {
 		input.HeightCm = &height
 	}
 
-	// age is optional. An empty form value clears the age.
-	if raw := c.FormValue("age"); raw != "" {
-		age, err := strconv.Atoi(raw)
+	// date_of_birth is optional. An empty form value clears it.
+	// Validation lives in models.ParseDateOfBirth (real calendar date,
+	// not in the future) plus the min-age rule below — the same
+	// "tags can't express it" pattern as reminder_time.
+	if raw := c.FormValue("date_of_birth"); raw != "" {
+		dob, err := models.ParseDateOfBirth(raw, h.clock.Now())
 		if err != nil {
-			return render(c, profile.ProfileUpdateError("Age must be a whole number"))
+			return render(c, profile.ProfileUpdateError(err.Error()))
 		}
-		input.Age = &age
+		if models.AgeAt(dob, h.clock.Now()) < models.MinAgeYears {
+			return render(c, profile.ProfileUpdateError("You must be at least 10 years old"))
+		}
+		input.DateOfBirth = &dob
 	}
 
 	if err := h.validator.ValidateStruct(&input); err != nil {
@@ -215,7 +223,7 @@ func (h *Handler) UpdateProfile(c echo.Context) error {
 		DistanceUnit: input.DistanceUnit,
 		HeightCm:     input.HeightCm,
 		Gender:       input.Gender,
-		Age:          input.Age,
+		DateOfBirth:  input.DateOfBirth,
 	}
 
 	if err := h.userRepo.UpdateUser(user); err != nil {

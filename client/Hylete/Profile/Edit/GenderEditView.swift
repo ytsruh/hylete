@@ -97,7 +97,7 @@ struct GenderEditView: View {
                 distanceUnit: user.distanceUnit,
                 heightCm: user.heightCm,
                 gender: gender,
-                age: user.age
+                dateOfBirth: user.dateOfBirth
             )
             let updated = try await env.api.updateProfile(request)
             authStore.updateCurrentUser(updated)
@@ -122,7 +122,7 @@ struct GenderEditView: View {
             targetWeight: 75.0,
             heightCm: nil,
             gender: "female",
-            age: nil
+            dateOfBirth: nil
         ))
     }
     .environmentObject(AppEnvironment.live(baseURL: URL(string: "http://localhost:8080/api/v1")!))
