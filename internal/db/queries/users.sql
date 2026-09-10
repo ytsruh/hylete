@@ -4,17 +4,17 @@ VALUES (?, ?, ?, ?, ?)
 RETURNING id;
 
 -- name: GetUserByEmail :one
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 WHERE email = ?;
 
 -- name: GetUserByID :one
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 WHERE id = ?;
 
 -- name: ListUsers :many
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 ORDER BY created_at DESC;
 
@@ -24,6 +24,9 @@ SET name = ?,
     target_weight = ?,
     weight_unit = ?,
     distance_unit = ?,
+    height_cm = ?,
+    gender = ?,
+    date_of_birth = ?,
     updated_at = ?
 WHERE id = ?;
 
@@ -74,7 +77,7 @@ WHERE id = ?;
 -- the indexed next_fire_at column keeps the scan small even when the
 -- users table grows. We pull back the full row so the orchestrator can
 -- build its email payload without an extra round-trip.
-SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, created_at, updated_at
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
 FROM users
 WHERE reminder_enabled = 1
   AND reminder_next_fire_at IS NOT NULL
@@ -91,3 +94,22 @@ SET reminder_last_fired_at = ?,
     reminder_next_fire_at  = ?,
     updated_at             = CURRENT_TIMESTAMP
 WHERE id = ?;
+
+-- name: UpdateUserAIPreferences :exec
+-- Narrow write for the Coach opt-in toggle + free-text aim, kept
+-- separate from UpdateUser / UpdateUserReminder so no other form
+-- can clobber AI consent state. ai_goal_text is capped at 1000
+-- chars app-side; the query stores it verbatim.
+UPDATE users
+SET ai_opt_in    = ?,
+    ai_goal_text = ?,
+    updated_at   = CURRENT_TIMESTAMP
+WHERE id = ?;
+
+-- name: ListAIOptedInUsers :many
+-- Every user with ai_opt_in = 1. The weekly Coach cron iterates
+-- this list; per-user report generation is idempotent on
+-- (user_id, type, period_start) so overlapping ticks are safe.
+SELECT id, name, email, password_hash, is_admin, target_weight, weight_unit, distance_unit, reminder_enabled, reminder_frequency, reminder_day_of_week, reminder_time, reminder_email_enabled, reminder_push_enabled, reminder_next_fire_at, reminder_last_fired_at, ai_opt_in, ai_goal_text, height_cm, gender, date_of_birth, created_at, updated_at
+FROM users
+WHERE ai_opt_in = 1;

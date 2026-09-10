@@ -114,7 +114,10 @@ struct TargetWeightEditView: View {
                 name: user.name,
                 targetWeight: target,
                 weightUnit: user.weightUnit,
-                distanceUnit: user.distanceUnit
+                distanceUnit: user.distanceUnit,
+                heightCm: user.heightCm,
+                gender: user.gender,
+                dateOfBirth: user.dateOfBirth
             )
             let updated = try await env.api.updateProfile(request)
             authStore.updateCurrentUser(updated)

@@ -22,6 +22,10 @@ type Querier interface {
 	// UTC, matching the value written by the application.
 	ConsumeAuthToken(ctx context.Context, arg ConsumeAuthTokenParams) (AuthToken, error)
 	Create(ctx context.Context, arg CreateParams) (string, error)
+	// Insert a Coach report. The caller enforces idempotency on
+	// (user_id, type, period_start): re-runs for the same week
+	// read the existing row via GetAIReport instead of inserting.
+	CreateAIReport(ctx context.Context, arg CreateAIReportParams) (AiReport, error)
 	// Insert a new auth token row. The caller is responsible for hashing
 	// the raw token with sha256 before storing. The raw token only ever
 	// lives in the email link; the database never sees it.
@@ -34,6 +38,12 @@ type Querier interface {
 	DeleteExerciseEntry(ctx context.Context, arg DeleteExerciseEntryParams) error
 	DeleteGoal(ctx context.Context, arg DeleteGoalParams) error
 	DeleteWeightEntry(ctx context.Context, arg DeleteWeightEntryParams) error
+	// Fetch a single report for idempotency checks ((user_id, type,
+	// period_start) unique key) before deciding to call the LLM.
+	GetAIReport(ctx context.Context, arg GetAIReportParams) (AiReport, error)
+	// Fetch a single report by id scoped to the user so a request
+	// cannot read or mutate another user's report.
+	GetAIReportByID(ctx context.Context, arg GetAIReportByIDParams) (AiReport, error)
 	GetAll(ctx context.Context) ([]GetAllRow, error)
 	GetAllClosed(ctx context.Context) ([]GetAllClosedRow, error)
 	GetAllOpen(ctx context.Context) ([]GetAllOpenRow, error)
@@ -50,6 +60,8 @@ type Querier interface {
 	GetGoal(ctx context.Context, arg GetGoalParams) (Goal, error)
 	GetHealthSnapshotByDate(ctx context.Context, arg GetHealthSnapshotByDateParams) (HealthSnapshot, error)
 	GetLastSetByExercise(ctx context.Context, arg GetLastSetByExerciseParams) (GetLastSetByExerciseRow, error)
+	// The iOS Coach screen's primary read: newest report of a type.
+	GetLatestAIReport(ctx context.Context, arg GetLatestAIReportParams) (AiReport, error)
 	// Longest distance in metres logged for an exercise. Returns 0 when no exercise entries exist.
 	GetLongestDistanceByExercise(ctx context.Context, arg GetLongestDistanceByExerciseParams) (float64, error)
 	// Heaviest weight logged for a strength exercise. Returns 0 when no exercise entries exist.
@@ -59,6 +71,12 @@ type Querier interface {
 	GetWeightEntriesByIDs(ctx context.Context, arg GetWeightEntriesByIDsParams) ([]WeightEntry, error)
 	GetWeightEntry(ctx context.Context, arg GetWeightEntryParams) (WeightEntry, error)
 	List(ctx context.Context) ([]Exercise, error)
+	// Every user with ai_opt_in = 1. The weekly Coach cron iterates
+	// this list; per-user report generation is idempotent on
+	// (user_id, type, period_start) so overlapping ticks are safe.
+	ListAIOptedInUsers(ctx context.Context) ([]User, error)
+	// Report history for the iOS Coach screen, newest first.
+	ListAIReports(ctx context.Context, arg ListAIReportsParams) ([]AiReport, error)
 	// Active goals: completed_at IS NULL. Order by target_date asc with nulls
 	// last, then by created_at asc as a stable tiebreaker. The CASE expression
 	// emulates NULLS LAST for SQLite versions that don't support it natively.
@@ -77,6 +95,8 @@ type Querier interface {
 	// build its email payload without an extra round-trip.
 	ListUsersDueForReminder(ctx context.Context, reminderNextFireAt sql.NullTime) ([]User, error)
 	ListWeightEntries(ctx context.Context, userID string) ([]WeightEntry, error)
+	// Stamp dismissed_at. Idempotent: re-dismissals overwrite.
+	MarkAIReportDismissed(ctx context.Context, arg MarkAIReportDismissedParams) error
 	// Atomically set completed_at and bump updated_at. Scoped to user_id so
 	// the request cannot mark another user's goal complete.
 	MarkGoalComplete(ctx context.Context, arg MarkGoalCompleteParams) error
@@ -86,6 +106,10 @@ type Querier interface {
 	// the row's edit history stays accurate (useful for future "when was
 	// this user last updated" UI).
 	MarkUserReminderFired(ctx context.Context, arg MarkUserReminderFiredParams) error
+	// Clear dismissed_at, returning the report to the card list.
+	// Idempotent: reopening a non-dismissed row is a no-op that
+	// still matches (so the route can call it without checking).
+	ReopenAIReport(ctx context.Context, arg ReopenAIReportParams) error
 	// Atomically clear completed_at and bump updated_at. No-op if the goal
 	// is already active (completed_at is already NULL), so the route can
 	// call it without first checking the current state.
@@ -107,6 +131,11 @@ type Querier interface {
 	UpdateGoal(ctx context.Context, arg UpdateGoalParams) error
 	UpdateStatus(ctx context.Context, arg UpdateStatusParams) (Feedback, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) error
+	// Narrow write for the Coach opt-in toggle + free-text aim, kept
+	// separate from UpdateUser / UpdateUserReminder so no other form
+	// can clobber AI consent state. ai_goal_text is capped at 1000
+	// chars app-side; the query stores it verbatim.
+	UpdateUserAIPreferences(ctx context.Context, arg UpdateUserAIPreferencesParams) error
 	// Replace a user's password hash. Used by the password-reset flow
 	// after a reset token has been successfully consumed. Separate from
 	// UpdateUser so the profile-editing form cannot be tricked into

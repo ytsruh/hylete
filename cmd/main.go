@@ -11,6 +11,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	aicoach "hylete/internal/ai"
 	"hylete/internal/controllers"
 	"hylete/internal/db"
 	"hylete/internal/email"
@@ -38,6 +39,16 @@ import (
 // cadence is a product decision, not a per-deployment knob.
 const weightReminderCronSpec = "0 * * * *"
 
+// coachWeeklyCronSpec fires the Coach weekly review every Monday at
+// 04:00 UTC — 04:00 GMT in winter, 05:00 BST in summer — so the
+// review is waiting when UK users wake up Monday morning either
+// way. The job iterates users with users.ai_opt_in = 1 and
+// builds the last full Mon–Sun week; generation is idempotent on
+// (user_id, type, period_start) so overlapping or restarted ticks
+// never duplicate rows or double-spend LLM calls. Same hard-coded
+// policy as weightReminderCronSpec.
+const coachWeeklyCronSpec = "0 4 * * MON"
+
 func main() {
 	// Load and validate environment variables on startup
 	cfg, err := utils.LoadAndValidateEnv()
@@ -64,6 +75,8 @@ func main() {
 	weightRepo := models.NewWeightRepository(database)
 	authTokenRepo := models.NewAuthTokenRepository(database)
 	goalsRepo := models.NewGoalRepository(database)
+	healthRepo := models.NewHealthSnapshotRepository(database)
+	aiReportsRepo := models.NewAIReportRepository(database)
 
 	// Initialize auth service
 	jwtService := utils.NewJWTService(cfg.JWT_SECRET)
@@ -96,7 +109,7 @@ func main() {
 	weightCtrl := controllers.NewWeightController(weightRepo, r2PhotoGetter{})
 	authRecoveryCtrl := controllers.NewAuthRecoveryController(userRepo, authTokenRepo, emailService)
 	goalsCtrl := controllers.NewGoalsController(goalsRepo)
-	healthCtrl := controllers.NewHealthSnapshotController(models.NewHealthSnapshotRepository(database))
+	healthCtrl := controllers.NewHealthSnapshotController(healthRepo)
 
 	// Initialize the per-user weight-reminder orchestrator here so
 	// the hourly cron scheduler below can drive it. The orchestrator
@@ -111,6 +124,27 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize weight reminder: %v", err)
 	}
+
+	// Initialize the Coach (user-facing name for AI features)
+	// orchestrator. Credentials are required EnvVar fields, so by
+	// this point the account, token, base URL, and model are all
+	// present — a missing key hard-failed startup in
+	// LoadAndValidateEnv above.
+	aiCfg := aicoach.ConfigFromEnv(
+		cfg.CLOUDFLARE_AI_ACCOUNT_ID,
+		cfg.CLOUDFLARE_AI_TOKEN,
+		cfg.AI_BASE_URL,
+		cfg.AI_MODEL,
+	)
+	aiClient := aicoach.NewCFClient(aiCfg)
+	coachService, err := aicoach.NewService(
+		repo, weightRepo, healthRepo, goalsRepo, userRepo, aiReportsRepo,
+		aiClient, aiCfg.Model, true,
+	)
+	if err != nil {
+		log.Fatalf("Failed to initialize coach service: %v", err)
+	}
+	log.Printf("Coach enabled (model=%s)", aiCfg.Model)
 
 	// Initialize route handlers
 	validator := utils.NewValidator()
@@ -136,6 +170,11 @@ func main() {
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
+
+	// Attach the Coach service to the report routes. A disabled
+	// service is still attached so the handlers can answer with
+	// precise 503s instead of nil-panicking.
+	h.SetCoachService(coachService, aiReportsRepo)
 
 	// Custom HTTP error handler. HTML routes get a templ-rendered
 	// error page so the user can read the message in the same
@@ -188,6 +227,26 @@ func main() {
 	}
 	scheduler.Start()
 	defer scheduler.Stop()
+
+	// Start the weekly Coach scheduler. Same cron wrapper as the
+	// weight reminder; the tick logs its TickResult (users seen,
+	// generated, reused, failures, tokens) and per-user failures
+	// never abort the run. A disabled service makes RunWeekly a
+	// no-op returning a zero TickResult.
+	coachScheduler, err := reminders.NewCronScheduler(
+		coachWeeklyCronSpec,
+		time.UTC,
+		func(ctx context.Context) {
+			res := coachService.RunWeekly(ctx, time.Now())
+			log.Printf("coach: weekly tick users=%d generated=%d reused=%d failures=%d tokens_in=%d tokens_out=%d",
+				res.UsersSeen, res.Generated, res.Reused, res.Failures, res.TokensIn, res.TokensOut)
+		},
+	)
+	if err != nil {
+		log.Fatalf("Failed to initialize coach scheduler: %v", err)
+	}
+	coachScheduler.Start()
+	defer coachScheduler.Stop()
 
 	// Start server
 	localIP := getLocalIP()

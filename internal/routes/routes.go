@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
+	aicoach "hylete/internal/ai"
 	"hylete/internal/controllers"
 	"hylete/internal/models"
 	"hylete/internal/utils"
@@ -46,6 +47,11 @@ type Handler struct {
 	imageUploader  exerciseImageUploader
 	// imageConfig controls the two variants produced per upload.
 	imageConfig ExerciseImageConfig
+	// aiService is the Coach orchestrator (nil = AI disabled).
+	// aiReports is the ai_reports store. Both are attached via
+	// SetCoachService so Handler construction sites stay stable.
+	aiService *aicoach.Service
+	aiReports models.AIReportRepo
 }
 
 // Clock is the time source the profile route uses to stamp
@@ -253,6 +259,23 @@ func registerAPIRoutes(e *echo.Echo, h *Handler) {
 	// future analysis surfaces.
 	e.POST("/api/v1/health-snapshots", h.APIUpsertHealthSnapshots)
 	e.GET("/api/v1/health-snapshots", h.APIListHealthSnapshots)
+
+	// Coach (user-facing name for AI features — server + iOS
+	// only, no web UI; iOS gates visibility behind its
+	// BetaFeature switch). Reports are generated solely by the
+	// Monday cron; the API is read + dismiss only, so reviews
+	// arrive on their own with no client trigger.
+	e.GET("/api/v1/coach/weekly:latest", h.APICoachLatest)
+	e.GET("/api/v1/coach/weekly", h.APICoachHistory)
+	e.POST("/api/v1/coach/weekly/:id/dismiss", h.APICoachDismiss)
+	e.POST("/api/v1/coach/weekly/:id/restore", h.APICoachRestore)
+
+	// Coach consent state (opt-in toggle + free-text aim). Kept
+	// as dedicated endpoints (same pattern as reminders) so a
+	// client PUTting /me can never clobber AI consent, and so
+	// preferences work even when the AI backend is disabled.
+	e.GET("/api/v1/me/coach-preferences", h.APICoachGetPreferences)
+	e.PUT("/api/v1/me/coach-preferences", h.APICoachUpdatePreferences)
 }
 
 // ServeManifest serves the web app manifest with the correct MIME type.

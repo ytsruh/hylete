@@ -95,10 +95,12 @@ func (r *UserRepository) GetUserByID(id string) (*User, error) {
 	return mapUser(row), nil
 }
 
-// UpdateUser updates an existing user's name, target weight, weight unit, and
-// distance unit.
-// The target weight is written as NULL when the user has cleared their goal,
-// so the form can be reset by submitting an empty input.
+// UpdateUser updates an existing user's name, target weight, weight unit,
+// distance unit, height, gender and date of birth.
+// The target weight / height / date of birth are written as NULL when the
+// user has cleared them, so the form can be reset by submitting an empty
+// input. Gender is normalised (unknown → "") before persistence so the row
+// never carries a value the pickers cannot render.
 func (r *UserRepository) UpdateUser(user *User) error {
 	ctx := context.Background()
 	err := r.queries.UpdateUser(ctx, db.UpdateUserParams{
@@ -106,6 +108,9 @@ func (r *UserRepository) UpdateUser(user *User) error {
 		TargetWeight: ptrToNullFloat64(user.TargetWeight),
 		WeightUnit:   user.WeightUnit,
 		DistanceUnit: user.DistanceUnit,
+		HeightCm:     ptrToNullFloat64(user.HeightCm),
+		Gender:       NormalizeGender(user.Gender),
+		DateOfBirth:  strPtrToNullString(user.DateOfBirth),
 		UpdatedAt:    sql.NullTime{Time: time.Now(), Valid: true},
 		ID:           user.ID,
 	})
@@ -207,8 +212,50 @@ func (r *UserRepository) MarkUserReminderFired(ctx context.Context, userID strin
 	return nil
 }
 
-// ReminderPreferences is the controller-shaped struct the
-// /profile form posts. Decoupled from models.User so the form
+// UpdateUserAIPreferences writes the Coach opt-in toggle and
+// free-text aim. Narrow and single-purpose (same pattern as
+// UpdateUserReminder) so no other form can clobber AI consent
+// state. goalText must already be trimmed and length-checked
+// against AIGoalTextMaxLength by the caller.
+func (r *UserRepository) UpdateUserAIPreferences(userID string, optIn bool, goalText string) error {
+	if userID == "" {
+		return fmt.Errorf("failed to update AI preferences: user id is empty")
+	}
+	if len(goalText) > AIGoalTextMaxLength {
+		return fmt.Errorf("failed to update AI preferences: goal text exceeds %d characters", AIGoalTextMaxLength)
+	}
+	ctx := context.Background()
+	err := r.queries.UpdateUserAIPreferences(ctx, db.UpdateUserAIPreferencesParams{
+		AiOptIn:    boolToInt(optIn),
+		AiGoalText: goalText,
+		ID:         userID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update AI preferences: %w", err)
+	}
+	return nil
+}
+
+// ListAIOptedInUsers returns every user with ai_opt_in = 1. The
+// weekly Coach cron iterates this list; per-user report
+// generation is idempotent on (user_id, type, period_start) so
+// overlapping ticks are safe.
+func (r *UserRepository) ListAIOptedInUsers(ctx context.Context) ([]User, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rows, err := r.queries.ListAIOptedInUsers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list AI opted-in users: %w", err)
+	}
+	users := make([]User, len(rows))
+	for i, row := range rows {
+		users[i] = *mapUser(row)
+	}
+	return users, nil
+}
+
+// ReminderPreferences is the controller-shaped struct the// /profile form posts. Decoupled from models.User so the form
 // layer never accidentally touches unrelated fields and the
 // repo method's signature reads as "reminder preferences" at
 // a glance.
@@ -251,6 +298,11 @@ func mapUser(row db.User) *User {
 		ReminderTime:         row.ReminderTime,
 		ReminderNextFireAt:   nullTimeToTimePtr(row.ReminderNextFireAt),
 		ReminderLastFiredAt:  nullTimeToTimePtr(row.ReminderLastFiredAt),
+		AIOptIn:              row.AiOptIn == 1,
+		AIGoalText:           row.AiGoalText,
+		HeightCm:             nullFloat64ToPtr(row.HeightCm),
+		Gender:               NormalizeGender(row.Gender),
+		DateOfBirth:          nullStringToStrPtr(row.DateOfBirth),
 		CreatedAt:            nullTimeToTime(row.CreatedAt),
 		UpdatedAt:            nullTimeToTime(row.UpdatedAt),
 	}
@@ -283,6 +335,26 @@ func nullInt64ToIntPtr(ni sql.NullInt64) *int {
 		return nil
 	}
 	v := int(ni.Int64)
+	return &v
+}
+
+// strPtrToNullString converts a *string to a sql.NullString. nil
+// becomes SQL NULL, &value becomes Valid: true. Used for the nullable
+// text profile fields (currently date_of_birth).
+func strPtrToNullString(p *string) sql.NullString {
+	if p == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *p, Valid: true}
+}
+
+// nullStringToStrPtr converts a sql.NullString to a *string. nil for
+// SQL NULL, &value otherwise.
+func nullStringToStrPtr(ns sql.NullString) *string {
+	if !ns.Valid {
+		return nil
+	}
+	v := ns.String
 	return &v
 }
 

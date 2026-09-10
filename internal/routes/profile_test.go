@@ -264,6 +264,191 @@ func TestProfileUpdate_DailyReminder_NoDayOfWeek(t *testing.T) {
 	}
 }
 
+// TestProfileUpdate_ProfileFields asserts height/gender/date-of-birth
+// round-trip through the /profile form into the user row. All three are
+// optional; this posts every field set.
+func TestProfileUpdate_ProfileFields(t *testing.T) {
+	h, mockUser, e := profileTestHarness(t)
+	mockUser.users = []models.User{
+		{
+			ID: "user-1", Name: "Test User", Email: "test@example.com",
+			PasswordHash: "hash", CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		},
+	}
+
+	form := url.Values{}
+	form.Set("name", "Test User")
+	form.Set("weight_unit", "kg")
+	form.Set("height_cm", "180.5")
+	form.Set("gender", "female")
+	form.Set("date_of_birth", "1996-03-04")
+	form.Set("reminder_frequency", "off")
+	form.Set("reminder_time", "09:00")
+	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setAuthContext(c, "user-1", "test@example.com", "Test User", false)
+
+	if err := h.UpdateProfile(c); err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+
+	got, err := mockUser.GetUserByID("user-1")
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if got.HeightCm == nil || *got.HeightCm != 180.5 {
+		t.Errorf("HeightCm = %v, want 180.5", got.HeightCm)
+	}
+	if got.Gender != "female" {
+		t.Errorf("Gender = %q, want female", got.Gender)
+	}
+	if got.DateOfBirth == nil || *got.DateOfBirth != "1996-03-04" {
+		t.Errorf("DateOfBirth = %v, want 1996-03-04", got.DateOfBirth)
+	}
+}
+
+// TestProfileUpdate_ClearProfileFields asserts empty height/DOB inputs
+// clear the stored values (NULL) and an empty gender clears to unset.
+func TestProfileUpdate_ClearProfileFields(t *testing.T) {
+	h, mockUser, e := profileTestHarness(t)
+	height := 170.0
+	dob := "1986-05-06"
+	mockUser.users = []models.User{
+		{
+			ID: "user-1", Name: "Test User", Email: "test@example.com",
+			PasswordHash: "hash", HeightCm: &height, Gender: "male", DateOfBirth: &dob,
+			CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		},
+	}
+
+	form := url.Values{}
+	form.Set("name", "Test User")
+	form.Set("weight_unit", "kg")
+	// height_cm / date_of_birth omitted → cleared; gender omitted → unset.
+	form.Set("reminder_frequency", "off")
+	form.Set("reminder_time", "09:00")
+	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setAuthContext(c, "user-1", "test@example.com", "Test User", false)
+
+	if err := h.UpdateProfile(c); err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+	got, err := mockUser.GetUserByID("user-1")
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if got.HeightCm != nil {
+		t.Errorf("HeightCm = %v, want nil after clear", *got.HeightCm)
+	}
+	if got.Gender != "" {
+		t.Errorf("Gender = %q, want empty after clear", got.Gender)
+	}
+	if got.DateOfBirth != nil {
+		t.Errorf("DateOfBirth = %v, want nil after clear", *got.DateOfBirth)
+	}
+}
+
+// TestProfileUpdate_RejectsBadProfileFields asserts malformed
+// height/DOB values are rejected with a friendly error. The clock is
+// pinned so the future-date and min-age cases are deterministic.
+func TestProfileUpdate_RejectsBadProfileFields(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		field string
+		value string
+		want  string
+	}{
+		{"height too high", "height_cm", "400", "at most 300"},
+		{"height not a number", "height_cm", "tall", "Height must be a valid positive number"},
+		{"dob malformed", "date_of_birth", "old", "not a valid YYYY-MM-DD date"},
+		{"dob impossible", "date_of_birth", "1996-02-30", "not a valid YYYY-MM-DD date"},
+		{"dob too early", "date_of_birth", "1899-12-31", "before 1900-01-01"},
+		{"dob in future", "date_of_birth", "2026-09-11", "in the future"},
+		{"dob too young", "date_of_birth", "2020-01-01", "at least 10 years old"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, mockUser2, e := profileTestHarness(t)
+			// Pin the clock: the future-date and min-age DOB
+			// cases are relative to "today".
+			h.clock = &fixedClock{t: time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)}
+			mockUser2.users = []models.User{
+				{
+					ID: "user-1", Name: "Test User", Email: "test@example.com",
+					PasswordHash: "hash", CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+				},
+			}
+			form := url.Values{}
+			form.Set("name", "Test User")
+			form.Set("weight_unit", "kg")
+			form.Set(tc.field, tc.value)
+			form.Set("reminder_frequency", "off")
+			form.Set("reminder_time", "09:00")
+			req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+			setAuthContext(c, "user-1", "test@example.com", "Test User", false)
+
+			if err := h.UpdateProfile(c); err != nil {
+				t.Fatalf("UpdateProfile returned unexpected error: %v", err)
+			}
+			body := rec.Body.String()
+			if !strings.Contains(body, tc.want) {
+				t.Errorf("expected %q in body, got: %q", tc.want, body)
+			}
+		})
+	}
+}
+
+// TestProfileUpdate_UnknownGenderNormalizesToUnset asserts an
+// unrecognised gender form value is normalised to unset rather than
+// rejected (the form normalises before validation by design; the
+// JSON API still rejects unknown values via its oneof tag).
+func TestProfileUpdate_UnknownGenderNormalizesToUnset(t *testing.T) {
+	h, mockUser, e := profileTestHarness(t)
+	mockUser.users = []models.User{
+		{
+			ID: "user-1", Name: "Test User", Email: "test@example.com",
+			PasswordHash: "hash", Gender: "male",
+			CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		},
+	}
+
+	form := url.Values{}
+	form.Set("name", "Test User")
+	form.Set("weight_unit", "kg")
+	form.Set("gender", "unknown")
+	form.Set("reminder_frequency", "off")
+	form.Set("reminder_time", "09:00")
+	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setAuthContext(c, "user-1", "test@example.com", "Test User", false)
+
+	if err := h.UpdateProfile(c); err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body = %s", rec.Code, rec.Body.String())
+	}
+	got, err := mockUser.GetUserByID("user-1")
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if got.Gender != "" {
+		t.Errorf("Gender = %q, want empty (normalised)", got.Gender)
+	}
+}
+
 // fixedClock is a tiny test-only time source for the
 // profile route's "now" computation. Same shape as the
 // reminders package's helper; declared in this file so the

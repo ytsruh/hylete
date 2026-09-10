@@ -62,6 +62,17 @@ public struct UserDTO: Codable, Equatable, Identifiable {
     public let weightUnit: String
     public let distanceUnit: String
     public let targetWeight: Double?
+    /// Height in centimetres. Nil means unset. Optional so entries
+    /// from older server builds (which omit the key via `omitempty`)
+    /// still decode.
+    public let heightCm: Double?
+    /// One of "male" | "female" | "non-binary" | "prefer-not-to-say".
+    /// Empty means unset. Defaults to "" when the key is absent
+    /// (older server builds).
+    public let gender: String
+    /// Date of birth as "YYYY-MM-DD". Nil means unset. Age is never
+    /// sent — the server derives it where needed.
+    public let dateOfBirth: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -71,6 +82,9 @@ public struct UserDTO: Codable, Equatable, Identifiable {
         case weightUnit = "weight_unit"
         case distanceUnit = "distance_unit"
         case targetWeight = "target_weight"
+        case heightCm = "height_cm"
+        case gender
+        case dateOfBirth = "date_of_birth"
     }
 
     public init(
@@ -80,7 +94,10 @@ public struct UserDTO: Codable, Equatable, Identifiable {
         isAdmin: Bool,
         weightUnit: String,
         distanceUnit: String,
-        targetWeight: Double?
+        targetWeight: Double?,
+        heightCm: Double? = nil,
+        gender: String = "",
+        dateOfBirth: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -89,6 +106,25 @@ public struct UserDTO: Codable, Equatable, Identifiable {
         self.weightUnit = weightUnit
         self.distanceUnit = distanceUnit
         self.targetWeight = targetWeight
+        self.heightCm = heightCm
+        self.gender = gender
+        self.dateOfBirth = dateOfBirth
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        email = try container.decode(String.self, forKey: .email)
+        isAdmin = try container.decode(Bool.self, forKey: .isAdmin)
+        weightUnit = try container.decode(String.self, forKey: .weightUnit)
+        distanceUnit = try container.decode(String.self, forKey: .distanceUnit)
+        targetWeight = try container.decodeIfPresent(Double.self, forKey: .targetWeight)
+        heightCm = try container.decodeIfPresent(Double.self, forKey: .heightCm)
+        gender = try container.decodeIfPresent(String.self, forKey: .gender) ?? ""
+        // Tolerate the pre-DOB `age` key from older caches: it has
+        // no field to land on, so it is ignored.
+        dateOfBirth = try container.decodeIfPresent(String.self, forKey: .dateOfBirth)
     }
 }
 
@@ -106,29 +142,43 @@ public struct UserDTO: Codable, Equatable, Identifiable {
 /// clears the goal (matching the HTML form's empty-input
 /// behavior). The iOS edit form binds the field to a `String`
 /// and converts to a `Double?` so the user can leave it blank.
+/// `heightCm` / `dateOfBirth` follow the same nil-clears semantics;
+/// `gender` uses "" for unset. `dateOfBirth` is "YYYY-MM-DD".
 public struct UpdateMeRequest: Encodable, Equatable {
     public let name: String
     public let targetWeight: Double?
     public let weightUnit: String
     public let distanceUnit: String
+    public let heightCm: Double?
+    public let gender: String
+    public let dateOfBirth: String?
 
     enum CodingKeys: String, CodingKey {
         case name
         case targetWeight = "target_weight"
         case weightUnit = "weight_unit"
         case distanceUnit = "distance_unit"
+        case heightCm = "height_cm"
+        case gender
+        case dateOfBirth = "date_of_birth"
     }
 
     public init(
         name: String,
         targetWeight: Double?,
         weightUnit: String,
-        distanceUnit: String
+        distanceUnit: String,
+        heightCm: Double?,
+        gender: String,
+        dateOfBirth: String?
     ) {
         self.name = name
         self.targetWeight = targetWeight
         self.weightUnit = weightUnit
         self.distanceUnit = distanceUnit
+        self.heightCm = heightCm
+        self.gender = gender
+        self.dateOfBirth = dateOfBirth
     }
 }
 
@@ -1046,4 +1096,146 @@ public struct HealthSnapshotDTO: Decodable, Equatable {
 /// server add fields without breaking the iOS contract.
 public struct HealthSnapshotsResponse: Decodable, Equatable {
     public let snapshots: [HealthSnapshotDTO]
+}
+
+// MARK: - Coach (AI features, beta-gated)
+
+// DTOs mirror `internal/routes/api_coach.go`. "Coach" is the
+// user-facing name; the server stores rows in `ai_reports` and
+// the `type` field carries `weekly` (later `insight`/`monthly`).
+// The report `payload` is the validated JSON produced from the
+// versioned server prompt — the client renders it verbatim and
+// never re-interprets it, so prompt evolution can't break old
+// rows cached on device.
+
+/// One stored weekly report (`GET /api/v1/coach/weekly:latest`,
+/// history items). `payload` decodes straight into
+/// `CoachReportPayload`; `dismissedAt` is nil until the user
+/// swipes the card away.
+public struct CoachReportDTO: Decodable, Equatable, Identifiable {
+    public let id: String
+    public let type: String
+    public let periodStart: Date
+    public let periodEnd: Date
+    public let promptVersion: String
+    public let model: String
+    public let payload: CoachReportPayload
+    public let dismissedAt: Date?
+    public let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case type
+        case periodStart = "period_start"
+        case periodEnd = "period_end"
+        case promptVersion = "prompt_version"
+        case model
+        case payload
+        case dismissedAt = "dismissed_at"
+        case createdAt = "created_at"
+    }
+
+    public var isDismissed: Bool { dismissedAt != nil }
+}
+
+/// The validated weekly payload. Every array defaults to empty
+/// when the server omits it, so a thinner future schema still
+/// decodes; `summary` and `recommendations` are required (the
+/// server rejects reports without them).
+public struct CoachReportPayload: Decodable, Equatable {
+    public let summary: String
+    public let progressPerGoal: [CoachGoalProgress]
+    public let prs: [String]
+    public let stalling: [String]
+    public let trends: CoachTrends
+    public let adherence: String
+    public let recoverySignals: [String]
+    public let recommendations: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case summary
+        case progressPerGoal = "progress_per_goal"
+        case prs
+        case stalling
+        case trends
+        case adherence
+        case recoverySignals = "recovery_signals"
+        case recommendations
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        summary = try container.decode(String.self, forKey: .summary)
+        progressPerGoal = try container.decodeIfPresent([CoachGoalProgress].self, forKey: .progressPerGoal) ?? []
+        prs = try container.decodeIfPresent([String].self, forKey: .prs) ?? []
+        stalling = try container.decodeIfPresent([String].self, forKey: .stalling) ?? []
+        trends = try container.decodeIfPresent(CoachTrends.self, forKey: .trends)
+            ?? CoachTrends(volume: "n/a", frequency: "n/a", bodyweight: "n/a")
+        adherence = try container.decodeIfPresent(String.self, forKey: .adherence) ?? ""
+        recoverySignals = try container.decodeIfPresent([String].self, forKey: .recoverySignals) ?? []
+        recommendations = try container.decode([String].self, forKey: .recommendations)
+    }
+}
+
+/// One per-goal line in the weekly payload. Free text on both
+/// sides — the server never parses goal titles, it only relays
+/// them, so there is nothing to normalize here.
+public struct CoachGoalProgress: Decodable, Equatable {
+    public let goal: String
+    public let status: String
+}
+
+/// Volume/frequency/bodyweight trend lines, pre-phrased by the
+/// server prompt (e.g. "up 12% — mostly added sets").
+public struct CoachTrends: Decodable, Equatable {
+    public let volume: String
+    public let frequency: String
+    public let bodyweight: String
+}
+
+/// Response body for `GET /api/v1/coach/weekly?limit=N`.
+/// Newest first.
+public struct CoachReportsResponse: Decodable, Equatable {
+    public let reports: [CoachReportDTO]
+}
+
+/// Server-side Coach consent state (`GET
+/// /api/v1/me/coach-preferences`). `optIn` gates all workout data
+/// leaving the server; `goalText` is the free-text training aim
+/// ("" = no stated aim), capped at 1000 chars server-side.
+public struct CoachPreferencesDTO: Codable, Equatable {
+    public let optIn: Bool
+    public let goalText: String
+
+    enum CodingKeys: String, CodingKey {
+        case optIn = "opt_in"
+        case goalText = "goal_text"
+    }
+
+    public init(optIn: Bool, goalText: String) {
+        self.optIn = optIn
+        self.goalText = goalText
+    }
+
+    /// Client-side mirror of the server's 1000-char cap so the
+    /// editor can disable Save before the round-trip rejects it.
+    public static let maxGoalTextLength = 1000
+}
+
+/// JSON body for `PUT /api/v1/me/coach-preferences`. Same shape
+/// as the response; kept separate so the request stays
+/// `Encodable`-only.
+public struct UpdateCoachPreferencesRequest: Encodable, Equatable {
+    public let optIn: Bool
+    public let goalText: String
+
+    enum CodingKeys: String, CodingKey {
+        case optIn = "opt_in"
+        case goalText = "goal_text"
+    }
+
+    public init(optIn: Bool, goalText: String) {
+        self.optIn = optIn
+        self.goalText = goalText
+    }
 }

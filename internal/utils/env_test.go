@@ -37,6 +37,10 @@ func setValidEnv(t *testing.T) {
 	t.Setenv("STORAGE_PUBLIC_URL", "https://pub.test-bucket.r2.dev")
 	t.Setenv("CLOUDFLARE_EMAIL_TOKEN", "test-email-token")
 	t.Setenv("PUBLIC_URL", "https://hylete.test.local")
+	t.Setenv("CLOUDFLARE_AI_ACCOUNT_ID", "test-account-id")
+	t.Setenv("CLOUDFLARE_AI_TOKEN", "test-ai-token")
+	t.Setenv("AI_BASE_URL", "https://api.cloudflare.com/client/v4")
+	t.Setenv("AI_MODEL", "@cf/meta/llama-3.1-8b-instruct")
 }
 
 func TestLoadAndValidateEnv_Success(t *testing.T) {
@@ -115,6 +119,10 @@ func TestLoadAndValidateEnv_MissingAll(t *testing.T) {
 	t.Setenv("STORAGE_PUBLIC_URL", "")
 	t.Setenv("CLOUDFLARE_EMAIL_TOKEN", "")
 	t.Setenv("PUBLIC_URL", "")
+	t.Setenv("CLOUDFLARE_AI_ACCOUNT_ID", "")
+	t.Setenv("CLOUDFLARE_AI_TOKEN", "")
+	t.Setenv("AI_BASE_URL", "")
+	t.Setenv("AI_MODEL", "")
 
 	_, err := LoadAndValidateEnv()
 	if err == nil {
@@ -139,6 +147,10 @@ func TestValidateEnvVars(t *testing.T) {
 				STORAGE_BUCKET: "b", STORAGE_PUBLIC_URL: "https://pub.test.r2.dev",
 				CLOUDFLARE_EMAIL_TOKEN: "email-tok",
 				PUBLIC_URL:             "https://hylete.test.local",
+				CLOUDFLARE_AI_ACCOUNT_ID: "test-account-id",
+				CLOUDFLARE_AI_TOKEN:      "test-ai-token",
+				AI_BASE_URL:              "https://api.cloudflare.com/client/v4",
+				AI_MODEL:                 "@cf/meta/llama-3.1-8b-instruct",
 			},
 			expected: []string{},
 		},
@@ -153,6 +165,10 @@ func TestValidateEnvVars(t *testing.T) {
 				STORAGE_BUCKET: "b", STORAGE_PUBLIC_URL: "https://pub.test.r2.dev",
 				CLOUDFLARE_EMAIL_TOKEN: "email-tok",
 				PUBLIC_URL:             "https://hylete.test.local",
+				CLOUDFLARE_AI_ACCOUNT_ID: "test-account-id",
+				CLOUDFLARE_AI_TOKEN:      "test-ai-token",
+				AI_BASE_URL:              "https://api.cloudflare.com/client/v4",
+				AI_MODEL:                 "@cf/meta/llama-3.1-8b-instruct",
 			},
 			expected: []string{"PORT"},
 		},
@@ -167,6 +183,10 @@ func TestValidateEnvVars(t *testing.T) {
 				STORAGE_BUCKET: "b", STORAGE_PUBLIC_URL: "https://pub.test.r2.dev",
 				CLOUDFLARE_EMAIL_TOKEN: "email-tok",
 				PUBLIC_URL:             "https://hylete.test.local",
+				CLOUDFLARE_AI_ACCOUNT_ID: "test-account-id",
+				CLOUDFLARE_AI_TOKEN:      "test-ai-token",
+				AI_BASE_URL:              "https://api.cloudflare.com/client/v4",
+				AI_MODEL:                 "@cf/meta/llama-3.1-8b-instruct",
 			},
 			expected: []string{"DB_PATH"},
 		},
@@ -180,6 +200,10 @@ func TestValidateEnvVars(t *testing.T) {
 				STORAGE_BUCKET: "b", STORAGE_PUBLIC_URL: "https://pub.test.r2.dev",
 				CLOUDFLARE_EMAIL_TOKEN: "email-tok",
 				PUBLIC_URL:             "https://hylete.test.local",
+				CLOUDFLARE_AI_ACCOUNT_ID: "test-account-id",
+				CLOUDFLARE_AI_TOKEN:      "test-ai-token",
+				AI_BASE_URL:              "https://api.cloudflare.com/client/v4",
+				AI_MODEL:                 "@cf/meta/llama-3.1-8b-instruct",
 			},
 			expected: []string{"PORT", "DB_PATH"},
 		},
@@ -194,6 +218,10 @@ func TestValidateEnvVars(t *testing.T) {
 				STORAGE_BUCKET: "b", STORAGE_PUBLIC_URL: "https://pub.test.r2.dev",
 				CLOUDFLARE_EMAIL_TOKEN: "email-tok",
 				PUBLIC_URL:             "https://hylete.test.local",
+				CLOUDFLARE_AI_ACCOUNT_ID: "test-account-id",
+				CLOUDFLARE_AI_TOKEN:      "test-ai-token",
+				AI_BASE_URL:              "https://api.cloudflare.com/client/v4",
+				AI_MODEL:                 "@cf/meta/llama-3.1-8b-instruct",
 			},
 			expected: []string{"TURSO_DATABASE_URL"},
 		},
@@ -208,6 +236,10 @@ func TestValidateEnvVars(t *testing.T) {
 				STORAGE_BUCKET: "b", STORAGE_PUBLIC_URL: "https://pub.test.r2.dev",
 				CLOUDFLARE_EMAIL_TOKEN: "email-tok",
 				PUBLIC_URL:             "https://hylete.test.local",
+				CLOUDFLARE_AI_ACCOUNT_ID: "test-account-id",
+				CLOUDFLARE_AI_TOKEN:      "test-ai-token",
+				AI_BASE_URL:              "https://api.cloudflare.com/client/v4",
+				AI_MODEL:                 "@cf/meta/llama-3.1-8b-instruct",
 			},
 			expected: []string{"TURSO_AUTH_TOKEN"},
 		},
@@ -221,6 +253,10 @@ func TestValidateEnvVars(t *testing.T) {
 				STORAGE_BUCKET: "b", STORAGE_PUBLIC_URL: "https://pub.test.r2.dev",
 				CLOUDFLARE_EMAIL_TOKEN: "email-tok",
 				PUBLIC_URL:             "https://hylete.test.local",
+				CLOUDFLARE_AI_ACCOUNT_ID: "test-account-id",
+				CLOUDFLARE_AI_TOKEN:      "test-ai-token",
+				AI_BASE_URL:              "https://api.cloudflare.com/client/v4",
+				AI_MODEL:                 "@cf/meta/llama-3.1-8b-instruct",
 			},
 			expected: []string{"JWT_SECRET"},
 		},
@@ -235,6 +271,10 @@ func TestValidateEnvVars(t *testing.T) {
 				STORAGE_PUBLIC_URL:     "https://pub.test.r2.dev",
 				CLOUDFLARE_EMAIL_TOKEN: "email-tok",
 				PUBLIC_URL:             "https://hylete.test.local",
+				CLOUDFLARE_AI_ACCOUNT_ID: "test-account-id",
+				CLOUDFLARE_AI_TOKEN:      "test-ai-token",
+				AI_BASE_URL:              "https://api.cloudflare.com/client/v4",
+				AI_MODEL:                 "@cf/meta/llama-3.1-8b-instruct",
 			},
 			expected: []string{"STORAGE_BUCKET"},
 		},
@@ -248,6 +288,10 @@ func TestValidateEnvVars(t *testing.T) {
 				STORAGE_ACCESS_KEY: "ak", STORAGE_SECRET_KEY: "sk",
 				STORAGE_BUCKET: "b", STORAGE_PUBLIC_URL: "https://pub.test.r2.dev",
 				PUBLIC_URL: "https://hylete.test.local",
+				CLOUDFLARE_AI_ACCOUNT_ID: "test-account-id",
+				CLOUDFLARE_AI_TOKEN:      "test-ai-token",
+				AI_BASE_URL:              "https://api.cloudflare.com/client/v4",
+				AI_MODEL:                 "@cf/meta/llama-3.1-8b-instruct",
 			},
 			expected: []string{"CLOUDFLARE_EMAIL_TOKEN"},
 		},
@@ -261,6 +305,10 @@ func TestValidateEnvVars(t *testing.T) {
 				STORAGE_ACCESS_KEY: "ak", STORAGE_SECRET_KEY: "sk",
 				STORAGE_BUCKET: "b", STORAGE_PUBLIC_URL: "https://pub.test.r2.dev",
 				CLOUDFLARE_EMAIL_TOKEN: "email-tok",
+				CLOUDFLARE_AI_ACCOUNT_ID: "test-account-id",
+				CLOUDFLARE_AI_TOKEN:      "test-ai-token",
+				AI_BASE_URL:              "https://api.cloudflare.com/client/v4",
+				AI_MODEL:                 "@cf/meta/llama-3.1-8b-instruct",
 			},
 			expected: []string{"PUBLIC_URL"},
 		},

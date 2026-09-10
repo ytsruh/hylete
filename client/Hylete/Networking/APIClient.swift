@@ -366,8 +366,54 @@ public final class APIClient: @unchecked Sendable {
         return response.snapshots
     }
 
-    // MARK: - Request plumbing
+    // MARK: - Coach (AI features, beta-gated)
 
+    /// Fetches the Coach consent state (`GET
+    /// /api/v1/me/coach-preferences`). Works even when the
+    /// user hasn't opted in — that is the point: the Profile
+    /// section reads this to paint the toggle.
+    public func getCoachPreferences() async throws -> CoachPreferencesDTO {
+        try await send("GET", "me/coach-preferences")
+    }
+
+    /// Replaces the Coach consent state (`PUT
+    /// /api/v1/me/coach-preferences`). `goalText` is trimmed
+    /// client-side and capped at 1000 chars (mirroring the
+    /// server's 400 rule) so the editor can disable Save
+    /// before the round-trip. Returns the stored state.
+    public func updateCoachPreferences(_ request: UpdateCoachPreferencesRequest) async throws -> CoachPreferencesDTO {
+        try await send("PUT", "me/coach-preferences", body: request)
+    }
+
+    /// Fetches the newest stored weekly report (`GET
+    /// /api/v1/coach/weekly:latest`). Throws a 404
+    /// `APIError.server` when the cron hasn't produced one yet
+    /// and 403 when the user hasn't opted in — the store maps
+    /// both to dedicated UI states.
+    public func getCoachLatest() async throws -> CoachReportDTO {
+        try await send("GET", "coach/weekly:latest")
+    }
+
+    /// Lists stored weekly reports, newest first (`GET
+    /// /api/v1/coach/weekly?limit=N`).
+    public func listCoachReports(limit: Int = 12) async throws -> [CoachReportDTO] {
+        let response: CoachReportsResponse = try await send("GET", "coach/weekly?limit=\(limit)")
+        return response.reports
+    }
+
+    /// Dismisses a report (`POST
+    /// /api/v1/coach/weekly/:id/dismiss`). Idempotent.
+    public func dismissCoachReport(id: String) async throws {
+        try await sendVoid("POST", "coach/weekly/\(id)/dismiss")
+    }
+
+    /// Restores a dismissed report to the card list (`POST
+    /// /api/v1/coach/weekly/:id/restore`). Idempotent.
+    public func restoreCoachReport(id: String) async throws {
+        try await sendVoid("POST", "coach/weekly/\(id)/restore")
+    }
+
+    // MARK: - Request plumbing
     /// Generic request method for endpoints that return a
     /// JSON body. Throws `APIError` on transport, status,
     /// and decoding failures. The 401 path fires

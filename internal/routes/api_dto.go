@@ -66,6 +66,14 @@ type UserDTO struct {
 	WeightUnit   string   `json:"weight_unit"`
 	DistanceUnit string   `json:"distance_unit"`
 	TargetWeight *float64 `json:"target_weight,omitempty"`
+	// HeightCm is the user's height in centimetres; nil means unset.
+	HeightCm *float64 `json:"height_cm,omitempty"`
+	// Gender is one of "male" | "female" | "non-binary" |
+	// "prefer-not-to-say"; empty means unset.
+	Gender string `json:"gender,omitempty"`
+	// DateOfBirth is the user's birth date as "YYYY-MM-DD"; nil
+	// means unset. Age is never sent — derive it if needed.
+	DateOfBirth *string `json:"date_of_birth,omitempty"`
 }
 
 // UserFromModel converts a models.User into the safe UserDTO.
@@ -83,25 +91,35 @@ func UserFromModel(u *models.User) UserDTO {
 		WeightUnit:   u.WeightUnitDisplay(),
 		DistanceUnit: u.DistanceUnitDisplay(),
 		TargetWeight: u.TargetWeight,
+		HeightCm:     u.HeightCm,
+		Gender:       u.GenderDisplay(),
+		DateOfBirth:  u.DateOfBirth,
 	}
 }
 
 // UpdateMeRequest is the JSON body for PUT /api/v1/me. Mirrors
 // the user-editable subset of the HTML profile form (name,
-// target weight, weight unit, distance unit) so the iOS app can update the
-// same fields the web app exposes. Reminder preferences are
-// deliberately omitted: they live on the dedicated
-// GET/PUT /api/v1/me/reminders endpoints so an older client
-// PUTting /me without reminder fields can never clobber them.
+// target weight, weight unit, distance unit, height, gender,
+// date of birth) so the iOS app can update the same fields the web
+// app exposes. Reminder preferences are deliberately omitted: they
+// live on the dedicated GET/PUT /api/v1/me/reminders endpoints so an
+// older client PUTting /me without reminder fields can never clobber
+// them.
 //
-// TargetWeight is a pointer so an omitted JSON field (or an
-// explicit null) clears the user's goal, matching the form's
-// empty-input semantics.
+// TargetWeight / HeightCm / DateOfBirth are pointers so an omitted
+// JSON field (or an explicit null) clears the value, matching the
+// form's empty-input semantics. Gender is a string where empty means
+// unset. DateOfBirth is a "YYYY-MM-DD" string validated by
+// models.ParseDateOfBirth plus the min-age rule (not by tags — the
+// same pattern as the web form).
 type UpdateMeRequest struct {
 	Name         string   `json:"name"          validate:"required,min=2,max=100"`
 	TargetWeight *float64 `json:"target_weight" validate:"omitempty,gte=0,lte=1000"`
 	WeightUnit   string   `json:"weight_unit"   validate:"omitempty,oneof=kg lbs"`
 	DistanceUnit string   `json:"distance_unit" validate:"omitempty,oneof=km mi"`
+	HeightCm     *float64 `json:"height_cm"     validate:"omitempty,gte=0,lte=300"`
+	Gender       string   `json:"gender"        validate:"omitempty,oneof=male female non-binary prefer-not-to-say"`
+	DateOfBirth  *string  `json:"date_of_birth"`
 }
 
 // ReminderPreferencesDTO is the JSON shape for the user's

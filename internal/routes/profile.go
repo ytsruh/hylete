@@ -13,12 +13,19 @@ import (
 
 // profileInput represents the parsed and validated form data for profile updates.
 // TargetWeight is a pointer so an empty form value can be distinguished from a
-// real "0" entry and stored as SQL NULL (i.e. "no goal").
+// real "0" entry and stored as SQL NULL (i.e. "no goal"). HeightCm and
+// DateOfBirth follow the same optional-pointer semantics; Gender is a string
+// where empty means unset. DateOfBirth is a "YYYY-MM-DD" string validated by
+// models.ParseDateOfBirth (plus the min-age rule) rather than by tags, the
+// same pattern as reminder_time.
 type profileInput struct {
 	Name         string   `validate:"required,min=2,max=100"`
 	TargetWeight *float64 `validate:"omitempty,gte=0,lte=1000"`
 	WeightUnit   string   `validate:"omitempty,oneof=kg lbs"`
 	DistanceUnit string   `validate:"omitempty,oneof=km mi"`
+	HeightCm     *float64 `validate:"omitempty,gte=0,lte=300"`
+	Gender       string   `validate:"omitempty,oneof=male female non-binary prefer-not-to-say"`
+	DateOfBirth  *string
 	// ReminderEnabled is the master switch. The form
 	// posts the literal "1" or ""; "" reads as false.
 	ReminderEnabled bool
@@ -63,6 +70,9 @@ func (h *Handler) Profile(c echo.Context) error {
 	var target *float64
 	unit := defaultWeightUnit
 	distanceUnit := defaultDistanceUnit
+	var heightCm *float64
+	gender := ""
+	var dob *string
 	reminderState := profile.ReminderFormState{
 		Frequency: models.ReminderWeekly,
 		Time:      defaultReminderTime,
@@ -71,6 +81,9 @@ func (h *Handler) Profile(c echo.Context) error {
 		target = user.TargetWeight
 		unit = user.WeightUnitDisplay()
 		distanceUnit = user.DistanceUnitDisplay()
+		heightCm = user.HeightCm
+		gender = user.GenderDisplay()
+		dob = user.DateOfBirth
 		// The user's stored preferences seed the form's
 		// first-paint state. Frequency falls back to off
 		// when the stored value is the empty string (a row
@@ -93,6 +106,9 @@ func (h *Handler) Profile(c echo.Context) error {
 		target,
 		unit,
 		distanceUnit,
+		heightCm,
+		gender,
+		dob,
 		reminderState,
 	))
 }
@@ -115,6 +131,7 @@ func (h *Handler) UpdateProfile(c echo.Context) error {
 		Name:              c.FormValue("name"),
 		WeightUnit:        c.FormValue("weight_unit"),
 		DistanceUnit:      c.FormValue("distance_unit"),
+		Gender:            models.NormalizeGender(c.FormValue("gender")),
 		ReminderEnabled:   c.FormValue("reminder_enabled") == "1",
 		ReminderFrequency: c.FormValue("reminder_frequency"),
 		ReminderTime:      c.FormValue("reminder_time"),
@@ -154,6 +171,30 @@ func (h *Handler) UpdateProfile(c echo.Context) error {
 		input.TargetWeight = &target
 	}
 
+	// height_cm is optional. An empty form value clears the height.
+	if raw := c.FormValue("height_cm"); raw != "" {
+		height, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return render(c, profile.ProfileUpdateError("Height must be a valid positive number"))
+		}
+		input.HeightCm = &height
+	}
+
+	// date_of_birth is optional. An empty form value clears it.
+	// Validation lives in models.ParseDateOfBirth (real calendar date,
+	// not in the future) plus the min-age rule below — the same
+	// "tags can't express it" pattern as reminder_time.
+	if raw := c.FormValue("date_of_birth"); raw != "" {
+		dob, err := models.ParseDateOfBirth(raw, h.clock.Now())
+		if err != nil {
+			return render(c, profile.ProfileUpdateError(err.Error()))
+		}
+		if models.AgeAt(dob, h.clock.Now()) < models.MinAgeYears {
+			return render(c, profile.ProfileUpdateError("You must be at least 10 years old"))
+		}
+		input.DateOfBirth = &dob
+	}
+
 	if err := h.validator.ValidateStruct(&input); err != nil {
 		return render(c, profile.ProfileUpdateError(friendlyValidationError(err)))
 	}
@@ -180,6 +221,9 @@ func (h *Handler) UpdateProfile(c echo.Context) error {
 		TargetWeight: input.TargetWeight,
 		WeightUnit:   input.WeightUnit,
 		DistanceUnit: input.DistanceUnit,
+		HeightCm:     input.HeightCm,
+		Gender:       input.Gender,
+		DateOfBirth:  input.DateOfBirth,
 	}
 
 	if err := h.userRepo.UpdateUser(user); err != nil {

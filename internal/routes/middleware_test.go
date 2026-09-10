@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -196,9 +197,9 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 		if claims == nil {
 			t.Fatal("expected claims to be set in context")
 		}
-	if claims.UserID != "user-42" {
-		t.Fatalf("expected user_id 'user-42', got %q", claims.UserID)
-	}
+		if claims.UserID != "user-42" {
+			t.Fatalf("expected user_id 'user-42', got %q", claims.UserID)
+		}
 		if claims.Email != "alice@example.com" {
 			t.Fatalf("expected email 'alice@example.com', got %q", claims.Email)
 		}
@@ -327,9 +328,9 @@ func TestAuthMiddleware_MissingCookie_HTMX(t *testing.T) {
 // times GetUserByID is invoked. Used by TestGetUser_CachedOnSecondCall
 // to assert the request-scoped cache works.
 type countingUserRepo struct {
-	base    models.UserRepo
+	base     models.UserRepo
 	getCalls int32
-	err     error
+	err      error
 }
 
 func (r *countingUserRepo) CreateUser(user *models.User) error { return r.base.CreateUser(user) }
@@ -343,12 +344,18 @@ func (r *countingUserRepo) GetUserByID(id string) (*models.User, error) {
 	}
 	return r.base.GetUserByID(id)
 }
-func (r *countingUserRepo) UpdateUser(user *models.User) error    { return r.base.UpdateUser(user) }
+func (r *countingUserRepo) UpdateUser(user *models.User) error { return r.base.UpdateUser(user) }
 func (r *countingUserRepo) UpdateUserPassword(id, hash string) error {
 	return r.base.UpdateUserPassword(id, hash)
 }
 func (r *countingUserRepo) UpdateUserReminder(userID string, prefs models.ReminderPreferences) error {
 	return r.base.UpdateUserReminder(userID, prefs)
+}
+func (r *countingUserRepo) UpdateUserAIPreferences(userID string, optIn bool, goalText string) error {
+	return r.base.UpdateUserAIPreferences(userID, optIn, goalText)
+}
+func (r *countingUserRepo) ListAIOptedInUsers(ctx context.Context) ([]models.User, error) {
+	return r.base.ListAIOptedInUsers(ctx)
 }
 
 // TestGetUser_NoClaims asserts that GetUser returns nil when no auth

@@ -70,14 +70,27 @@ struct ProfileView: View {
     /// shows only Cancel/Save with no push back button.
     @State private var showingNameSheet: Bool = false
     @State private var showingUnitSheet: Bool = false
+    @State private var showingDistanceUnitSheet: Bool = false
     @State private var showingTargetSheet: Bool = false
+    @State private var showingHeightSheet: Bool = false
+    @State private var showingGenderSheet: Bool = false
+    @State private var showingDateOfBirthSheet: Bool = false
+
+    /// Coach settings store + sheet. Owned here (not in the
+    /// section view) so the editor sheet can live on the stable
+    /// NavigationStack host below: a sheet attached to the List
+    /// section tears down when the row re-renders on load, which
+    /// surfaced as open-then-instant-close with no data. Created
+    /// lazily on appear — `env` isn't available in `init`.
+    @State private var coachStore: CoachStore?
+    @State private var showingCoachSheet: Bool = false
 
     var body: some View {
         NavigationStack {
             List {
                 if let user = authStore.currentUser {
                     headerSection(user: user)
-                    accountSection(user: user)
+                    aboutSection(user: user)
                     preferencesSection(user: user)
                     BetaFeature {
                         Section {
@@ -87,6 +100,13 @@ struct ProfileView: View {
                             Text("Connected Accounts")
                         } footer: {
                             Text("Sync uploads the last 90 days of activity, heart, body, and sleep metrics to Hylete, then keeps each day caught up. Read-only — nothing is ever written back to Apple Health.")
+                        }
+                    }
+                    BetaFeature {
+                        if let coachStore {
+                            CoachSettingsSectionView(store: coachStore) {
+                                showingCoachSheet = true
+                            }
                         }
                     }
                     appearanceSection
@@ -161,6 +181,24 @@ struct ProfileView: View {
                     await reloadReminders()
                 }
             }
+            .task {
+                // Coach store is created once here (env is
+                // available, unlike in init) and loaded for the
+                // section row above. The editor sheet below shares
+                // it, so a save refreshes the row on return.
+                if coachStore == nil {
+                    coachStore = CoachStore(api: env.api)
+                }
+                await coachStore?.load()
+            }
+            .sheet(isPresented: $showingCoachSheet) {
+                if let coachStore {
+                    NavigationStack {
+                        CoachAimEditorView(store: coachStore)
+                    }
+                    .presentationDetents([.large])
+                }
+            }
             .sheet(isPresented: $showingRemindersSheet) {
                 if let prefs = reminderPrefs {
                     NavigationStack {
@@ -187,10 +225,42 @@ struct ProfileView: View {
                     .presentationDetents([.large])
                 }
             }
+            .sheet(isPresented: $showingDistanceUnitSheet) {
+                if let user = authStore.currentUser {
+                    NavigationStack {
+                        DistanceUnitEditView(user: user)
+                    }
+                    .presentationDetents([.large])
+                }
+            }
             .sheet(isPresented: $showingTargetSheet) {
                 if let user = authStore.currentUser {
                     NavigationStack {
                         TargetWeightEditView(user: user)
+                    }
+                    .presentationDetents([.large])
+                }
+            }
+            .sheet(isPresented: $showingHeightSheet) {
+                if let user = authStore.currentUser {
+                    NavigationStack {
+                        HeightEditView(user: user)
+                    }
+                    .presentationDetents([.large])
+                }
+            }
+            .sheet(isPresented: $showingGenderSheet) {
+                if let user = authStore.currentUser {
+                    NavigationStack {
+                        GenderEditView(user: user)
+                    }
+                    .presentationDetents([.large])
+                }
+            }
+            .sheet(isPresented: $showingDateOfBirthSheet) {
+                if let user = authStore.currentUser {
+                    NavigationStack {
+                        DateOfBirthEditView(user: user)
                     }
                     .presentationDetents([.large])
                 }
@@ -223,25 +293,6 @@ struct ProfileView: View {
         }
     }
 
-    private func accountSection(user: UserDTO) -> some View {
-        Section("Account") {
-            Button {
-                showingNameSheet = true
-            } label: {
-                HStack {
-                    Text("Name")
-                        .foregroundStyle(DSColors.text)
-                    Spacer()
-                    Text(user.name)
-                        .foregroundStyle(DSColors.textSecondary)
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-        }
-    }
-
     private func preferencesSection(user: UserDTO) -> some View {
         Section("Preferences") {
             Button {
@@ -252,6 +303,20 @@ struct ProfileView: View {
                         .foregroundStyle(DSColors.text)
                     Spacer()
                     Text(user.weightUnit)
+                        .foregroundStyle(DSColors.textSecondary)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Button {
+                showingDistanceUnitSheet = true
+            } label: {
+                HStack {
+                    Text("Distance unit")
+                        .foregroundStyle(DSColors.text)
+                    Spacer()
+                    Text(user.distanceUnit)
                         .foregroundStyle(DSColors.textSecondary)
                     Image(systemName: "chevron.right")
                         .font(.footnote.weight(.semibold))
@@ -302,6 +367,91 @@ struct ProfileView: View {
                         .foregroundStyle(.tertiary)
                 }
             }
+        }
+    }
+
+    /// "About you" section. Holds the name row plus the optional
+    /// height, gender and date-of-birth rows (the birth date feeds
+    /// the Coach prompt's USER_PROFILE block as a derived age);
+    /// unset values render as "Not set" so the row never looks broken.
+    private func aboutSection(user: UserDTO) -> some View {
+        Section("About you") {
+            Button {
+                showingNameSheet = true
+            } label: {
+                HStack {
+                    Text("Name")
+                        .foregroundStyle(DSColors.text)
+                    Spacer()
+                    Text(user.name)
+                        .foregroundStyle(DSColors.textSecondary)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Button {
+                showingHeightSheet = true
+            } label: {
+                HStack {
+                    Text("Height")
+                        .foregroundStyle(DSColors.text)
+                    Spacer()
+                    if let height = user.heightCm {
+                        Text(String(format: "%.1f cm", height))
+                            .foregroundStyle(DSColors.textSecondary)
+                    } else {
+                        Text("Not set")
+                            .foregroundStyle(DSColors.textSecondary)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Button {
+                showingGenderSheet = true
+            } label: {
+                HStack {
+                    Text("Gender")
+                        .foregroundStyle(DSColors.text)
+                    Spacer()
+                    Text(genderLabel(user.gender))
+                        .foregroundStyle(DSColors.textSecondary)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Button {
+                showingDateOfBirthSheet = true
+            } label: {
+                HStack {
+                    Text("Date of birth")
+                        .foregroundStyle(DSColors.text)
+                    Spacer()
+                    if let dob = user.dateOfBirth {
+                        Text(dob)
+                            .foregroundStyle(DSColors.textSecondary)
+                    } else {
+                        Text("Not set")
+                            .foregroundStyle(DSColors.textSecondary)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+    }
+
+    private func genderLabel(_ value: String) -> String {
+        switch value {
+        case "male": return "Male"
+        case "female": return "Female"
+        case "non-binary": return "Non-binary"
+        case "prefer-not-to-say": return "Prefer not to say"
+        default: return "Not set"
         }
     }
 

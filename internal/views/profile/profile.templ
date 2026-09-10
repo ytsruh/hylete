@@ -17,11 +17,16 @@ import (
 // initial selection; distanceUnit is the same for cardio distances
 // ("km" / "mi").
 //
+// heightCm, gender and dateOfBirth are the optional "About you"
+// fields; nil / empty means unset, in which case the form inputs
+// render empty. Height is a plain number in centimetres (no
+// conversion); dateOfBirth is "YYYY-MM-DD" (nil = unset).
+//
 // The reminder section surfaces the user's per-user weight-reminder
 // preferences: master switch, frequency (off / daily / weekly /
 // biweekly), day-of-week (weekly + biweekly only), time-of-day
 // (hour-only), and the email channel checkbox.
-templ ProfilePage(userName string, email string, isAdmin bool, targetWeight *float64, weightUnit string, distanceUnit string, reminder ReminderFormState) {
+templ ProfilePage(userName string, email string, isAdmin bool, targetWeight *float64, weightUnit string, distanceUnit string, heightCm *float64, gender string, dateOfBirth *string, reminder ReminderFormState) {
 	@views.Layout(views.PageData{Title: "Profile", UserName: userName, IsAuthenticated: true, IsAdmin: isAdmin, CurrentPath: "/profile"}) {
 		@components.Title(components.TitleProps{Size: "lg", Color: "default", Title: "Profile"})
 		<form
@@ -76,14 +81,59 @@ templ ProfilePage(userName string, email string, isAdmin bool, targetWeight *flo
 						<option value="lbs" selected?={ weightUnit == "lbs" }>lbs</option>
 					</select>
 				</div>
+			<div class="grid gap-2">
+				<label for="distance_unit">Preferred distance unit</label>
+				<select class="input w-full" id="distance_unit" name="distance_unit">
+					<option value="km" selected?={ distanceUnit == models.DistanceUnitKm }>km</option>
+					<option value="mi" selected?={ distanceUnit == models.DistanceUnitMi }>mi</option>
+				</select>
+			</div>
+		</div>
+		<fieldset class="grid gap-4 border-t pt-4">
+			<legend class="text-sm font-medium">About you</legend>
+			<p class="text-sm text-muted-foreground">Optional — used to personalise your Coach insights. Leave blank to skip.</p>
+			<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
 				<div class="grid gap-2">
-					<label for="distance_unit">Preferred distance unit</label>
-					<select class="input w-full" id="distance_unit" name="distance_unit">
-						<option value="km" selected?={ distanceUnit == models.DistanceUnitKm }>km</option>
-						<option value="mi" selected?={ distanceUnit == models.DistanceUnitMi }>mi</option>
+					<label for="height_cm">Height (cm)</label>
+					<input
+						class="input"
+						type="number"
+						inputmode="decimal"
+						id="height_cm"
+						name="height_cm"
+						step="0.1"
+						min="0"
+						max="300"
+						placeholder="180.0"
+						if heightCm != nil {
+							value={ fmt.Sprintf("%.1f", *heightCm) }
+						}
+					/>
+				</div>
+				<div class="grid gap-2">
+					<label for="gender">Gender</label>
+					<select class="input w-full" id="gender" name="gender">
+						<option value="" selected?={ gender == "" }>Not set</option>
+						for _, g := range models.ValidGenders {
+							<option value={ g } selected?={ gender == g }>{ genderLabel(g) }</option>
+						}
 					</select>
 				</div>
+				<div class="grid gap-2">
+					<label for="date_of_birth">Date of birth</label>
+					<input
+						class="input"
+						type="date"
+						id="date_of_birth"
+						name="date_of_birth"
+						min="1900-01-01"
+						if dateOfBirth != nil {
+							value={ *dateOfBirth }
+						}
+					/>
+				</div>
 			</div>
+		</fieldset>
 			@ReminderSection(reminder)
 			<button type="submit" class="btn-primary">
 				<span class="btn-spinner hidden absolute animate-spin mr-2 h-4 w-4 border-2 border-current border-t-transparent"></span>
@@ -272,6 +322,23 @@ func reminderFrequencyLabel(f models.ReminderFrequency) string {
 // second week of the month).
 func itoaForReminder(i int) string {
 	return strconv.Itoa(i)
+}
+
+// genderLabel returns a human-readable label for a gender value.
+// Kept next to the profile form so the <select> renders friendly
+// copy without leaking storage strings into the view.
+func genderLabel(g string) string {
+	switch g {
+	case models.GenderMale:
+		return "Male"
+	case models.GenderFemale:
+		return "Female"
+	case models.GenderNonBinary:
+		return "Non-binary"
+	case models.GenderPreferNotSay:
+		return "Prefer not to say"
+	}
+	return g
 }
 
 // roleLabel returns a human-readable role label.
