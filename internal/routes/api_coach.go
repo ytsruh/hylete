@@ -25,7 +25,6 @@ type CoachReportDTO struct {
 	PromptVersion string          `json:"prompt_version"`
 	Model         string          `json:"model"`
 	Payload       json.RawMessage `json:"payload"`
-	ReadAt        *time.Time      `json:"read_at,omitempty"`
 	DismissedAt   *time.Time      `json:"dismissed_at,omitempty"`
 	CreatedAt     time.Time       `json:"created_at"`
 }
@@ -37,7 +36,6 @@ func CoachReportFromModel(r models.AIReport) CoachReportDTO {
 		PeriodStart: r.PeriodStart, PeriodEnd: r.PeriodEnd,
 		PromptVersion: r.PromptVersion, Model: r.Model,
 		Payload:     json.RawMessage(r.PayloadJSON),
-		ReadAt:      r.ReadAt,
 		DismissedAt: r.DismissedAt,
 		CreatedAt:   r.CreatedAt,
 	}
@@ -135,48 +133,6 @@ func (h *Handler) APICoachHistory(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"reports": out})
 }
 
-// APICoachBuild handles POST /api/v1/coach/weekly/build. Triggers
-// the current week's report on demand (beta refresh + backfill).
-// Idempotent on (user, weekly, period_start): a stored row is
-// returned without calling the LLM.
-func (h *Handler) APICoachBuild(c echo.Context) error {
-	user, errResp := h.coachGate(c, true)
-	if errResp != nil {
-		return errResp
-	}
-	report, err := h.aiService.BuildWeeklyReport(c.Request().Context(), user.ID, time.Now())
-	if err != nil {
-		if err == aicoach.ErrOptedOut {
-			return c.JSON(http.StatusForbidden, APIError{Error: "coach is not enabled for this user"})
-		}
-		if err == aicoach.ErrDisabled {
-			return c.JSON(http.StatusServiceUnavailable, APIError{Error: "coach is unavailable"})
-		}
-		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to build report"})
-	}
-	return c.JSON(http.StatusOK, CoachReportFromModel(*report))
-}
-
-// APICoachMarkRead handles POST /api/v1/coach/weekly/:id/read.
-func (h *Handler) APICoachMarkRead(c echo.Context) error {
-	user, errResp := h.coachGate(c, false)
-	if errResp != nil {
-		return errResp
-	}
-	id := c.Param("id")
-	report, err := h.aiReports.GetByID(id, user.ID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to load report"})
-	}
-	if report == nil {
-		return c.JSON(http.StatusNotFound, APIError{Error: "report not found"})
-	}
-	if err := h.aiReports.MarkRead(id, user.ID); err != nil {
-		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to mark report read"})
-	}
-	return c.NoContent(http.StatusNoContent)
-}
-
 // APICoachDismiss handles POST /api/v1/coach/weekly/:id/dismiss.
 func (h *Handler) APICoachDismiss(c echo.Context) error {
 	user, errResp := h.coachGate(c, false)
@@ -193,6 +149,28 @@ func (h *Handler) APICoachDismiss(c echo.Context) error {
 	}
 	if err := h.aiReports.MarkDismissed(id, user.ID); err != nil {
 		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to dismiss report"})
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+// APICoachRestore handles POST /api/v1/coach/weekly/:id/restore.
+// Clears dismissed_at so the report returns to the card list.
+// Idempotent: restoring a live row is a no-op success.
+func (h *Handler) APICoachRestore(c echo.Context) error {
+	user, errResp := h.coachGate(c, false)
+	if errResp != nil {
+		return errResp
+	}
+	id := c.Param("id")
+	report, err := h.aiReports.GetByID(id, user.ID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to load report"})
+	}
+	if report == nil {
+		return c.JSON(http.StatusNotFound, APIError{Error: "report not found"})
+	}
+	if err := h.aiReports.Reopen(id, user.ID); err != nil {
+		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to restore report"})
 	}
 	return c.NoContent(http.StatusNoContent)
 }

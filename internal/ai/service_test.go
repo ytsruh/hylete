@@ -124,8 +124,8 @@ func (f *fakeReports) Latest(userID, typ string) (*models.AIReport, error) { ret
 func (f *fakeReports) List(userID, typ string, limit int) ([]models.AIReport, error) {
 	return nil, nil
 }
-func (f *fakeReports) MarkRead(id, userID string) error      { return nil }
 func (f *fakeReports) MarkDismissed(id, userID string) error { return nil }
+func (f *fakeReports) Reopen(id, userID string) error             { return nil }
 
 type fakeClient struct{ calls int }
 

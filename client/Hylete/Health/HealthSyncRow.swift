@@ -23,7 +23,7 @@ public struct HealthSyncRow: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Toggle("Sync Health to Hylete", isOn: $isEnabled)
+            Toggle("Sync Health", isOn: $isEnabled)
                 .onChange(of: isEnabled) { _, on in
                     if on {
                         runTask = Task {

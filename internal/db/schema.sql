@@ -174,7 +174,6 @@ CREATE TABLE ai_reports (
     payload_json TEXT NOT NULL DEFAULT '{}',
     tokens_in    INTEGER NOT NULL DEFAULT 0,
     tokens_out   INTEGER NOT NULL DEFAULT 0,
-    read_at      DATETIME,
     dismissed_at DATETIME,
     created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

@@ -72,6 +72,15 @@ struct ProfileView: View {
     @State private var showingUnitSheet: Bool = false
     @State private var showingTargetSheet: Bool = false
 
+    /// Coach settings store + sheet. Owned here (not in the
+    /// section view) so the editor sheet can live on the stable
+    /// NavigationStack host below: a sheet attached to the List
+    /// section tears down when the row re-renders on load, which
+    /// surfaced as open-then-instant-close with no data. Created
+    /// lazily on appear — `env` isn't available in `init`.
+    @State private var coachStore: CoachStore?
+    @State private var showingCoachSheet: Bool = false
+
     var body: some View {
         NavigationStack {
             List {
@@ -87,6 +96,13 @@ struct ProfileView: View {
                             Text("Connected Accounts")
                         } footer: {
                             Text("Sync uploads the last 90 days of activity, heart, body, and sleep metrics to Hylete, then keeps each day caught up. Read-only — nothing is ever written back to Apple Health.")
+                        }
+                    }
+                    BetaFeature {
+                        if let coachStore {
+                            CoachSettingsSectionView(store: coachStore) {
+                                showingCoachSheet = true
+                            }
                         }
                     }
                     appearanceSection
@@ -159,6 +175,24 @@ struct ProfileView: View {
             .task {
                 if reminderPrefs == nil && !remindersLoading {
                     await reloadReminders()
+                }
+            }
+            .task {
+                // Coach store is created once here (env is
+                // available, unlike in init) and loaded for the
+                // section row above. The editor sheet below shares
+                // it, so a save refreshes the row on return.
+                if coachStore == nil {
+                    coachStore = CoachStore(api: env.api)
+                }
+                await coachStore?.load()
+            }
+            .sheet(isPresented: $showingCoachSheet) {
+                if let coachStore {
+                    NavigationStack {
+                        CoachAimEditorView(store: coachStore)
+                    }
+                    .presentationDetents([.large])
                 }
             }
             .sheet(isPresented: $showingRemindersSheet) {

@@ -20,7 +20,6 @@ type AiReport struct {
 	PayloadJson   string
 	TokensIn      int64
 	TokensOut     int64
-	ReadAt        sql.NullTime
 	DismissedAt   sql.NullTime
 	CreatedAt     time.Time
 }

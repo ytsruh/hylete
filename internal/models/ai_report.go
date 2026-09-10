@@ -51,13 +51,9 @@ type AIReport struct {
 	PayloadJSON   string
 	TokensIn      int
 	TokensOut     int
-	ReadAt        *time.Time
 	DismissedAt   *time.Time
 	CreatedAt     time.Time
 }
-
-// IsRead reports whether the user has marked the report read.
-func (r *AIReport) IsRead() bool { return r != nil && r.ReadAt != nil }
 
 // IsDismissed reports whether the user has dismissed the report.
 func (r *AIReport) IsDismissed() bool { return r != nil && r.DismissedAt != nil }
@@ -80,10 +76,11 @@ type AIReportRepo interface {
 	// List returns up to limit reports of a type for the user,
 	// newest first.
 	List(userID, reportType string, limit int) ([]AIReport, error)
-	// MarkRead stamps read_at. Idempotent.
-	MarkRead(id, userID string) error
 	// MarkDismissed stamps dismissed_at. Idempotent.
 	MarkDismissed(id, userID string) error
+	// Reopen clears dismissed_at, returning the report to the
+	// card list. Idempotent.
+	Reopen(id, userID string) error
 }
 
 // AIReportRepository persists ai_reports using sqlc-generated queries.
@@ -195,18 +192,6 @@ func (r *AIReportRepository) List(userID, reportType string, limit int) ([]AIRep
 	return out, nil
 }
 
-// MarkRead stamps read_at. Idempotent.
-func (r *AIReportRepository) MarkRead(id, userID string) error {
-	ctx := context.Background()
-	if err := r.queries.MarkAIReportRead(ctx, db.MarkAIReportReadParams{
-		ID:     id,
-		UserID: userID,
-	}); err != nil {
-		return fmt.Errorf("failed to mark AI report read: %w", err)
-	}
-	return nil
-}
-
 // MarkDismissed stamps dismissed_at. Idempotent.
 func (r *AIReportRepository) MarkDismissed(id, userID string) error {
 	ctx := context.Background()
@@ -219,6 +204,19 @@ func (r *AIReportRepository) MarkDismissed(id, userID string) error {
 	return nil
 }
 
+// Reopen clears dismissed_at, returning the report to the card
+// list. Idempotent: reopening a live row matches it and writes
+// NULL over NULL.
+func (r *AIReportRepository) Reopen(id, userID string) error {
+	ctx := context.Background()
+	if err := r.queries.ReopenAIReport(ctx, db.ReopenAIReportParams{
+		ID:     id,
+		UserID: userID,
+	}); err != nil {
+		return fmt.Errorf("failed to reopen AI report: %w", err)
+	}
+	return nil
+}
 // mapAIReportRow converts a sqlc AiReport row into a domain AIReport.
 func mapAIReportRow(row db.AiReport) *AIReport {
 	return &AIReport{
@@ -232,7 +230,6 @@ func mapAIReportRow(row db.AiReport) *AIReport {
 		PayloadJSON:   row.PayloadJson,
 		TokensIn:      int(row.TokensIn),
 		TokensOut:     int(row.TokensOut),
-		ReadAt:        nullTimeToTimePtr(row.ReadAt),
 		DismissedAt:   nullTimeToTimePtr(row.DismissedAt),
 		CreatedAt:     row.CreatedAt,
 	}

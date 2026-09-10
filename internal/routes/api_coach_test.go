@@ -90,18 +90,17 @@ func (f *fakeAIReportRepo) List(userID, typ string, limit int) ([]models.AIRepor
 	return out, nil
 }
 
-func (f *fakeAIReportRepo) MarkRead(id, userID string) error {
-	if r, ok := f.reports[id]; ok && r.UserID == userID {
-		now := time.Now()
-		r.ReadAt = &now
-	}
-	return nil
-}
-
 func (f *fakeAIReportRepo) MarkDismissed(id, userID string) error {
 	if r, ok := f.reports[id]; ok && r.UserID == userID {
 		now := time.Now()
 		r.DismissedAt = &now
+	}
+	return nil
+}
+
+func (f *fakeAIReportRepo) Reopen(id, userID string) error {
+	if r, ok := f.reports[id]; ok && r.UserID == userID {
+		r.DismissedAt = nil
 	}
 	return nil
 }
@@ -183,7 +182,7 @@ func TestAPICoachLatest_NoReport404(t *testing.T) {
 	}
 }
 
-func TestAPICoachLatestHistoryReadDismiss(t *testing.T) {
+func TestAPICoachLatestHistoryDismiss(t *testing.T) {
 	h, _, mockUser, e := setupHandler(t)
 	token, user := loginUser(t, h, mockUser, "coach-full@example.com", "Coach")
 	optInCoach(t, h, mockUser, "coach-full@example.com")
@@ -213,13 +212,21 @@ func TestAPICoachLatestHistoryReadDismiss(t *testing.T) {
 		t.Fatalf("history: %+v", hist)
 	}
 
-	if rec := apiDo(t, e, http.MethodPost, "/api/v1/coach/weekly/r1/read", token, nil); rec.Code != http.StatusNoContent {
-		t.Fatalf("read status = %d", rec.Code)
-	}
 	if rec := apiDo(t, e, http.MethodPost, "/api/v1/coach/weekly/r1/dismiss", token, nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("dismiss status = %d", rec.Code)
 	}
-	if rec := apiDo(t, e, http.MethodPost, "/api/v1/coach/weekly/nope/read", token, nil); rec.Code != http.StatusNotFound {
+	if rec := apiDo(t, e, http.MethodPost, "/api/v1/coach/weekly/nope/dismiss", token, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown id status = %d, want 404", rec.Code)
+	}
+
+	// Restore returns the dismissed card to the list; unknown ids 404.
+	if rec := apiDo(t, e, http.MethodPost, "/api/v1/coach/weekly/r1/restore", token, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("restore status = %d", rec.Code)
+	}
+	if got, _ := fake.GetByID("r1", user.ID); got == nil || got.IsDismissed() {
+		t.Fatalf("restore did not clear dismissed_at: %+v", got)
+	}
+	if rec := apiDo(t, e, http.MethodPost, "/api/v1/coach/weekly/nope/restore", token, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown id status = %d, want 404", rec.Code)
 	}
 }

@@ -83,7 +83,7 @@ func TestAIReportRepository_CreateGetLatestList(t *testing.T) {
 	}
 }
 
-func TestAIReportRepository_ReadDismiss(t *testing.T) {
+func TestAIReportRepository_Dismiss(t *testing.T) {
 	repo, database := aiReportTestHarness(t)
 	defer database.Close()
 	userID := seedAIUser(t, database)
@@ -96,15 +96,20 @@ func TestAIReportRepository_ReadDismiss(t *testing.T) {
 	if err := repo.Create(r); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := repo.MarkRead(r.ID, userID); err != nil {
-		t.Fatalf("MarkRead: %v", err)
-	}
 	if err := repo.MarkDismissed(r.ID, userID); err != nil {
 		t.Fatalf("MarkDismissed: %v", err)
 	}
 	got, err := repo.GetByID(r.ID, userID)
-	if err != nil || got == nil || !got.IsRead() || !got.IsDismissed() {
+	if err != nil || got == nil || !got.IsDismissed() {
 		t.Fatalf("stamps: %+v %v", got, err)
+	}
+	// Reopen clears the stamp; the report returns to the list.
+	if err := repo.Reopen(r.ID, userID); err != nil {
+		t.Fatalf("Reopen: %v", err)
+	}
+	got, err = repo.GetByID(r.ID, userID)
+	if err != nil || got == nil || got.IsDismissed() {
+		t.Fatalf("reopen: %+v %v", got, err)
 	}
 }
 

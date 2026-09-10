@@ -40,12 +40,14 @@ import (
 const weightReminderCronSpec = "0 * * * *"
 
 // coachWeeklyCronSpec fires the Coach weekly review every Monday at
-// 06:00 UTC. The job iterates users with users.ai_opt_in = 1 and
+// 04:00 UTC — 04:00 GMT in winter, 05:00 BST in summer — so the
+// review is waiting when UK users wake up Monday morning either
+// way. The job iterates users with users.ai_opt_in = 1 and
 // builds the last full Mon–Sun week; generation is idempotent on
 // (user_id, type, period_start) so overlapping or restarted ticks
 // never duplicate rows or double-spend LLM calls. Same hard-coded
 // policy as weightReminderCronSpec.
-const coachWeeklyCronSpec = "0 6 * * MON"
+const coachWeeklyCronSpec = "0 4 * * MON"
 
 func main() {
 	// Load and validate environment variables on startup

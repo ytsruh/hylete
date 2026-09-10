@@ -13,7 +13,7 @@ import (
 const createAIReport = `-- name: CreateAIReport :one
 INSERT INTO ai_reports (id, user_id, type, period_start, period_end, prompt_version, model, payload_json, tokens_in, tokens_out)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, user_id, type, period_start, period_end, prompt_version, model, payload_json, tokens_in, tokens_out, read_at, dismissed_at, created_at
+RETURNING id, user_id, type, period_start, period_end, prompt_version, model, payload_json, tokens_in, tokens_out, dismissed_at, created_at
 `
 
 type CreateAIReportParams struct {
@@ -57,7 +57,6 @@ func (q *Queries) CreateAIReport(ctx context.Context, arg CreateAIReportParams) 
 		&i.PayloadJson,
 		&i.TokensIn,
 		&i.TokensOut,
-		&i.ReadAt,
 		&i.DismissedAt,
 		&i.CreatedAt,
 	)
@@ -65,7 +64,7 @@ func (q *Queries) CreateAIReport(ctx context.Context, arg CreateAIReportParams) 
 }
 
 const getAIReport = `-- name: GetAIReport :one
-SELECT id, user_id, type, period_start, period_end, prompt_version, model, payload_json, tokens_in, tokens_out, read_at, dismissed_at, created_at FROM ai_reports
+SELECT id, user_id, type, period_start, period_end, prompt_version, model, payload_json, tokens_in, tokens_out, dismissed_at, created_at FROM ai_reports
 WHERE user_id = ? AND type = ? AND period_start = ?
 `
 
@@ -91,7 +90,6 @@ func (q *Queries) GetAIReport(ctx context.Context, arg GetAIReportParams) (AiRep
 		&i.PayloadJson,
 		&i.TokensIn,
 		&i.TokensOut,
-		&i.ReadAt,
 		&i.DismissedAt,
 		&i.CreatedAt,
 	)
@@ -99,7 +97,7 @@ func (q *Queries) GetAIReport(ctx context.Context, arg GetAIReportParams) (AiRep
 }
 
 const getAIReportByID = `-- name: GetAIReportByID :one
-SELECT id, user_id, type, period_start, period_end, prompt_version, model, payload_json, tokens_in, tokens_out, read_at, dismissed_at, created_at FROM ai_reports
+SELECT id, user_id, type, period_start, period_end, prompt_version, model, payload_json, tokens_in, tokens_out, dismissed_at, created_at FROM ai_reports
 WHERE id = ? AND user_id = ?
 `
 
@@ -124,7 +122,6 @@ func (q *Queries) GetAIReportByID(ctx context.Context, arg GetAIReportByIDParams
 		&i.PayloadJson,
 		&i.TokensIn,
 		&i.TokensOut,
-		&i.ReadAt,
 		&i.DismissedAt,
 		&i.CreatedAt,
 	)
@@ -132,7 +129,7 @@ func (q *Queries) GetAIReportByID(ctx context.Context, arg GetAIReportByIDParams
 }
 
 const getLatestAIReport = `-- name: GetLatestAIReport :one
-SELECT id, user_id, type, period_start, period_end, prompt_version, model, payload_json, tokens_in, tokens_out, read_at, dismissed_at, created_at FROM ai_reports
+SELECT id, user_id, type, period_start, period_end, prompt_version, model, payload_json, tokens_in, tokens_out, dismissed_at, created_at FROM ai_reports
 WHERE user_id = ? AND type = ?
 ORDER BY period_start DESC
 LIMIT 1
@@ -158,7 +155,6 @@ func (q *Queries) GetLatestAIReport(ctx context.Context, arg GetLatestAIReportPa
 		&i.PayloadJson,
 		&i.TokensIn,
 		&i.TokensOut,
-		&i.ReadAt,
 		&i.DismissedAt,
 		&i.CreatedAt,
 	)
@@ -166,7 +162,7 @@ func (q *Queries) GetLatestAIReport(ctx context.Context, arg GetLatestAIReportPa
 }
 
 const listAIReports = `-- name: ListAIReports :many
-SELECT id, user_id, type, period_start, period_end, prompt_version, model, payload_json, tokens_in, tokens_out, read_at, dismissed_at, created_at FROM ai_reports
+SELECT id, user_id, type, period_start, period_end, prompt_version, model, payload_json, tokens_in, tokens_out, dismissed_at, created_at FROM ai_reports
 WHERE user_id = ? AND type = ?
 ORDER BY period_start DESC
 LIMIT ?
@@ -199,7 +195,6 @@ func (q *Queries) ListAIReports(ctx context.Context, arg ListAIReportsParams) ([
 			&i.PayloadJson,
 			&i.TokensIn,
 			&i.TokensOut,
-			&i.ReadAt,
 			&i.DismissedAt,
 			&i.CreatedAt,
 		); err != nil {
@@ -233,19 +228,21 @@ func (q *Queries) MarkAIReportDismissed(ctx context.Context, arg MarkAIReportDis
 	return err
 }
 
-const markAIReportRead = `-- name: MarkAIReportRead :exec
+const reopenAIReport = `-- name: ReopenAIReport :exec
 UPDATE ai_reports
-SET read_at = CURRENT_TIMESTAMP
+SET dismissed_at = NULL
 WHERE id = ? AND user_id = ?
 `
 
-type MarkAIReportReadParams struct {
+type ReopenAIReportParams struct {
 	ID     string
 	UserID string
 }
 
-// Stamp read_at. Idempotent: re-reads overwrite the timestamp.
-func (q *Queries) MarkAIReportRead(ctx context.Context, arg MarkAIReportReadParams) error {
-	_, err := q.db.ExecContext(ctx, markAIReportRead, arg.ID, arg.UserID)
+// Clear dismissed_at, returning the report to the card list.
+// Idempotent: reopening a non-dismissed row is a no-op that
+// still matches (so the route can call it without checking).
+func (q *Queries) ReopenAIReport(ctx context.Context, arg ReopenAIReportParams) error {
+	_, err := q.db.ExecContext(ctx, reopenAIReport, arg.ID, arg.UserID)
 	return err
 }

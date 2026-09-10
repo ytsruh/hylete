@@ -32,14 +32,16 @@ WHERE user_id = ? AND type = ?
 ORDER BY period_start DESC
 LIMIT ?;
 
--- name: MarkAIReportRead :exec
--- Stamp read_at. Idempotent: re-reads overwrite the timestamp.
-UPDATE ai_reports
-SET read_at = CURRENT_TIMESTAMP
-WHERE id = ? AND user_id = ?;
-
 -- name: MarkAIReportDismissed :exec
 -- Stamp dismissed_at. Idempotent: re-dismissals overwrite.
 UPDATE ai_reports
 SET dismissed_at = CURRENT_TIMESTAMP
+WHERE id = ? AND user_id = ?;
+
+-- name: ReopenAIReport :exec
+-- Clear dismissed_at, returning the report to the card list.
+-- Idempotent: reopening a non-dismissed row is a no-op that
+-- still matches (so the route can call it without checking).
+UPDATE ai_reports
+SET dismissed_at = NULL
 WHERE id = ? AND user_id = ?;

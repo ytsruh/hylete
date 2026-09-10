@@ -97,8 +97,6 @@ type Querier interface {
 	ListWeightEntries(ctx context.Context, userID string) ([]WeightEntry, error)
 	// Stamp dismissed_at. Idempotent: re-dismissals overwrite.
 	MarkAIReportDismissed(ctx context.Context, arg MarkAIReportDismissedParams) error
-	// Stamp read_at. Idempotent: re-reads overwrite the timestamp.
-	MarkAIReportRead(ctx context.Context, arg MarkAIReportReadParams) error
 	// Atomically set completed_at and bump updated_at. Scoped to user_id so
 	// the request cannot mark another user's goal complete.
 	MarkGoalComplete(ctx context.Context, arg MarkGoalCompleteParams) error
@@ -108,6 +106,10 @@ type Querier interface {
 	// the row's edit history stays accurate (useful for future "when was
 	// this user last updated" UI).
 	MarkUserReminderFired(ctx context.Context, arg MarkUserReminderFiredParams) error
+	// Clear dismissed_at, returning the report to the card list.
+	// Idempotent: reopening a non-dismissed row is a no-op that
+	// still matches (so the route can call it without checking).
+	ReopenAIReport(ctx context.Context, arg ReopenAIReportParams) error
 	// Atomically clear completed_at and bump updated_at. No-op if the goal
 	// is already active (completed_at is already NULL), so the route can
 	// call it without first checking the current state.
