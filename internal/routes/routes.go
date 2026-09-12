@@ -30,9 +30,14 @@ type Handler struct {
 	weightCtrl        *controllers.WeightController
 	goalsCtrl         *controllers.GoalsController
 	healthCtrl        *controllers.HealthSnapshotController
-	userRepo          models.UserRepo
-	jwtService        *utils.JWTService
-	validator         utils.Validator
+	// blocksCtrl is the Blocks orchestrator (Beta, iOS-only JSON
+	// API — no web UI per the read-only companion policy).
+	// Attached via SetBlocksController (same pattern as
+	// SetCoachService) so Handler construction sites stay stable.
+	blocksCtrl *controllers.BlocksController
+	userRepo   models.UserRepo
+	jwtService *utils.JWTService
+	validator  utils.Validator
 	// clock is the time source the profile route uses
 	// when computing the next reminder fire time on form
 	// save. Tests substitute a fixed clock to assert on
@@ -229,6 +234,14 @@ func registerAPIRoutes(e *echo.Echo, h *Handler) {
 	e.POST("/api/v1/goals/:id/complete", h.APIMarkGoalComplete)
 	e.POST("/api/v1/goals/:id/reopen", h.APIReopenGoal)
 	e.DELETE("/api/v1/goals/:id", h.APIDeleteGoal)
+
+	// Blocks (Beta, iOS-only JSON API — no web UI: the web app is
+	// a read-only companion and never creates/edits workout data).
+	e.GET("/api/v1/blocks", h.APIListBlocks)
+	e.POST("/api/v1/blocks", h.APICreateBlock)
+	e.GET("/api/v1/blocks/:id", h.APIGetBlock)
+	e.PUT("/api/v1/blocks/:id", h.APIUpdateBlock)
+	e.DELETE("/api/v1/blocks/:id", h.APIDeleteBlock)
 
 	// Feedback (JSON mirror of the HTML /feedback POST
 	// handler — used by the iOS client). The same

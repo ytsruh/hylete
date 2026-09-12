@@ -77,6 +77,7 @@ func main() {
 	goalsRepo := models.NewGoalRepository(database)
 	healthRepo := models.NewHealthSnapshotRepository(database)
 	aiReportsRepo := models.NewAIReportRepository(database)
+	blocksRepo := models.NewBlockRepository(database)
 
 	// Initialize auth service
 	jwtService := utils.NewJWTService(cfg.JWT_SECRET)
@@ -110,6 +111,9 @@ func main() {
 	authRecoveryCtrl := controllers.NewAuthRecoveryController(userRepo, authTokenRepo, emailService)
 	goalsCtrl := controllers.NewGoalsController(goalsRepo)
 	healthCtrl := controllers.NewHealthSnapshotController(healthRepo)
+	// Blocks resolve item exercises through the shared exercise
+	// repository (catalog reads are global, not per-user).
+	blocksCtrl := controllers.NewBlocksController(blocksRepo, repo)
 
 	// Initialize the per-user weight-reminder orchestrator here so
 	// the hourly cron scheduler below can drive it. The orchestrator
@@ -175,6 +179,9 @@ func main() {
 	// service is still attached so the handlers can answer with
 	// precise 503s instead of nil-panicking.
 	h.SetCoachService(coachService, aiReportsRepo)
+
+	// Attach the Blocks orchestrator to the /api/v1/blocks routes.
+	h.SetBlocksController(blocksCtrl)
 
 	// Custom HTTP error handler. HTML routes get a templ-rendered
 	// error page so the user can read the message in the same

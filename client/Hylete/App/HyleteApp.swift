@@ -87,6 +87,7 @@ struct MainTabView: View {
     @StateObject private var goalStore: GoalStore
     @StateObject private var weightStore: WeightStore
     @StateObject private var coachStore: CoachStore
+    @StateObject private var blockStore: BlockStore
 
     init() {
         // Construct with a stub API; swapped to the real
@@ -101,6 +102,7 @@ struct MainTabView: View {
         _goalStore = StateObject(wrappedValue: GoalStore(api: stub))
         _weightStore = StateObject(wrappedValue: WeightStore(api: stub))
         _coachStore = StateObject(wrappedValue: CoachStore(api: stub))
+        _blockStore = StateObject(wrappedValue: BlockStore(api: stub))
     }
 
     var body: some View {
@@ -126,7 +128,7 @@ struct MainTabView: View {
             .tabItem { Label("Goals", systemImage: Icons.goals) }
 
             NavigationStack {
-                MoreView(coachStore: coachStore)
+                MoreView(coachStore: coachStore, blockStore: blockStore)
             }
             .tabItem { Label("More", systemImage: Icons.more) }
         }
@@ -141,6 +143,7 @@ struct MainTabView: View {
             goalStore.replaceAPI(env.api)
             weightStore.replaceAPI(env.api)
             coachStore.replaceAPI(env.api)
+            blockStore.replaceAPI(env.api)
         }
     }
 }

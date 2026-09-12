@@ -494,6 +494,149 @@ func GoalsFromModels(gs []models.Goal) []GoalDTO {
 	return out
 }
 
+// --- Blocks ---
+
+// BlockItemDTO is the JSON shape for one planned exercise inside
+// a block. ExerciseName/Type are resolved server-side for display;
+// the client never writes them. Position is the zero-based order
+// in the block. TargetText is free-text only in V1.
+type BlockItemDTO struct {
+	ID           string `json:"id"`
+	ExerciseID   string `json:"exercise_id"`
+	ExerciseName string `json:"exercise_name"`
+	ExerciseType string `json:"exercise_type"`
+	Position     int    `json:"position"`
+	TargetText   string `json:"target_text"`
+}
+
+// BlockDTO is the JSON shape for a full block with its items
+// (detail view, create/update responses).
+type BlockDTO struct {
+	ID              string         `json:"id"`
+	Name            string         `json:"name"`
+	Description     string         `json:"description"`
+	Type            string         `json:"type"`
+	Rounds          int            `json:"rounds"`
+	RestSeconds     int            `json:"rest_seconds"`
+	TimeCapSeconds  int            `json:"time_cap_seconds"`
+	IntervalSeconds int            `json:"interval_seconds"`
+	Items           []BlockItemDTO `json:"items"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+}
+
+// BlockSummaryDTO is the list-view shape: the block without items
+// plus the item count ("3 exercises · 4 rounds").
+type BlockSummaryDTO struct {
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	Description     string    `json:"description"`
+	Type            string    `json:"type"`
+	Rounds          int       `json:"rounds"`
+	RestSeconds     int       `json:"rest_seconds"`
+	TimeCapSeconds  int       `json:"time_cap_seconds"`
+	IntervalSeconds int       `json:"interval_seconds"`
+	ItemCount       int       `json:"item_count"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// CreateBlockItemRequest is one planned exercise in a block
+// create/update body.
+type CreateBlockItemRequest struct {
+	ExerciseID string `json:"exercise_id" validate:"required"`
+	TargetText string `json:"target_text" validate:"max=500"`
+}
+
+// CreateBlockRequest is the body for POST /api/v1/blocks. The
+// kind-specific config rules (e.g. circuits need rounds) live in
+// the controller — the tags below only enforce coarse bounds so
+// both layers reject the same garbage inputs.
+type CreateBlockRequest struct {
+	Name            string                   `json:"name" validate:"required,min=1,max=100"`
+	Description     string                   `json:"description" validate:"max=1000"`
+	Type            string                   `json:"type" validate:"required,oneof=standard circuit amrap emom"`
+	Rounds          int                      `json:"rounds" validate:"gte=0,lte=240"`
+	RestSeconds     int                      `json:"rest_seconds" validate:"gte=0,lte=3600"`
+	TimeCapSeconds  int                      `json:"time_cap_seconds" validate:"gte=0,lte=86400"`
+	IntervalSeconds int                      `json:"interval_seconds" validate:"gte=0,lte=3600"`
+	Items           []CreateBlockItemRequest `json:"items" validate:"required,min=1,max=20,dive"`
+}
+
+// UpdateBlockRequest is the body for PUT /api/v1/blocks/:id.
+// Items are fully replaced (same semantics as create).
+type UpdateBlockRequest struct {
+	Name            string                   `json:"name" validate:"required,min=1,max=100"`
+	Description     string                   `json:"description" validate:"max=1000"`
+	Type            string                   `json:"type" validate:"required,oneof=standard circuit amrap emom"`
+	Rounds          int                      `json:"rounds" validate:"gte=0,lte=240"`
+	RestSeconds     int                      `json:"rest_seconds" validate:"gte=0,lte=3600"`
+	TimeCapSeconds  int                      `json:"time_cap_seconds" validate:"gte=0,lte=86400"`
+	IntervalSeconds int                      `json:"interval_seconds" validate:"gte=0,lte=3600"`
+	Items           []CreateBlockItemRequest `json:"items" validate:"required,min=1,max=20,dive"`
+}
+
+// BlockItemFromModel converts a models.BlockItem into its DTO.
+func BlockItemFromModel(it models.BlockItem) BlockItemDTO {
+	return BlockItemDTO{
+		ID:           it.ID,
+		ExerciseID:   it.ExerciseID,
+		ExerciseName: it.ExerciseName,
+		ExerciseType: string(it.ExerciseType),
+		Position:     it.Position,
+		TargetText:   it.TargetText,
+	}
+}
+
+// BlockFromModel converts a models.Block (with items) into its
+// DTO. Items default to `[]` (not null) when empty.
+func BlockFromModel(b models.Block) BlockDTO {
+	items := make([]BlockItemDTO, 0, len(b.Items))
+	for _, it := range b.Items {
+		items = append(items, BlockItemFromModel(it))
+	}
+	return BlockDTO{
+		ID:              b.ID,
+		Name:            b.Name,
+		Description:     b.Description,
+		Type:            string(b.Type),
+		Rounds:          b.Rounds,
+		RestSeconds:     b.RestSeconds,
+		TimeCapSeconds:  b.TimeCapSeconds,
+		IntervalSeconds: b.IntervalSeconds,
+		Items:           items,
+		CreatedAt:       b.CreatedAt,
+		UpdatedAt:       b.UpdatedAt,
+	}
+}
+
+// BlockSummaryFromModel converts a models.BlockSummary into its DTO.
+func BlockSummaryFromModel(s models.BlockSummary) BlockSummaryDTO {
+	return BlockSummaryDTO{
+		ID:              s.ID,
+		Name:            s.Name,
+		Description:     s.Description,
+		Type:            string(s.Type),
+		Rounds:          s.Rounds,
+		RestSeconds:     s.RestSeconds,
+		TimeCapSeconds:  s.TimeCapSeconds,
+		IntervalSeconds: s.IntervalSeconds,
+		ItemCount:       s.ItemCount,
+		CreatedAt:       s.CreatedAt,
+		UpdatedAt:       s.UpdatedAt,
+	}
+}
+
+// BlockSummariesFromModels converts block summaries into DTOs,
+// writing `[]` rather than `null` when the user has no blocks.
+func BlockSummariesFromModels(ss []models.BlockSummary) []BlockSummaryDTO {
+	out := make([]BlockSummaryDTO, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, BlockSummaryFromModel(s))
+	}
+	return out
+}
+
 // --- Weight ---
 
 // WeightEntryDTO is the JSON shape for a single body-weight

@@ -184,3 +184,32 @@ CREATE TABLE ai_reports (
 );
 CREATE UNIQUE INDEX idx_ai_reports_user_type_period ON ai_reports(user_id, type, period_start);
 CREATE INDEX idx_ai_reports_user ON ai_reports(user_id, type, period_start DESC);
+
+-- Blocks are user-owned planned exercise groups (Beta). block_items
+-- rows are planned references to the exercise catalog with a
+-- free-text target — not logged exercise entries (see migration
+-- 00019_add_blocks.sql for the rationale).
+CREATE TABLE blocks (
+    id               TEXT PRIMARY KEY,
+    user_id          TEXT NOT NULL REFERENCES users(id),
+    name             TEXT NOT NULL,
+    description      TEXT NOT NULL DEFAULT '',
+    block_type       TEXT NOT NULL DEFAULT 'standard',
+    rounds           INTEGER NOT NULL DEFAULT 0,
+    rest_seconds     INTEGER NOT NULL DEFAULT 0,
+    time_cap_seconds INTEGER NOT NULL DEFAULT 0,
+    interval_seconds INTEGER NOT NULL DEFAULT 0,
+    created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_blocks_user ON blocks(user_id);
+
+CREATE TABLE block_items (
+    id          TEXT PRIMARY KEY,
+    block_id    TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+    exercise_id TEXT NOT NULL REFERENCES exercises(id),
+    position    INTEGER NOT NULL,
+    target_text TEXT NOT NULL DEFAULT '',
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_block_items_block ON block_items(block_id, position);

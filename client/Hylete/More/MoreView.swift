@@ -20,6 +20,7 @@ struct MoreView: View {
     @EnvironmentObject private var env: AppEnvironment
 
     @ObservedObject var coachStore: CoachStore
+    @ObservedObject var blockStore: BlockStore
 
     /// Mirrors the Profile beta toggle. Gates the Insights
     /// section itself (in addition to the `BetaFeature`
@@ -39,6 +40,25 @@ struct MoreView: View {
             }
 
             if betaFeaturesEnabled {
+                Section {
+                    BetaFeature {
+                        NavigationLink {
+                            BlocksListView(store: blockStore)
+                        } label: {
+                            hubRow(
+                                title: "Blocks",
+                                subtitle: "Planned exercise groups",
+                                systemImage: "rectangle.3.group"
+                            )
+                        }
+                        .accessibilityLabel("Open Blocks")
+                    }
+                } header: {
+                    Text("Workouts")
+                } footer: {
+                    Text("Beta features. Turn them off anytime in Profile.")
+                }
+
                 Section {
                     BetaFeature {
                         NavigationLink {
@@ -142,6 +162,10 @@ struct MoreView: View {
     NavigationStack {
         MoreView(
             coachStore: CoachStore(api: APIClient(
+                baseURL: URL(string: "http://localhost:8080/api/v1")!,
+                tokenProvider: { nil }
+            )),
+            blockStore: BlockStore(api: APIClient(
                 baseURL: URL(string: "http://localhost:8080/api/v1")!,
                 tokenProvider: { nil }
             ))

@@ -34,6 +34,29 @@ type AuthToken struct {
 	CreatedAt time.Time
 }
 
+type Block struct {
+	ID              string
+	UserID          string
+	Name            string
+	Description     string
+	BlockType       string
+	Rounds          int64
+	RestSeconds     int64
+	TimeCapSeconds  int64
+	IntervalSeconds int64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type BlockItem struct {
+	ID         string
+	BlockID    string
+	ExerciseID string
+	Position   int64
+	TargetText string
+	CreatedAt  time.Time
+}
+
 type Exercise struct {
 	ID             string
 	Name           string

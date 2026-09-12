@@ -258,6 +258,34 @@ public final class APIClient: @unchecked Sendable {
         try await sendVoid("DELETE", "goals/\(id)")
     }
 
+    // MARK: - Blocks
+
+    /// Lists the user's planned blocks (Beta). The server
+    /// returns summaries (newest first) with item counts;
+    /// full items load per-block via `getBlock(id:)`.
+    public func listBlocks() async throws -> [BlockSummaryDTO] {
+        let response: BlocksResponse = try await send("GET", "blocks")
+        return response.blocks
+    }
+
+    public func getBlock(id: String) async throws -> BlockDTO {
+        try await send("GET", "blocks/\(id)")
+    }
+
+    public func createBlock(_ request: CreateBlockRequest) async throws -> BlockDTO {
+        try await send("POST", "blocks", body: request)
+    }
+
+    /// Updates a block. Items are fully replaced — send the
+    /// complete desired item list in array order.
+    public func updateBlock(id: String, request: UpdateBlockRequest) async throws -> BlockDTO {
+        try await send("PUT", "blocks/\(id)", body: request)
+    }
+
+    public func deleteBlock(id: String) async throws {
+        try await sendVoid("DELETE", "blocks/\(id)")
+    }
+
     // MARK: - Feedback
 
     /// Submits user feedback to the server. Mirrors the web

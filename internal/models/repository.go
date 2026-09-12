@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"time"
 )
+
 // Repository defines the interface for exercise data access.
 // This abstraction allows handlers to be tested with mock implementations
 // without requiring a real database connection.
@@ -183,6 +184,29 @@ type GoalRepo interface {
 
 // Compile-time check to ensure GoalRepository implements GoalRepo.
 var _ GoalRepo = (*GoalRepository)(nil)
+
+// BlockRepo defines the interface for block data access. The
+// controller depends on this so route tests can substitute an
+// in-memory fake without touching the real sqlc repository.
+type BlockRepo interface {
+	// Create persists a new block with its items, assigning
+	// generated IDs back onto the supplied value.
+	Create(b *Block) error
+	// GetByID returns the block with items, or nil when not
+	// found. Scoped to the user.
+	GetByID(id, userID string) (*Block, error)
+	// List returns every block for the user (newest first)
+	// with item counts; items are not loaded.
+	List(userID string) ([]BlockSummary, error)
+	// Update overwrites the block fields and fully replaces
+	// its items. Scoped to the user.
+	Update(b *Block, userID string) error
+	// Delete removes a block and its items. Scoped to the user.
+	Delete(id, userID string) error
+}
+
+// Compile-time check to ensure BlockRepository implements BlockRepo.
+var _ BlockRepo = (*BlockRepository)(nil)
 
 // HealthSnapshotRepo defines the interface for health snapshot
 // data access. The controller depends on this so route tests can

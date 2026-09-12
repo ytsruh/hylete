@@ -809,6 +809,310 @@ public struct UpdateGoalRequest: Encodable, Equatable {
     }
 }
 
+// MARK: Blocks
+
+/// The kind of planned exercise group. Mirrors the server's
+/// `BlockType` (`standard|circuit|amrap|emom`). The raw value is
+/// the wire value so encoding a request is a direct mapping.
+public enum BlockTypeDTO: String, Codable, Equatable, CaseIterable, Hashable {
+    case standard
+    case circuit
+    case amrap
+    case emom
+
+    /// User-facing label for pickers and type chips.
+    public var displayName: String {
+        switch self {
+        case .standard: return "Standard"
+        case .circuit: return "Circuit"
+        case .amrap: return "AMRAP"
+        case .emom: return "EMOM"
+        }
+    }
+}
+
+/// One planned exercise inside a block. Mirrors the server's
+/// `BlockItemDTO`. `targetText` is free-text only in V1 (e.g.
+/// "3x5 @ 100kg"); `exerciseName`/`exerciseType` are resolved
+/// server-side for display and never written by the client.
+public struct BlockItemDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let exerciseID: String
+    public let exerciseName: String
+    public let exerciseType: String
+    public let position: Int
+    public let targetText: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case exerciseID = "exercise_id"
+        case exerciseName = "exercise_name"
+        case exerciseType = "exercise_type"
+        case position
+        case targetText = "target_text"
+    }
+
+    public init(
+        id: String,
+        exerciseID: String,
+        exerciseName: String,
+        exerciseType: String,
+        position: Int,
+        targetText: String
+    ) {
+        self.id = id
+        self.exerciseID = exerciseID
+        self.exerciseName = exerciseName
+        self.exerciseType = exerciseType
+        self.position = position
+        self.targetText = targetText
+    }
+
+    /// Convenience mirror of the exercise-entry semantics: a
+    /// cardio item renders duration/distance-style UI.
+    public var isCardio: Bool { exerciseType.lowercased() == "cardio" }
+}
+
+/// A full block with its planned items. Mirrors the server's
+/// `BlockDTO` (detail view, create/update responses).
+public struct BlockDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let name: String
+    public let description: String
+    public let type: BlockTypeDTO
+    public let rounds: Int
+    public let restSeconds: Int
+    public let timeCapSeconds: Int
+    public let intervalSeconds: Int
+    public let items: [BlockItemDTO]
+    public let createdAt: Date
+    public let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case description
+        case type
+        case rounds
+        case restSeconds = "rest_seconds"
+        case timeCapSeconds = "time_cap_seconds"
+        case intervalSeconds = "interval_seconds"
+        case items
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    public init(
+        id: String,
+        name: String,
+        description: String,
+        type: BlockTypeDTO,
+        rounds: Int,
+        restSeconds: Int,
+        timeCapSeconds: Int,
+        intervalSeconds: Int,
+        items: [BlockItemDTO],
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.type = type
+        self.rounds = rounds
+        self.restSeconds = restSeconds
+        self.timeCapSeconds = timeCapSeconds
+        self.intervalSeconds = intervalSeconds
+        self.items = items
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    /// One-line summary of the kind-specific config for the
+    /// detail header ("4 rounds · 90s rest", "10:00 cap",
+    /// "Every 60s × 12", or "" for standard blocks).
+    public var configSummary: String {
+        switch type {
+        case .standard:
+            return ""
+        case .circuit:
+            return "\(rounds) rounds · \(restSeconds)s rest"
+        case .amrap:
+            return "\(timeCapSeconds / 60):\(String(format: "%02d", timeCapSeconds % 60)) cap"
+        case .emom:
+            return "Every \(intervalSeconds)s × \(rounds)"
+        }
+    }
+}
+
+/// List-view shape: the block without items plus the item count.
+/// Mirrors the server's `BlockSummaryDTO`.
+public struct BlockSummaryDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let name: String
+    public let description: String
+    public let type: BlockTypeDTO
+    public let rounds: Int
+    public let restSeconds: Int
+    public let timeCapSeconds: Int
+    public let intervalSeconds: Int
+    public let itemCount: Int
+    public let createdAt: Date
+    public let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case description
+        case type
+        case rounds
+        case restSeconds = "rest_seconds"
+        case timeCapSeconds = "time_cap_seconds"
+        case intervalSeconds = "interval_seconds"
+        case itemCount = "item_count"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    public init(
+        id: String,
+        name: String,
+        description: String,
+        type: BlockTypeDTO,
+        rounds: Int,
+        restSeconds: Int,
+        timeCapSeconds: Int,
+        intervalSeconds: Int,
+        itemCount: Int,
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.type = type
+        self.rounds = rounds
+        self.restSeconds = restSeconds
+        self.timeCapSeconds = timeCapSeconds
+        self.intervalSeconds = intervalSeconds
+        self.itemCount = itemCount
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+/// Response body for `GET /api/v1/blocks`.
+public struct BlocksResponse: Decodable, Equatable {
+    public let blocks: [BlockSummaryDTO]
+}
+
+/// One planned exercise in a block create/update body. Position
+/// is implicit (array order).
+public struct BlockItemRequest: Encodable, Equatable {
+    public let exerciseID: String
+    public let targetText: String
+
+    enum CodingKeys: String, CodingKey {
+        case exerciseID = "exercise_id"
+        case targetText = "target_text"
+    }
+
+    public init(exerciseID: String, targetText: String) {
+        self.exerciseID = exerciseID
+        self.targetText = targetText
+    }
+}
+
+/// JSON body for `POST /api/v1/blocks`. Kind-specific rules
+/// (circuits need rounds, etc.) are enforced server-side; the
+/// editor mirrors them locally so Save stays disabled until
+/// the body is valid.
+public struct CreateBlockRequest: Encodable, Equatable {
+    public let name: String
+    public let description: String
+    public let type: BlockTypeDTO
+    public let rounds: Int
+    public let restSeconds: Int
+    public let timeCapSeconds: Int
+    public let intervalSeconds: Int
+    public let items: [BlockItemRequest]
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case type
+        case rounds
+        case restSeconds = "rest_seconds"
+        case timeCapSeconds = "time_cap_seconds"
+        case intervalSeconds = "interval_seconds"
+        case items
+    }
+
+    public init(
+        name: String,
+        description: String,
+        type: BlockTypeDTO,
+        rounds: Int = 0,
+        restSeconds: Int = 0,
+        timeCapSeconds: Int = 0,
+        intervalSeconds: Int = 0,
+        items: [BlockItemRequest]
+    ) {
+        self.name = name
+        self.description = description
+        self.type = type
+        self.rounds = rounds
+        self.restSeconds = restSeconds
+        self.timeCapSeconds = timeCapSeconds
+        self.intervalSeconds = intervalSeconds
+        self.items = items
+    }
+}
+
+/// JSON body for `PUT /api/v1/blocks/:id`. Items are fully
+/// replaced — same shape and validation as create.
+public struct UpdateBlockRequest: Encodable, Equatable {
+    public let name: String
+    public let description: String
+    public let type: BlockTypeDTO
+    public let rounds: Int
+    public let restSeconds: Int
+    public let timeCapSeconds: Int
+    public let intervalSeconds: Int
+    public let items: [BlockItemRequest]
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case type
+        case rounds
+        case restSeconds = "rest_seconds"
+        case timeCapSeconds = "time_cap_seconds"
+        case intervalSeconds = "interval_seconds"
+        case items
+    }
+
+    public init(
+        name: String,
+        description: String,
+        type: BlockTypeDTO,
+        rounds: Int = 0,
+        restSeconds: Int = 0,
+        timeCapSeconds: Int = 0,
+        intervalSeconds: Int = 0,
+        items: [BlockItemRequest]
+    ) {
+        self.name = name
+        self.description = description
+        self.type = type
+        self.rounds = rounds
+        self.restSeconds = restSeconds
+        self.timeCapSeconds = timeCapSeconds
+        self.intervalSeconds = intervalSeconds
+        self.items = items
+    }
+}
+
 // MARK: Feedback
 
 /// JSON body for `POST /api/v1/feedback`. Mirrors the

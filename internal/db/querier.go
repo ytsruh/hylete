@@ -30,11 +30,21 @@ type Querier interface {
 	// the raw token with sha256 before storing. The raw token only ever
 	// lives in the email link; the database never sees it.
 	CreateAuthToken(ctx context.Context, arg CreateAuthTokenParams) (AuthToken, error)
+	// Blocks are user-owned planned exercise groups. Every query is
+	// scoped to user_id (via the blocks row) so a request can never read
+	// or mutate another user's plan.
+	CreateBlock(ctx context.Context, arg CreateBlockParams) (Block, error)
+	CreateBlockItem(ctx context.Context, arg CreateBlockItemParams) (BlockItem, error)
 	CreateExerciseEntry(ctx context.Context, arg CreateExerciseEntryParams) (string, error)
 	CreateFeedback(ctx context.Context, arg CreateFeedbackParams) (Feedback, error)
 	CreateGoal(ctx context.Context, arg CreateGoalParams) (Goal, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (string, error)
 	CreateWeightEntry(ctx context.Context, arg CreateWeightEntryParams) (WeightEntry, error)
+	DeleteBlock(ctx context.Context, arg DeleteBlockParams) error
+	// Full item replacement on update: delete-all then re-insert in a
+	// transaction (the repository owns the tx). Also keeps deletes
+	// correct on databases ignoring ON DELETE CASCADE.
+	DeleteBlockItems(ctx context.Context, blockID string) error
 	DeleteExerciseEntry(ctx context.Context, arg DeleteExerciseEntryParams) error
 	DeleteGoal(ctx context.Context, arg DeleteGoalParams) error
 	DeleteWeightEntry(ctx context.Context, arg DeleteWeightEntryParams) error
@@ -51,6 +61,7 @@ type Querier interface {
 	// (duration divided by distance). Entries without distance are excluded;
 	// returns 0 when no qualifying exercise entries exist.
 	GetBestPaceByExercise(ctx context.Context, arg GetBestPaceByExerciseParams) (float64, error)
+	GetBlock(ctx context.Context, arg GetBlockParams) (Block, error)
 	GetByID(ctx context.Context, id string) (Exercise, error)
 	GetByName(ctx context.Context, name string) (Exercise, error)
 	GetExerciseEntriesByDateRange(ctx context.Context, arg GetExerciseEntriesByDateRangeParams) ([]GetExerciseEntriesByDateRangeRow, error)
@@ -84,6 +95,16 @@ type Querier interface {
 	// last, then by created_at asc as a stable tiebreaker. The CASE expression
 	// emulates NULLS LAST for SQLite versions that don't support it natively.
 	ListActiveGoals(ctx context.Context, userID string) ([]Goal, error)
+	ListBlockItems(ctx context.Context, blockID string) ([]BlockItem, error)
+	// Detail view resolves each planned item to its exercise name/type
+	// in one query. Ownership is gated by the caller's prior GetBlock
+	// (scoped to user_id); this query only orders the items.
+	ListBlockItemsWithExercise(ctx context.Context, blockID string) ([]ListBlockItemsWithExerciseRow, error)
+	// Newest first; rowid breaks created_at ties (same convention as
+	// exercise_entries ordering).
+	ListBlocks(ctx context.Context, userID string) ([]Block, error)
+	// List view needs per-block item counts without N+1 queries.
+	ListBlocksWithItemCount(ctx context.Context, userID string) ([]ListBlocksWithItemCountRow, error)
 	// Completed goals: completed_at IS NOT NULL. Most recently completed first.
 	ListCompletedGoals(ctx context.Context, userID string) ([]Goal, error)
 	ListExerciseEntries(ctx context.Context, userID sql.NullString) ([]ListExerciseEntriesRow, error)
@@ -125,6 +146,9 @@ type Querier interface {
 	// clobbering any other columns.
 	SetUserAdmin(ctx context.Context, arg SetUserAdminParams) (string, error)
 	Update(ctx context.Context, arg UpdateParams) (Exercise, error)
+	// Overwrites the editable block fields and bumps updated_at.
+	// Items are replaced separately via DeleteBlockItems + CreateBlockItem.
+	UpdateBlock(ctx context.Context, arg UpdateBlockParams) error
 	UpdateExerciseEntry(ctx context.Context, arg UpdateExerciseEntryParams) error
 	UpdateExerciseEntryWithDate(ctx context.Context, arg UpdateExerciseEntryWithDateParams) error
 	// Update the editable fields. completed_at is managed by MarkGoalComplete
