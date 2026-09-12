@@ -14,6 +14,15 @@ import SwiftUI
 /// as the user pages back and forth, cached per day for the
 /// session (`entriesByDay`), and the donut keeps using the
 /// fixed last-7-days snapshot fetched at load time.
+/// Push destinations from the dashboard's day list. Exercise
+/// rows push history; planned-workout banners push the workout
+/// detail. A single enum keeps the tab's one `NavigationStack`
+/// path homogeneous.
+enum DashboardDestination: Hashable {
+    case exercise(ExerciseDTO)
+    case workout(WorkoutDTO)
+}
+
 struct DashboardView: View {
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var authStore: AuthStore
@@ -36,6 +45,11 @@ struct DashboardView: View {
     /// pages around; buckets are overwritten wholesale when
     /// their week is refetched.
     @State private var entriesByDay: [Date: [ExerciseEntryDTO]] = [:]
+    /// Planned workouts bucketed by the local start-of-day of
+    /// their scheduled start. Fetched alongside the week's
+    /// entries so the selected day can banner them; shares the
+    /// `loadedWeeks` markers below.
+    @State private var workoutsByDay: [Date: [WorkoutDTO]] = [:]
     /// Week starts currently being fetched (drives the inline
     /// spinner under the selected day).
     @State private var loadingWeeks: Set<Date> = []
@@ -53,10 +67,11 @@ struct DashboardView: View {
     /// `load()` coalesces them into one network pass.
     @State private var hasAppeared: Bool = false
     /// Bound navigation path so pop-back is detectable. The
-    /// stack only ever pushes `ExerciseDTO` destinations, so a
-    /// plain array suffices; an empty path after a non-empty one
-    /// means the user returned from a pushed view.
-    @State private var navigationPath: [ExerciseDTO] = []
+    /// stack pushes exercise-history and workout-detail
+    /// destinations, so the path holds the `DashboardDestination`
+    /// enum; an empty path after a non-empty one means the user
+    /// returned from a pushed view.
+    @State private var navigationPath: [DashboardDestination] = []
     /// Serialises the reappear-refresh triggers (`onAppear` and
     /// path-change can both fire for one pop-back).
     @State private var isRefreshing: Bool = false
@@ -72,16 +87,27 @@ struct DashboardView: View {
     /// queries until an explicit refresh.
     @StateObject private var healthSummary: HealthViewModel
 
-    init(distanceUnit: String = "km") {
+    /// Beta workout store backing the planned-workout banners
+    /// under the calendar. Injected by `MainTabView` like the
+    /// other shared stores.
+    @ObservedObject var workoutStore: WorkoutStore
+
+    init(distanceUnit: String = "km", workoutStore: WorkoutStore) {
         _healthSummary = StateObject(wrappedValue: HealthViewModel(distanceUnit: distanceUnit))
+        self.workoutStore = workoutStore
     }
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
             content
                 .navigationTitle("Dashboard")
-                .navigationDestination(for: ExerciseDTO.self) { exercise in
-                    ExerciseHistoryView(exercise: exercise)
+                .navigationDestination(for: DashboardDestination.self) { destination in
+                    switch destination {
+                    case .exercise(let exercise):
+                        ExerciseHistoryView(exercise: exercise)
+                    case .workout(let workout):
+                        WorkoutDetailView(workoutID: workout.id, store: workoutStore)
+                    }
                 }
                 // NOTE: attached to the content INSIDE the stack,
                 // not to the NavigationStack itself — the outer
@@ -178,11 +204,13 @@ struct DashboardView: View {
                     selection: $selectedDate,
                     isBusy: { day in
                         !(entriesByDay[CalendarMath.startOfDay(day)] ?? []).isEmpty
+                            || !(workoutsByDay[CalendarMath.startOfDay(day)] ?? []).isEmpty
                     }
                 ) { day in
                     SelectedDaySetList(
                         date: day,
                         entries: entriesByDay[day] ?? [],
+                        workouts: workoutsByDay[day] ?? [],
                         isLoading: loadingWeeks.contains(CalendarMath.startOfWeek(for: day)),
                         weightUnit: weightUnit,
                         distanceUnit: authStore.currentUser?.distanceUnit ?? "km",
@@ -331,6 +359,7 @@ struct DashboardView: View {
     @MainActor
     private func refresh() async {
         loadedWeeks.removeAll()
+        workoutsByDay.removeAll()
         await load()
         // Beta-gated vitals refresh alongside the server data.
         // `shouldRefresh` keeps this off for non-beta users
@@ -373,10 +402,12 @@ struct DashboardView: View {
         defer { loadingWeeks.remove(weekStart) }
 
         do {
-            let entries = try await env.api.listExerciseEntries(
+            async let entriesTask = env.api.listExerciseEntries(
                 from: weekStart,
                 to: weekEndInclusive
             )
+            async let workoutsTask = workoutStore.loadRange(from: weekStart, to: weekEndInclusive)
+            let (entries, workouts) = try await (entriesTask, workoutsTask)
             // Defensive de-duplication by id: a duplicated row
             // (server anomaly, sync hiccup) would otherwise give
             // `SelectedDaySetList`'s ForEach duplicate identities,
@@ -396,6 +427,24 @@ struct DashboardView: View {
                 byDay[key]?.sort { $0.createdAt > $1.createdAt }
             }
             entriesByDay = byDay
+            // Planned workouts bucketed by their scheduled
+            // start's local day. Unscheduled rows have no day
+            // to sit on and stay in the Workouts list only.
+            var workoutBuckets = workoutsByDay
+            for day in CalendarMath.days(inWeekOf: weekStart) {
+                workoutBuckets[day] = []
+            }
+            for workout in workouts {
+                guard let scheduled = workout.scheduledStart else { continue }
+                let dayKey = CalendarMath.startOfDay(scheduled)
+                workoutBuckets[dayKey, default: []].append(workout)
+            }
+            for key in workoutBuckets.keys where CalendarMath.days(inWeekOf: weekStart).contains(key) {
+                workoutBuckets[key]?.sort {
+                    ($0.scheduledStart ?? .distantFuture) < ($1.scheduledStart ?? .distantFuture)
+                }
+            }
+            workoutsByDay = workoutBuckets
             loadedWeeks.insert(weekStart)
         } catch let error as APIError {
             if case .unauthorized = error { return }
@@ -406,10 +455,13 @@ struct DashboardView: View {
 }
 
 #Preview {
-    DashboardView()
-        .environmentObject(AppEnvironment.live(baseURL: URL(string: "http://localhost:8080/api/v1")!))
-        .environmentObject(AuthStore(api: APIClient(
-            baseURL: URL(string: "http://localhost:8080/api/v1")!,
-            tokenProvider: { nil }
-        )))
+    DashboardView(workoutStore: WorkoutStore(api: APIClient(
+        baseURL: URL(string: "http://localhost:8080/api/v1")!,
+        tokenProvider: { nil }
+    )))
+    .environmentObject(AppEnvironment.live(baseURL: URL(string: "http://localhost:8080/api/v1")!))
+    .environmentObject(AuthStore(api: APIClient(
+        baseURL: URL(string: "http://localhost:8080/api/v1")!,
+        tokenProvider: { nil }
+    )))
 }

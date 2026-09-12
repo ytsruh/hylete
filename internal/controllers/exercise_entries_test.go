@@ -315,6 +315,18 @@ func (m *mockRepository) ListExerciseEntriesLast7Days(userID string) ([]models.E
 	return result, nil
 }
 
+func (m *mockRepository) GetExerciseEntriesByWorkout(workoutID string, userID string) ([]models.ExerciseEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var result []models.ExerciseEntry
+	for _, e := range m.exerciseEntries {
+		if e.WorkoutID == workoutID && e.UserID == userID {
+			result = append(result, e)
+		}
+	}
+	return result, nil
+}
+
 func (m *mockRepository) GetExerciseByID(id string, userID string) (*models.Exercise, error) {
 	if m.errGetExerciseByID != nil {
 		return nil, m.errGetExerciseByID
@@ -382,7 +394,7 @@ func TestExerciseEntryController_CreateExerciseEntries_Success(t *testing.T) {
 	}
 
 	base := time.Now()
-	created, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "felt good", base, sets)
+	created, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "felt good", base, sets, models.WorkoutLinkage{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -432,7 +444,7 @@ func TestExerciseEntryController_CreateExerciseEntries_PreservesSubmissionOrder(
 		{Reps: 5, Weight: 25},
 	}
 
-	created, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "", base, sets)
+	created, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "", base, sets, models.WorkoutLinkage{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -455,7 +467,7 @@ func TestExerciseEntryController_CreateExerciseEntries_PreservesSubmissionOrder(
 func TestExerciseEntryController_CreateExerciseEntries_EmptySets(t *testing.T) {
 	ec, mock := setupExerciseEntryController(t)
 
-	created, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "", time.Now(), nil)
+	created, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "", time.Now(), nil, models.WorkoutLinkage{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -476,7 +488,7 @@ func TestExerciseEntryController_CreateExerciseEntries_RepositoryErrorShortCircu
 		{Reps: 5, Weight: 100, RestTime: 0},
 	}
 
-	_, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "", time.Now(), sets)
+	_, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "", time.Now(), sets, models.WorkoutLinkage{})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -498,7 +510,7 @@ func TestExerciseEntryController_CreateExerciseEntries_PassesCreatedAt(t *testin
 		{Reps: 5, Weight: 95, RestTime: 90},
 	}
 
-	created, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "back-dated", want, sets)
+	created, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "back-dated", want, sets, models.WorkoutLinkage{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -529,7 +541,7 @@ func TestExerciseEntryController_UpdateExerciseEntry(t *testing.T) {
 		{ID: "entry-1", UserID: "user-1", ExerciseID: "ex-1", ExerciseName: "Squat", Reps: 5, Weight: 100},
 	}
 
-	exerciseEntry, err := ec.UpdateExerciseEntry("entry-1", "user-1", "ex-1", models.ExerciseTypeStrength, "even better", ExerciseSetInput{Reps: 6, Weight: 110, RestTime: 90}, time.Now())
+	exerciseEntry, err := ec.UpdateExerciseEntry("entry-1", "user-1", "ex-1", models.ExerciseTypeStrength, "even better", ExerciseSetInput{Reps: 6, Weight: 110, RestTime: 90}, time.Now(), models.WorkoutLinkage{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -611,7 +623,7 @@ func TestExerciseEntryController_CreateExerciseEntries_CardioNormalizesMetrics(t
 		{Reps: 99, Weight: 999, RestTime: 60, DurationSeconds: 1500, DistanceMeters: 5000, AvgHeartRate: 152, CaloriesBurned: 320},
 	}
 
-	created, err := ec.CreateExerciseEntries("user-1", "ex-2", models.ExerciseTypeCardio, "easy run", time.Now(), sets)
+	created, err := ec.CreateExerciseEntries("user-1", "ex-2", models.ExerciseTypeCardio, "easy run", time.Now(), sets, models.WorkoutLinkage{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -637,7 +649,7 @@ func TestExerciseEntryController_CreateExerciseEntries_StrengthNormalizesMetrics
 		{Reps: 5, Weight: 100, RestTime: 90, DurationSeconds: 600, DistanceMeters: 2000, AvgHeartRate: 140, CaloriesBurned: 100},
 	}
 
-	created, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "", time.Now(), sets)
+	created, err := ec.CreateExerciseEntries("user-1", "ex-1", models.ExerciseTypeStrength, "", time.Now(), sets, models.WorkoutLinkage{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -661,7 +673,7 @@ func TestExerciseEntryController_CreateExerciseEntries_CardioValidationRejects(t
 		{DurationSeconds: 900},                        // missing distance
 	}
 
-	_, err := ec.CreateExerciseEntries("user-1", "ex-2", models.ExerciseTypeCardio, "", time.Now(), sets)
+	_, err := ec.CreateExerciseEntries("user-1", "ex-2", models.ExerciseTypeCardio, "", time.Now(), sets, models.WorkoutLinkage{})
 	if !errors.Is(err, ErrDistanceRequired) {
 		t.Fatalf("expected ErrDistanceRequired, got %v", err)
 	}
@@ -679,7 +691,7 @@ func TestExerciseEntryController_UpdateExerciseEntry_Cardio(t *testing.T) {
 	}
 
 	updated, err := ec.UpdateExerciseEntry("entry-1", "user-1", "ex-2", models.ExerciseTypeCardio, "negative split",
-		ExerciseSetInput{Reps: 77, Weight: 77, DurationSeconds: 1440, DistanceMeters: 5000}, time.Now())
+		ExerciseSetInput{Reps: 77, Weight: 77, DurationSeconds: 1440, DistanceMeters: 5000}, time.Now(), models.WorkoutLinkage{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -692,7 +704,7 @@ func TestExerciseEntryController_UpdateExerciseEntry_Cardio(t *testing.T) {
 
 	// Missing distance must reject.
 	_, err = ec.UpdateExerciseEntry("entry-1", "user-1", "ex-2", models.ExerciseTypeCardio, "",
-		ExerciseSetInput{DurationSeconds: 1440}, time.Now())
+		ExerciseSetInput{DurationSeconds: 1440}, time.Now(), models.WorkoutLinkage{})
 	if !errors.Is(err, ErrDistanceRequired) {
 		t.Fatalf("expected ErrDistanceRequired on cardio update, got %v", err)
 	}

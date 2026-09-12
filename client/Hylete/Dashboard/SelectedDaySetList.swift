@@ -14,6 +14,10 @@ struct SelectedDaySetList: View {
     /// calendar). Used only for the empty-state copy.
     let date: Date
     let entries: [ExerciseEntryDTO]
+    /// Planned workouts scheduled on this day. Rendered as
+    /// banners above the entries — tapping one pushes the
+    /// workout detail.
+    let workouts: [WorkoutDTO]
     /// `true` while the containing week's entries are being
     /// fetched; shows an inline spinner instead of the
     /// empty-state so freshly-paged weeks don't flash "no sets".
@@ -25,6 +29,19 @@ struct SelectedDaySetList: View {
     let exerciseLookup: [String: ExerciseDTO]
 
     var body: some View {
+        VStack(spacing: DSSpacing.xs) {
+            ForEach(workouts) { workout in
+                NavigationLink(value: DashboardDestination.workout(workout)) {
+                    workoutBanner(for: workout)
+                }
+                .buttonStyle(.plain)
+            }
+            dayContent
+        }
+    }
+
+    @ViewBuilder
+    private var dayContent: some View {
         if isLoading && entries.isEmpty {
             HStack {
                 Spacer()
@@ -65,6 +82,49 @@ struct SelectedDaySetList: View {
         }
     }
 
+    /// Compact planned-workout card: name, time range, and a
+    /// status marker. Same card chrome as the entries list so
+    /// the two read as one surface.
+    private func workoutBanner(for workout: WorkoutDTO) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Image(systemName: Icons.workouts)
+                .font(.caption)
+                .foregroundStyle(DSColors.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(workout.name)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(DSColors.text)
+                let range = workoutClockRange(start: workout.scheduledStart, end: workout.scheduledEnd)
+                if !range.isEmpty {
+                    Text(range)
+                        .font(.footnote)
+                        .foregroundStyle(DSColors.textSecondary)
+                }
+            }
+            Spacer()
+            if workout.isCompleted {
+                Text("Done")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DSColors.success)
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(DSColors.textSecondary)
+            }
+        }
+        .padding(.vertical, DSSpacing.sm)
+        .padding(.horizontal, DSSpacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous)
+                .fill(DSColors.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous)
+                .stroke(DSColors.separator, lineWidth: 0.5)
+        )
+        .contentShape(Rectangle())
+    }
+
     /// "No sets yet" on today, otherwise the friendly date.
     private var emptyTitle: String {
         if CalendarMath.isSameDay(date, Date()) {
@@ -76,7 +136,7 @@ struct SelectedDaySetList: View {
     @ViewBuilder
     private func rowLink(for entry: ExerciseEntryDTO) -> some View {
         if let exercise = exerciseLookup[entry.exerciseID] {
-            NavigationLink(value: exercise) {
+            NavigationLink(value: DashboardDestination.exercise(exercise)) {
                 SetRow(entry: entry, weightUnit: weightUnit, distanceUnit: distanceUnit)
             }
             .buttonStyle(.plain)
@@ -101,6 +161,7 @@ struct SelectedDaySetList: View {
                 createdAt: Date()
             ),
         ],
+        workouts: [],
         isLoading: false,
         weightUnit: "kg",
         distanceUnit: "km",

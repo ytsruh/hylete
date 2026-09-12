@@ -215,6 +215,86 @@ public final class APIClient: @unchecked Sendable {
         try await send("GET", "exercises/\(id)/chart")
     }
 
+    // MARK: - Workouts
+
+    /// Lists every workout for the authenticated user, planned
+    /// first. Used by the Workouts list.
+    public func listWorkouts() async throws -> [WorkoutDTO] {
+        try await send("GET", "workouts")
+    }
+
+    /// Lists workouts whose scheduled window overlaps the
+    /// inclusive range (`GET
+    /// /api/v1/workouts?from=<RFC3339>&to=<RFC3339>`). The
+    /// dashboard calendar uses this so day boundaries are
+    /// computed client-side in the user's local timezone —
+    /// same pattern as `listExerciseEntries(from:to:)`.
+    public func listWorkouts(from: Date, to: Date) async throws -> [WorkoutDTO] {
+        let path = "workouts"
+            + "?from=" + Self.queryDateFormatter.string(from: from)
+            + "&to=" + Self.queryDateFormatter.string(from: to)
+        return try await send("GET", path)
+    }
+
+    /// Creates a dated workout with inline blocks (may be empty
+    /// for a bare shell). Returns the full detail so the caller
+    /// can open it without a follow-up GET.
+    public func createWorkout(_ request: CreateWorkoutRequest) async throws -> WorkoutDetailDTO {
+        try await send("POST", "workouts", body: request)
+    }
+
+    /// Snapshots one source workout into one dated copy per
+    /// instance, atomically (all or nothing). Powers plan-ahead
+    /// flows ("every Monday x N"). Returns the created headers
+    /// in request order.
+    public func bulkCreateWorkouts(_ request: BulkCreateWorkoutsRequest) async throws -> [WorkoutDTO] {
+        try await send("POST", "workouts/bulk", body: request)
+    }
+
+    /// Copies a workout (including its tree) — a blank name
+    /// becomes "Copy of <source>" server-side, nil schedule
+    /// bounds inherit the source's window. Returns the new
+    /// detail.
+    public func duplicateWorkout(id: String, request: DuplicateWorkoutRequest = DuplicateWorkoutRequest()) async throws -> WorkoutDetailDTO {
+        try await send("POST", "workouts/\(id)/duplicate", body: request)
+    }
+
+    /// Fetches a workout with its tree and logged exercise
+    /// entries (split into item-linked vs ad-hoc).
+    public func getWorkout(id: String) async throws -> WorkoutDetailDTO {
+        try await send("GET", "workouts/\(id)")
+    }
+
+    /// Updates a workout's header (name, notes, scheduled
+    /// window). The tree is fixed at creation; status moves
+    /// through the dedicated complete/reopen/cancel methods.
+    public func updateWorkout(id: String, request: UpdateWorkoutRequest) async throws -> WorkoutDetailDTO {
+        try await send("PUT", "workouts/\(id)", body: request)
+    }
+
+    /// Hard-deletes a workout. Its tree cascades; logged
+    /// exercise entries survive with their links cleared.
+    public func deleteWorkout(id: String) async throws {
+        try await sendVoid("DELETE", "workouts/\(id)")
+    }
+
+    /// Marks a workout complete. The server owns
+    /// `completed_at`. Idempotent.
+    public func completeWorkout(id: String) async throws -> WorkoutDetailDTO {
+        try await send("POST", "workouts/\(id)/complete")
+    }
+
+    /// Moves a workout back to planned (clears
+    /// `completed_at`). Idempotent.
+    public func reopenWorkout(id: String) async throws -> WorkoutDetailDTO {
+        try await send("POST", "workouts/\(id)/reopen")
+    }
+
+    /// Marks a workout cancelled. Idempotent.
+    public func cancelWorkout(id: String) async throws -> WorkoutDetailDTO {
+        try await send("POST", "workouts/\(id)/cancel")
+    }
+
     // MARK: - Goals
 
     /// Lists every goal for the authenticated user. The server

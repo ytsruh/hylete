@@ -372,7 +372,18 @@ func (h *Handler) APICreateExerciseEntries(c echo.Context) error {
 		})
 	}
 
-	created, err := h.exerciseEntryCtrl.CreateExerciseEntries(claims.UserID, in.ExerciseID, exercise.Type, in.Notes, createdAt, sets)
+	// Optional workout linkage: validated against the workout tree
+	// (item must belong to the workout) before persisting. Omitted
+	// links mean standalone logging — unchanged behaviour.
+	link := workoutLinkageFromRequest(in.WorkoutID, in.WorkoutItemID, in.RoundNumber)
+	if err := h.validateWorkoutLinkage(claims.UserID, link); err != nil {
+		if msg, ok := workoutLinkageError(err); ok {
+			return c.JSON(http.StatusBadRequest, APIError{Error: msg})
+		}
+		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to save exercise entry"})
+	}
+
+	created, err := h.exerciseEntryCtrl.CreateExerciseEntries(claims.UserID, in.ExerciseID, exercise.Type, in.Notes, createdAt, sets, link)
 	if err != nil {
 		if msg, ok := exerciseEntryValidationError(err); ok {
 			return c.JSON(http.StatusBadRequest, APIError{Error: msg})
@@ -420,6 +431,17 @@ func (h *Handler) APIUpdateExerciseEntry(c echo.Context) error {
 		createdAt = *in.CreatedAt
 	}
 
+	// Same workout-linkage rules as create: the linkage replaces the
+	// entry's links wholesale, so omitting the IDs unlinks a
+	// previously linked set.
+	link := workoutLinkageFromRequest(in.WorkoutID, in.WorkoutItemID, in.RoundNumber)
+	if err := h.validateWorkoutLinkage(claims.UserID, link); err != nil {
+		if msg, ok := workoutLinkageError(err); ok {
+			return c.JSON(http.StatusBadRequest, APIError{Error: msg})
+		}
+		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to update exercise entry"})
+	}
+
 	updated, err := h.exerciseEntryCtrl.UpdateExerciseEntry(id, claims.UserID, in.ExerciseID, exercise.Type, in.Notes, controllers.ExerciseSetInput{
 		Reps:            in.Reps,
 		Weight:          in.Weight,
@@ -428,7 +450,7 @@ func (h *Handler) APIUpdateExerciseEntry(c echo.Context) error {
 		DistanceMeters:  in.DistanceMeters,
 		AvgHeartRate:    in.AvgHeartRate,
 		CaloriesBurned:  in.CaloriesBurned,
-	}, createdAt)
+	}, createdAt, link)
 	if err != nil {
 		if msg, ok := exerciseEntryValidationError(err); ok {
 			return c.JSON(http.StatusBadRequest, APIError{Error: msg})

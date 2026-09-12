@@ -80,13 +80,15 @@ struct SplashView: View {
 /// once here (instead of inside their respective views) so they
 /// outlive view rebuilds and can be shared with editors and
 /// the More hub — every observer sees the same store, so a
-/// save updates all rows immediately.
+/// save updates all rows immediately. The workout stores follow
+/// the same pattern for the beta Workouts surfaces.
 struct MainTabView: View {
     @EnvironmentObject private var env: AppEnvironment
 
     @StateObject private var goalStore: GoalStore
     @StateObject private var weightStore: WeightStore
     @StateObject private var coachStore: CoachStore
+    @StateObject private var workoutStore: WorkoutStore
 
     init() {
         // Construct with a stub API; swapped to the real
@@ -101,14 +103,18 @@ struct MainTabView: View {
         _goalStore = StateObject(wrappedValue: GoalStore(api: stub))
         _weightStore = StateObject(wrappedValue: WeightStore(api: stub))
         _coachStore = StateObject(wrappedValue: CoachStore(api: stub))
+        _workoutStore = StateObject(wrappedValue: WorkoutStore(api: stub))
     }
 
     var body: some View {
         TabView {
             // Dashboard owns its stack (path-bound for
             // exercise-history pushes) — do NOT wrap it.
-            DashboardView(distanceUnit: env.authStore.currentUser?.distanceUnit ?? "km")
-                .tabItem { Label("Dashboard", systemImage: "house") }
+            DashboardView(
+                distanceUnit: env.authStore.currentUser?.distanceUnit ?? "km",
+                workoutStore: workoutStore
+            )
+            .tabItem { Label("Dashboard", systemImage: "house") }
 
             NavigationStack {
                 ExerciseListView()
@@ -126,7 +132,7 @@ struct MainTabView: View {
             .tabItem { Label("Goals", systemImage: Icons.goals) }
 
             NavigationStack {
-                MoreView(coachStore: coachStore)
+                MoreView(coachStore: coachStore, workoutStore: workoutStore)
             }
             .tabItem { Label("More", systemImage: Icons.more) }
         }
@@ -141,6 +147,7 @@ struct MainTabView: View {
             goalStore.replaceAPI(env.api)
             weightStore.replaceAPI(env.api)
             coachStore.replaceAPI(env.api)
+            workoutStore.replaceAPI(env.api)
         }
     }
 }

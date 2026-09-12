@@ -3,7 +3,6 @@ package controllers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -15,14 +14,16 @@ import (
 
 // Sentinel errors returned by ValidateExerciseSetInput so callers (the JSON
 // API handlers) can map them to human-readable 400 responses while unit
-// tests can assert on identity with errors.Is.
+// tests can assert on identity with errors.Is. Defined in models (the
+// type-duality rule belongs to the domain) and aliased here so existing
+// callers keep compiling.
 var (
 	// ErrRepsRequired is returned when a strength exercise entry is submitted without repetitions.
-	ErrRepsRequired = errors.New("reps must be at least 1")
+	ErrRepsRequired = models.ErrRepsRequired
 	// ErrDurationRequired is returned when a cardio exercise entry is submitted without a duration.
-	ErrDurationRequired = errors.New("duration is required for cardio exercises")
+	ErrDurationRequired = models.ErrDurationRequired
 	// ErrDistanceRequired is returned when a cardio exercise entry is submitted without a distance.
-	ErrDistanceRequired = errors.New("distance is required for cardio exercises")
+	ErrDistanceRequired = models.ErrDistanceRequired
 )
 
 // ExerciseEntryController handles exercise entry business logic.
@@ -55,59 +56,16 @@ func (ec *ExerciseEntryController) GetExerciseEntry(id, userID string) (*models.
 }
 
 // ExerciseSetInput describes a single set to be persisted as part of a multi-set
-// exercise entry submission. All sets within a submission share an exercise,
-// user, notes and timestamp; only per-set values differ. Strength sets carry
-// Reps/Weight/RestTime, cardio sets carry DurationSeconds/DistanceMeters plus
-// optional AvgHeartRate/CaloriesBurned — which pair applies is decided by the
-// exercise's type via ValidateExerciseSetInput and normalizeForExerciseType.
-type ExerciseSetInput struct {
-	Reps            int
-	Weight          float64
-	RestTime        int
-	DurationSeconds int
-	DistanceMeters  float64
-	AvgHeartRate    int
-	CaloriesBurned  float64
-}
+// exercise entry submission. Alias of models.ExerciseSetInput (the
+// type-duality rule belongs to the domain); kept here so existing
+// callers keep compiling.
+type ExerciseSetInput = models.ExerciseSetInput
 
 // ValidateExerciseSetInput checks one set against the requirements for its
-// exercise's type: strength entries need at least one rep, cardio entries need
-// both a positive duration and a positive distance. Numeric range limits
-// (max weight, max duration…) are enforced earlier by the request validators;
-// this covers the type-conditional rules they cannot express.
+// exercise's type. Thin wrapper over models.ValidateExerciseSetInput so
+// existing callers keep compiling.
 func ValidateExerciseSetInput(exerciseType models.ExerciseType, in ExerciseSetInput) error {
-	switch exerciseType {
-	case models.ExerciseTypeCardio:
-		if in.DurationSeconds <= 0 {
-			return ErrDurationRequired
-		}
-		if in.DistanceMeters <= 0 {
-			return ErrDistanceRequired
-		}
-	default:
-		if in.Reps < 1 {
-			return ErrRepsRequired
-		}
-	}
-	return nil
-}
-
-// normalizeForExerciseType zeroes the metric pair that does not apply to the
-// given exercise type so exactly one pair is ever non-zero on disk: strength
-// entries never keep cardio metrics and vice versa. Rest time is also dropped
-// from cardio entries because there is no per-set rest to rest between.
-func (in ExerciseSetInput) normalizeForExerciseType(exerciseType models.ExerciseType) ExerciseSetInput {
-	if exerciseType == models.ExerciseTypeCardio {
-		in.Reps = 0
-		in.Weight = 0
-		in.RestTime = 0
-		return in
-	}
-	in.DurationSeconds = 0
-	in.DistanceMeters = 0
-	in.AvgHeartRate = 0
-	in.CaloriesBurned = 0
-	return in
+	return models.ValidateExerciseSetInput(exerciseType, in)
 }
 
 // CreateExerciseEntries persists a group of sets in a single submission, all
@@ -122,7 +80,12 @@ func (in ExerciseSetInput) normalizeForExerciseType(exerciseType models.Exercise
 // zeroed) before being written. On the first repository error the loop aborts
 // and the error is returned; partial-success semantics aren't worth the
 // complexity for a workout log.
-func (ec *ExerciseEntryController) CreateExerciseEntries(userID, exerciseID string, exerciseType models.ExerciseType, notes string, createdAt time.Time, sets []ExerciseSetInput) ([]models.ExerciseEntry, error) {
+//
+// Link carries the optional workout linkage shared by the whole
+// submission (workout, item, round). Callers must validate it first
+// via WorkoutController.ValidateExerciseEntryLinkage — this method
+// stores it as given.
+func (ec *ExerciseEntryController) CreateExerciseEntries(userID, exerciseID string, exerciseType models.ExerciseType, notes string, createdAt time.Time, sets []ExerciseSetInput, link models.WorkoutLinkage) ([]models.ExerciseEntry, error) {
 	for _, s := range sets {
 		if err := ValidateExerciseSetInput(exerciseType, s); err != nil {
 			return nil, err
@@ -131,7 +94,7 @@ func (ec *ExerciseEntryController) CreateExerciseEntries(userID, exerciseID stri
 
 	created := make([]models.ExerciseEntry, 0, len(sets))
 	for i, s := range sets {
-		s = s.normalizeForExerciseType(exerciseType)
+		s = s.NormalizeForExerciseType(exerciseType)
 		exerciseEntry := &models.ExerciseEntry{
 			ExerciseID:      exerciseID,
 			Notes:           notes,
@@ -142,6 +105,9 @@ func (ec *ExerciseEntryController) CreateExerciseEntries(userID, exerciseID stri
 			DistanceMeters:  s.DistanceMeters,
 			AvgHeartRate:    s.AvgHeartRate,
 			CaloriesBurned:  s.CaloriesBurned,
+			WorkoutID:       link.WorkoutID,
+			WorkoutItemID:   link.WorkoutItemID,
+			RoundNumber:     link.RoundNumber,
 			UserID:          userID,
 			CreatedAt:       createdAt.Add(time.Duration(i) * time.Second),
 		}
@@ -156,12 +122,14 @@ func (ec *ExerciseEntryController) CreateExerciseEntries(userID, exerciseID stri
 // UpdateExerciseEntry updates an existing exercise entry, including its timestamp.
 // The entry is validated and normalized against the supplied exercise type (the
 // caller resolves it from the existing row or the newly linked exercise) so an
-// edit cannot leave both metric pairs populated.
-func (ec *ExerciseEntryController) UpdateExerciseEntry(id, userID string, exerciseID string, exerciseType models.ExerciseType, notes string, in ExerciseSetInput, createdAt time.Time) (*models.ExerciseEntry, error) {
+// edit cannot leave both metric pairs populated. Link carries the optional
+// workout linkage; callers must validate it first via
+// WorkoutController.ValidateExerciseEntryLinkage.
+func (ec *ExerciseEntryController) UpdateExerciseEntry(id, userID string, exerciseID string, exerciseType models.ExerciseType, notes string, in ExerciseSetInput, createdAt time.Time, link models.WorkoutLinkage) (*models.ExerciseEntry, error) {
 	if err := ValidateExerciseSetInput(exerciseType, in); err != nil {
 		return nil, err
 	}
-	in = in.normalizeForExerciseType(exerciseType)
+	in = in.NormalizeForExerciseType(exerciseType)
 	exerciseEntry := &models.ExerciseEntry{
 		ID:              id,
 		ExerciseID:      exerciseID,
@@ -173,6 +141,9 @@ func (ec *ExerciseEntryController) UpdateExerciseEntry(id, userID string, exerci
 		DistanceMeters:  in.DistanceMeters,
 		AvgHeartRate:    in.AvgHeartRate,
 		CaloriesBurned:  in.CaloriesBurned,
+		WorkoutID:       link.WorkoutID,
+		WorkoutItemID:   link.WorkoutItemID,
+		RoundNumber:     link.RoundNumber,
 		UserID:          userID,
 		CreatedAt:       createdAt,
 	}

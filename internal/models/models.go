@@ -59,7 +59,17 @@ type ExerciseEntry struct {
 	AvgHeartRate    int
 	CaloriesBurned  float64
 	ExerciseType    ExerciseType
-	CreatedAt       time.Time
+	// WorkoutID optionally groups the exercise entry into a dated
+	// workout. Empty means the exercise entry is standalone.
+	WorkoutID string
+	// WorkoutItemID is the most precise workout link: which planned
+	// workout item the exercise entry logged against. Empty means the
+	// exercise entry is ad-hoc within the workout (or standalone).
+	WorkoutItemID string
+	// RoundNumber records which round of a multi-round workout block
+	// the exercise entry belongs to. 0 means unrounded.
+	RoundNumber int
+	CreatedAt   time.Time
 }
 
 // IsCardio reports whether this exercise entry belongs to a cardio exercise.

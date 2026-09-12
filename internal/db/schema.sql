@@ -50,6 +50,10 @@ CREATE TABLE exercise_entries (
     distance_meters REAL NOT NULL DEFAULT 0,
     avg_heart_rate INTEGER NOT NULL DEFAULT 0,
     calories_burned REAL NOT NULL DEFAULT 0,
+    -- Optional workout linkage (0/NULL = standalone). See migration 00020.
+    workout_id TEXT REFERENCES workouts(id) ON DELETE SET NULL,
+    workout_item_id TEXT REFERENCES workout_items(id) ON DELETE SET NULL,
+    round_number INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (exercise_id) REFERENCES exercises(id)
 );
@@ -57,6 +61,8 @@ CREATE TABLE exercise_entries (
 CREATE INDEX idx_entries_exercise ON exercise_entries(exercise_id);
 CREATE INDEX idx_entries_user ON exercise_entries(user_id);
 CREATE INDEX idx_entries_created ON exercise_entries(created_at);
+CREATE INDEX idx_entries_workout ON exercise_entries(workout_id);
+CREATE INDEX idx_entries_workout_item ON exercise_entries(workout_item_id);
 CREATE INDEX idx_users_email ON users(email);
 
 CREATE TABLE feedback (
@@ -184,3 +190,52 @@ CREATE TABLE ai_reports (
 );
 CREATE UNIQUE INDEX idx_ai_reports_user_type_period ON ai_reports(user_id, type, period_start);
 CREATE INDEX idx_ai_reports_user ON ai_reports(user_id, type, period_start DESC);
+
+-- Workouts v1: dated workout containers users plan ahead and log
+-- exercise entries into. See migration 00019_workouts.sql for the
+-- full contract.
+CREATE TABLE workouts (
+    id                TEXT PRIMARY KEY,
+    user_id           TEXT NOT NULL REFERENCES users(id),
+    source_workout_id TEXT REFERENCES workouts(id) ON DELETE SET NULL,
+    name            TEXT NOT NULL,
+    notes           TEXT,
+    status          TEXT NOT NULL DEFAULT 'planned',
+    scheduled_start DATETIME,
+    scheduled_end   DATETIME,
+    completed_at    DATETIME,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_workouts_user ON workouts(user_id);
+CREATE INDEX idx_workouts_user_status ON workouts(user_id, status);
+CREATE INDEX idx_workouts_user_scheduled ON workouts(user_id, scheduled_start);
+
+CREATE TABLE workout_blocks (
+    id                           TEXT PRIMARY KEY,
+    workout_id                   TEXT NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+    type                         TEXT NOT NULL DEFAULT 'straight',
+    position                     INTEGER NOT NULL DEFAULT 0,
+    rounds                       INTEGER NOT NULL DEFAULT 1,
+    rest_between_rounds_seconds  INTEGER NOT NULL DEFAULT 0,
+    interval_seconds             INTEGER NOT NULL DEFAULT 0,
+    time_cap_seconds             INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_workout_blocks_workout ON workout_blocks(workout_id, position);
+
+CREATE TABLE workout_items (
+    id                      TEXT PRIMARY KEY,
+    block_id                TEXT NOT NULL REFERENCES workout_blocks(id) ON DELETE CASCADE,
+    exercise_id             TEXT NOT NULL REFERENCES exercises(id),
+    position                INTEGER NOT NULL DEFAULT 0,
+    target_sets             INTEGER NOT NULL DEFAULT 0,
+    target_reps             INTEGER NOT NULL DEFAULT 0,
+    target_weight           REAL NOT NULL DEFAULT 0,
+    target_rest_seconds     INTEGER NOT NULL DEFAULT 0,
+    target_duration_seconds INTEGER NOT NULL DEFAULT 0,
+    target_distance_meters  REAL NOT NULL DEFAULT 0,
+    target_avg_heart_rate   INTEGER NOT NULL DEFAULT 0,
+    target_calories         REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_workout_items_block ON workout_items(block_id, position);
+CREATE INDEX idx_workout_items_exercise ON workout_items(exercise_id);

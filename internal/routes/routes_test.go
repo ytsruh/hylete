@@ -416,6 +416,18 @@ func (m *mockRepository) ListExerciseEntriesLast7Days(userID string) ([]models.E
 	return result, nil
 }
 
+func (m *mockRepository) GetExerciseEntriesByWorkout(workoutID string, userID string) ([]models.ExerciseEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var result []models.ExerciseEntry
+	for _, e := range m.exerciseEntries {
+		if e.WorkoutID == workoutID && e.UserID == userID {
+			result = append(result, e)
+		}
+	}
+	return result, nil
+}
+
 type mockUserRepository struct {
 	mu    sync.Mutex
 	users []models.User

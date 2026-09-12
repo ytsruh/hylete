@@ -20,6 +20,10 @@ struct MoreView: View {
     @EnvironmentObject private var env: AppEnvironment
 
     @ObservedObject var coachStore: CoachStore
+    /// Beta Workouts surface. Injected by `MainTabView`
+    /// alongside `coachStore` so the hub row shares the same
+    /// store instance as the list it pushes to.
+    @ObservedObject var workoutStore: WorkoutStore
 
     /// Mirrors the Profile beta toggle. Gates the Insights
     /// section itself (in addition to the `BetaFeature`
@@ -36,6 +40,27 @@ struct MoreView: View {
                     profileRow
                 }
                 .accessibilityLabel("Open Profile")
+            }
+
+            if betaFeaturesEnabled {
+                Section {
+                    BetaFeature {
+                        NavigationLink {
+                            WorkoutsListView(store: workoutStore)
+                        } label: {
+                            hubRow(
+                                title: "Workouts",
+                                subtitle: "Planned sessions and history",
+                                systemImage: Icons.workouts
+                            )
+                        }
+                        .accessibilityLabel("Open Workouts")
+                    }
+                } header: {
+                    Text("Training")
+                } footer: {
+                    Text("Beta features. Turn them off anytime in Profile.")
+                }
             }
 
             if betaFeaturesEnabled {
@@ -142,6 +167,10 @@ struct MoreView: View {
     NavigationStack {
         MoreView(
             coachStore: CoachStore(api: APIClient(
+                baseURL: URL(string: "http://localhost:8080/api/v1")!,
+                tokenProvider: { nil }
+            )),
+            workoutStore: WorkoutStore(api: APIClient(
                 baseURL: URL(string: "http://localhost:8080/api/v1")!,
                 tokenProvider: { nil }
             ))

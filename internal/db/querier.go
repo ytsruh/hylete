@@ -35,9 +35,15 @@ type Querier interface {
 	CreateGoal(ctx context.Context, arg CreateGoalParams) (Goal, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (string, error)
 	CreateWeightEntry(ctx context.Context, arg CreateWeightEntryParams) (WeightEntry, error)
+	// Workouts: dated containers scoped to the user.
+	CreateWorkout(ctx context.Context, arg CreateWorkoutParams) (Workout, error)
+	CreateWorkoutBlock(ctx context.Context, arg CreateWorkoutBlockParams) (WorkoutBlock, error)
+	CreateWorkoutItem(ctx context.Context, arg CreateWorkoutItemParams) (WorkoutItem, error)
 	DeleteExerciseEntry(ctx context.Context, arg DeleteExerciseEntryParams) error
 	DeleteGoal(ctx context.Context, arg DeleteGoalParams) error
 	DeleteWeightEntry(ctx context.Context, arg DeleteWeightEntryParams) error
+	DeleteWorkout(ctx context.Context, arg DeleteWorkoutParams) error
+	DeleteWorkoutBlocksByWorkout(ctx context.Context, workoutID string) error
 	// Fetch a single report for idempotency checks ((user_id, type,
 	// period_start) unique key) before deciding to call the LLM.
 	GetAIReport(ctx context.Context, arg GetAIReportParams) (AiReport, error)
@@ -55,6 +61,9 @@ type Querier interface {
 	GetByName(ctx context.Context, name string) (Exercise, error)
 	GetExerciseEntriesByDateRange(ctx context.Context, arg GetExerciseEntriesByDateRangeParams) ([]GetExerciseEntriesByDateRangeRow, error)
 	GetExerciseEntriesByExercisePaginated(ctx context.Context, arg GetExerciseEntriesByExercisePaginatedParams) ([]GetExerciseEntriesByExercisePaginatedRow, error)
+	// Every exercise entry logged into a workout, oldest first so rounds
+	// read in logging order. Scopes to the given user ID.
+	GetExerciseEntriesByWorkout(ctx context.Context, arg GetExerciseEntriesByWorkoutParams) ([]GetExerciseEntriesByWorkoutRow, error)
 	GetExerciseEntry(ctx context.Context, arg GetExerciseEntryParams) (GetExerciseEntryRow, error)
 	GetFeedbackByID(ctx context.Context, id string) (GetFeedbackByIDRow, error)
 	GetGoal(ctx context.Context, arg GetGoalParams) (Goal, error)
@@ -73,6 +82,16 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetWeightEntriesByIDs(ctx context.Context, arg GetWeightEntriesByIDsParams) ([]WeightEntry, error)
 	GetWeightEntry(ctx context.Context, arg GetWeightEntryParams) (WeightEntry, error)
+	GetWorkout(ctx context.Context, arg GetWorkoutParams) (Workout, error)
+	// Single workout block scoped to the user via its workout parentage.
+	GetWorkoutBlock(ctx context.Context, arg GetWorkoutBlockParams) (WorkoutBlock, error)
+	// Single workout item scoped to the user via its workout parentage.
+	// Used to validate the exercise-entry logging triple.
+	GetWorkoutItem(ctx context.Context, arg GetWorkoutItemParams) (WorkoutItem, error)
+	// Parentage of one workout item scoped to the user. Used to validate
+	// the exercise-entry logging triple (the item must belong to the
+	// workout the entry claims).
+	GetWorkoutItemContext(ctx context.Context, arg GetWorkoutItemContextParams) (GetWorkoutItemContextRow, error)
 	List(ctx context.Context) ([]Exercise, error)
 	// Every user with ai_opt_in = 1. The weekly Coach cron iterates
 	// this list; per-user report generation is idempotent on
@@ -98,6 +117,19 @@ type Querier interface {
 	// build its email payload without an extra round-trip.
 	ListUsersDueForReminder(ctx context.Context, reminderNextFireAt sql.NullTime) ([]User, error)
 	ListWeightEntries(ctx context.Context, userID string) ([]WeightEntry, error)
+	ListWorkoutBlocks(ctx context.Context, workoutID string) ([]WorkoutBlock, error)
+	ListWorkoutItemsByWorkout(ctx context.Context, workoutID string) ([]WorkoutItem, error)
+	// Workout items with their exercise catalogue names and types so
+	// detail reads do not need a lookup per item.
+	ListWorkoutItemsByWorkoutWithExercises(ctx context.Context, workoutID string) ([]ListWorkoutItemsByWorkoutWithExercisesRow, error)
+	// Planned first (scheduled_start ascending, unscheduled last), then by
+	// recency. The CASE emulates NULLS LAST for scheduled_start.
+	ListWorkouts(ctx context.Context, userID string) ([]Workout, error)
+	// Workouts whose scheduled window overlaps the given range.
+	// Unscheduled rows (scheduled_start IS NULL) are excluded -- they
+	// surface in ListWorkouts. Cancelled workouts are excluded so
+	// cancelling genuinely clears the calendar.
+	ListWorkoutsByRange(ctx context.Context, arg ListWorkoutsByRangeParams) ([]Workout, error)
 	// Stamp dismissed_at. Idempotent: re-dismissals overwrite.
 	MarkAIReportDismissed(ctx context.Context, arg MarkAIReportDismissedParams) error
 	// Atomically set completed_at and bump updated_at. Scoped to user_id so
@@ -124,6 +156,9 @@ type Querier interface {
 	// a narrow, single-purpose query prevents the admin form from
 	// clobbering any other columns.
 	SetUserAdmin(ctx context.Context, arg SetUserAdminParams) (string, error)
+	// completed_at is managed by the caller: set on complete, cleared on
+	// reopen/cancel so status changes own the timestamp (same pattern as goals).
+	SetWorkoutStatus(ctx context.Context, arg SetWorkoutStatusParams) error
 	Update(ctx context.Context, arg UpdateParams) (Exercise, error)
 	UpdateExerciseEntry(ctx context.Context, arg UpdateExerciseEntryParams) error
 	UpdateExerciseEntryWithDate(ctx context.Context, arg UpdateExerciseEntryWithDateParams) error
@@ -153,6 +188,7 @@ type Querier interface {
 	// for both "user changed preferences" and "tick just fired" callers.
 	UpdateUserReminder(ctx context.Context, arg UpdateUserReminderParams) error
 	UpdateWeightEntry(ctx context.Context, arg UpdateWeightEntryParams) error
+	UpdateWorkout(ctx context.Context, arg UpdateWorkoutParams) error
 	UpsertHealthSnapshot(ctx context.Context, arg UpsertHealthSnapshotParams) (HealthSnapshot, error)
 }
 

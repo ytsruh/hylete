@@ -85,7 +85,54 @@ type Repository interface {
 	// created_at descending with insertion order (rowid descending) as the tie-breaker.
 	// Scopes to the given user ID.
 	ListExerciseEntriesLast7Days(userID string) ([]ExerciseEntry, error)
+
+	// GetExerciseEntriesByWorkout returns every exercise entry logged
+	// into the given workout in logging order (oldest first). Scopes
+	// to the given user ID.
+	GetExerciseEntriesByWorkout(workoutID string, userID string) ([]ExerciseEntry, error)
 }
+
+// WorkoutRepo defines the interface for dated workout data access.
+// The controller depends on this so route tests can substitute an
+// in-memory fake without touching the real sqlc repository.
+type WorkoutRepo interface {
+	// CreateWorkoutWithTree persists a new workout with its block/item
+	// tree and returns the header. SourceWorkoutID records provenance
+	// (nil for workouts authored from scratch); status defaults to
+	// planned when empty.
+	CreateWorkoutWithTree(userID string, sourceWorkoutID *string, name, notes string, status WorkoutStatus, start, end *time.Time, blocks []WorkoutBlockInput) (*Workout, error)
+	// GetWorkout returns a workout header, or nil when not found.
+	// Scoped to the user.
+	GetWorkout(workoutID, userID string) (*Workout, error)
+	// BulkCreate persists every build in a single transaction (all or
+	// nothing) and returns the created headers in request order.
+	BulkCreate(userID string, builds []WorkoutBuild) ([]Workout, error)
+	// GetWorkoutTree returns a workout header with its full tree (nil
+	// when not found). Logged exercise entries are assembled by the
+	// controller, not the repository.
+	GetWorkoutTree(workoutID, userID string) (*Workout, []WorkoutBlockWithItems, error)
+	// ListWorkouts returns every workout for the user, planned first.
+	ListWorkouts(userID string) ([]Workout, error)
+	// ListWorkoutsByRange returns workouts whose scheduled window
+	// overlaps the inclusive [start, end] range. Cancelled workouts
+	// are excluded so cancelling clears the calendar.
+	ListWorkoutsByRange(userID string, start, end time.Time) ([]Workout, error)
+	// UpdateWorkoutHeader updates a workout's name, notes, and
+	// scheduled window without touching its tree or status.
+	UpdateWorkoutHeader(workoutID, userID, name, notes string, start, end *time.Time) error
+	// SetWorkoutStatus transitions a workout's status; completedAt is
+	// set on complete and cleared on reopen/cancel.
+	SetWorkoutStatus(workoutID, userID string, status WorkoutStatus, completedAt *time.Time) error
+	// DeleteWorkout removes a workout. Its tree cascades; logged
+	// exercise entries survive with their links cleared.
+	DeleteWorkout(workoutID, userID string) error
+	// GetWorkoutItemContext returns one workout item's parentage for
+	// linkage validation. Returns sql.ErrNoRows when missing.
+	GetWorkoutItemContext(workoutItemID, userID string) (workoutID, blockID string, err error)
+}
+
+// Compile-time check to ensure WorkoutRepository implements WorkoutRepo.
+var _ WorkoutRepo = (*WorkoutRepository)(nil)
 
 // UserRepo defines the interface for user data access.
 type UserRepo interface {

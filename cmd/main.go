@@ -77,6 +77,7 @@ func main() {
 	goalsRepo := models.NewGoalRepository(database)
 	healthRepo := models.NewHealthSnapshotRepository(database)
 	aiReportsRepo := models.NewAIReportRepository(database)
+	workoutRepo := models.NewWorkoutRepository(database)
 
 	// Initialize auth service
 	jwtService := utils.NewJWTService(cfg.JWT_SECRET)
@@ -110,6 +111,7 @@ func main() {
 	authRecoveryCtrl := controllers.NewAuthRecoveryController(userRepo, authTokenRepo, emailService)
 	goalsCtrl := controllers.NewGoalsController(goalsRepo)
 	healthCtrl := controllers.NewHealthSnapshotController(healthRepo)
+	workoutCtrl := controllers.NewWorkoutController(workoutRepo, repo, repo)
 
 	// Initialize the per-user weight-reminder orchestrator here so
 	// the hourly cron scheduler below can drive it. The orchestrator
@@ -175,6 +177,10 @@ func main() {
 	// service is still attached so the handlers can answer with
 	// precise 503s instead of nil-panicking.
 	h.SetCoachService(coachService, aiReportsRepo)
+
+	// Attach the workout orchestrators. Same setter pattern as the
+	// Coach service so Handler construction sites stay stable.
+	h.SetWorkoutServices(workoutCtrl)
 
 	// Custom HTTP error handler. HTML routes get a templ-rendered
 	// error page so the user can read the message in the same

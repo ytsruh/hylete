@@ -189,6 +189,9 @@ func (r *ExerciseRepository) CreateExerciseEntry(exerciseEntry *ExerciseEntry) e
 			DistanceMeters:  exerciseEntry.DistanceMeters,
 			AvgHeartRate:    int64(exerciseEntry.AvgHeartRate),
 			CaloriesBurned:  exerciseEntry.CaloriesBurned,
+			WorkoutID:       stringToNullString(exerciseEntry.WorkoutID),
+			WorkoutItemID:   stringToNullString(exerciseEntry.WorkoutItemID),
+			RoundNumber:     int64(exerciseEntry.RoundNumber),
 			CreatedAt:       timeToNullTime(exerciseEntry.CreatedAt),
 		})
 		if err != nil {
@@ -234,6 +237,9 @@ func (r *ExerciseRepository) UpdateExerciseEntry(exerciseEntry *ExerciseEntry, u
 			DistanceMeters:  exerciseEntry.DistanceMeters,
 			AvgHeartRate:    int64(exerciseEntry.AvgHeartRate),
 			CaloriesBurned:  exerciseEntry.CaloriesBurned,
+			WorkoutID:       stringToNullString(exerciseEntry.WorkoutID),
+			WorkoutItemID:   stringToNullString(exerciseEntry.WorkoutItemID),
+			RoundNumber:     int64(exerciseEntry.RoundNumber),
 			ID:              exerciseEntry.ID,
 			UserID:          sql.NullString{String: userID, Valid: true},
 		})
@@ -262,6 +268,9 @@ func (r *ExerciseRepository) UpdateExerciseEntryWithDate(exerciseEntry *Exercise
 			DistanceMeters:  exerciseEntry.DistanceMeters,
 			AvgHeartRate:    int64(exerciseEntry.AvgHeartRate),
 			CaloriesBurned:  exerciseEntry.CaloriesBurned,
+			WorkoutID:       stringToNullString(exerciseEntry.WorkoutID),
+			WorkoutItemID:   stringToNullString(exerciseEntry.WorkoutItemID),
+			RoundNumber:     int64(exerciseEntry.RoundNumber),
 			CreatedAt:       timeToNullTime(exerciseEntry.CreatedAt),
 			ID:              exerciseEntry.ID,
 			UserID:          sql.NullString{String: userID, Valid: true},
@@ -438,13 +447,28 @@ func (r *ExerciseRepository) ListExerciseEntriesLast7Days(userID string) ([]Exer
 	return mapListExerciseEntriesLast7DaysRows(rows), nil
 }
 
+// GetExerciseEntriesByWorkout returns every exercise entry logged
+// into the given workout in logging order (oldest first). Scopes to
+// the given user ID so a caller cannot read another user's workout log.
+func (r *ExerciseRepository) GetExerciseEntriesByWorkout(workoutID string, userID string) ([]ExerciseEntry, error) {
+	ctx := context.Background()
+	rows, err := r.queries.GetExerciseEntriesByWorkout(ctx, db.GetExerciseEntriesByWorkoutParams{
+		WorkoutID: sql.NullString{String: workoutID, Valid: true},
+		UserID:    sql.NullString{String: userID, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get exercise entries by workout: %w", err)
+	}
+	return mapGetExerciseEntriesByWorkoutRows(rows), nil
+}
+
 // --- Mapping helpers ---
 
 // mapExerciseEntryFields copies the shared exercise entry columns from a
 // sqlc row into the domain model. Every SELECT in the exercise entries
 // queries returns the same column list, so one helper keeps all six
 // per-query mapping helpers in sync.
-func mapExerciseEntryFields(target *ExerciseEntry, id, exerciseID, exerciseName, exerciseType, userID string, reps int64, weight float64, notes string, restTime int64, durationSeconds int64, distanceMeters float64, avgHeartRate int64, caloriesBurned float64, createdAt sql.NullTime) {
+func mapExerciseEntryFields(target *ExerciseEntry, id, exerciseID, exerciseName, exerciseType, userID string, reps int64, weight float64, notes string, restTime int64, durationSeconds int64, distanceMeters float64, avgHeartRate int64, caloriesBurned float64, workoutID, workoutItemID string, roundNumber int64, createdAt sql.NullTime) {
 	target.ID = id
 	target.ExerciseID = exerciseID
 	target.ExerciseName = exerciseName
@@ -458,19 +482,22 @@ func mapExerciseEntryFields(target *ExerciseEntry, id, exerciseID, exerciseName,
 	target.DistanceMeters = distanceMeters
 	target.AvgHeartRate = int(avgHeartRate)
 	target.CaloriesBurned = caloriesBurned
+	target.WorkoutID = workoutID
+	target.WorkoutItemID = workoutItemID
+	target.RoundNumber = int(roundNumber)
 	target.CreatedAt = nullTimeToTime(createdAt)
 }
 
 func mapGetExerciseEntryRow(row db.GetExerciseEntryRow) *ExerciseEntry {
 	e := &ExerciseEntry{}
-	mapExerciseEntryFields(e, row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+	mapExerciseEntryFields(e, row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, nullStringToString(row.WorkoutID), nullStringToString(row.WorkoutItemID), row.RoundNumber, row.CreatedAt)
 	return e
 }
 
 func mapListExerciseEntriesRows(rows []db.ListExerciseEntriesRow) []ExerciseEntry {
 	exerciseEntries := make([]ExerciseEntry, len(rows))
 	for i, row := range rows {
-		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, nullStringToString(row.WorkoutID), nullStringToString(row.WorkoutItemID), row.RoundNumber, row.CreatedAt)
 	}
 	return exerciseEntries
 }
@@ -478,7 +505,7 @@ func mapListExerciseEntriesRows(rows []db.ListExerciseEntriesRow) []ExerciseEntr
 func mapListExerciseEntriesWithLimitRows(rows []db.ListExerciseEntriesWithLimitRow) []ExerciseEntry {
 	exerciseEntries := make([]ExerciseEntry, len(rows))
 	for i, row := range rows {
-		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, nullStringToString(row.WorkoutID), nullStringToString(row.WorkoutItemID), row.RoundNumber, row.CreatedAt)
 	}
 	return exerciseEntries
 }
@@ -486,21 +513,21 @@ func mapListExerciseEntriesWithLimitRows(rows []db.ListExerciseEntriesWithLimitR
 func mapGetExerciseEntriesByExercisePaginatedRows(rows []db.GetExerciseEntriesByExercisePaginatedRow) []ExerciseEntry {
 	exerciseEntries := make([]ExerciseEntry, len(rows))
 	for i, row := range rows {
-		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, nullStringToString(row.WorkoutID), nullStringToString(row.WorkoutItemID), row.RoundNumber, row.CreatedAt)
 	}
 	return exerciseEntries
 }
 
 func mapGetLastSetByExerciseRow(row db.GetLastSetByExerciseRow) *ExerciseEntry {
 	e := &ExerciseEntry{}
-	mapExerciseEntryFields(e, row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+	mapExerciseEntryFields(e, row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, nullStringToString(row.WorkoutID), nullStringToString(row.WorkoutItemID), row.RoundNumber, row.CreatedAt)
 	return e
 }
 
 func mapGetExerciseEntriesByDateRangeRows(rows []db.GetExerciseEntriesByDateRangeRow) []ExerciseEntry {
 	exerciseEntries := make([]ExerciseEntry, len(rows))
 	for i, row := range rows {
-		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, nullStringToString(row.WorkoutID), nullStringToString(row.WorkoutItemID), row.RoundNumber, row.CreatedAt)
 	}
 	return exerciseEntries
 }
@@ -508,7 +535,17 @@ func mapGetExerciseEntriesByDateRangeRows(rows []db.GetExerciseEntriesByDateRang
 func mapListExerciseEntriesLast7DaysRows(rows []db.ListExerciseEntriesLast7DaysRow) []ExerciseEntry {
 	exerciseEntries := make([]ExerciseEntry, len(rows))
 	for i, row := range rows {
-		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, nullStringToString(row.WorkoutID), nullStringToString(row.WorkoutItemID), row.RoundNumber, row.CreatedAt)
+	}
+	return exerciseEntries
+}
+
+// mapGetExerciseEntriesByWorkoutRows maps the workout-scoped listing
+// (oldest first) into domain exercise entries.
+func mapGetExerciseEntriesByWorkoutRows(rows []db.GetExerciseEntriesByWorkoutRow) []ExerciseEntry {
+	exerciseEntries := make([]ExerciseEntry, len(rows))
+	for i, row := range rows {
+		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, nullStringToString(row.WorkoutID), nullStringToString(row.WorkoutItemID), row.RoundNumber, row.CreatedAt)
 	}
 	return exerciseEntries
 }

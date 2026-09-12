@@ -288,6 +288,10 @@ struct EditSetView: View {
             }
             isSaving = true
             defer { isSaving = false }
+            // Workout linkage passes through untouched: edits
+            // never move a set into or out of a workout (the
+            // server replaces links wholesale, so omitting them
+            // would silently unlink a logged set).
             await submit(UpdateExerciseEntryRequest(
                 exerciseID: exerciseEntry.exerciseID,
                 notes: notes,
@@ -298,7 +302,10 @@ struct EditSetView: View {
                 distanceMeters: meters,
                 avgHeartRate: parsedHeartRate,
                 caloriesBurned: parsedCalories,
-                createdAt: createdAt
+                createdAt: createdAt,
+                workoutID: exerciseEntry.workoutID,
+                workoutItemID: exerciseEntry.workoutItemID,
+                roundNumber: exerciseEntry.roundNumber
             ))
         } else {
             guard let reps = parsedReps, reps > 0,
@@ -308,13 +315,18 @@ struct EditSetView: View {
             }
             isSaving = true
             defer { isSaving = false }
+            // See above: workout linkage passes through so an
+            // edit never unlinks a logged set.
             await submit(UpdateExerciseEntryRequest(
                 exerciseID: exerciseEntry.exerciseID,
                 notes: notes,
                 reps: reps,
                 weight: weight,
                 restTime: parsedRest,
-                createdAt: createdAt
+                createdAt: createdAt,
+                workoutID: exerciseEntry.workoutID,
+                workoutItemID: exerciseEntry.workoutItemID,
+                roundNumber: exerciseEntry.roundNumber
             ))
         }
     }

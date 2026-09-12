@@ -88,6 +88,13 @@ public enum Icons {
     /// Failure in destructive confirmations.
     public static let failure = "xmark.octagon.fill"
 
+    // MARK: - Workouts (beta)
+
+    /// Workouts hub row — a dated training session.
+    public static let workouts = "figure.run"
+    /// Duplicate workout swipe action.
+    public static let duplicate = "doc.on.doc"
+
     // MARK: - Appearance toggle
 
     /// "Switch to light mode" icon (shown in dark mode).

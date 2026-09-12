@@ -254,6 +254,11 @@ func ExercisesFromModels(es []models.Exercise) []ExerciseDTO {
 // for the non-applicable pair, so clients can decode one struct and branch on
 // exercise_type instead of probing for nulls. Distance is metres; pace is not
 // sent — derive it as duration_seconds / (distance_meters/1000).
+//
+// The optional workout linkage (workout_id, workout_item_id,
+// round_number) records which dated workout — and which planned
+// workout item and round — the set was logged against. Empty IDs and
+// a zero round mean the set is standalone.
 type ExerciseEntryDTO struct {
 	ID              string    `json:"id"`
 	ExerciseID      string    `json:"exercise_id"`
@@ -267,6 +272,9 @@ type ExerciseEntryDTO struct {
 	DistanceMeters  float64   `json:"distance_meters"`
 	AvgHeartRate    int       `json:"avg_heart_rate"`
 	CaloriesBurned  float64   `json:"calories_burned"`
+	WorkoutID       string    `json:"workout_id,omitempty"`
+	WorkoutItemID   string    `json:"workout_item_id,omitempty"`
+	RoundNumber     int       `json:"round_number"`
 	CreatedAt       time.Time `json:"created_at"`
 }
 
@@ -285,6 +293,9 @@ func ExerciseEntryFromModel(e models.ExerciseEntry) ExerciseEntryDTO {
 		DistanceMeters:  e.DistanceMeters,
 		AvgHeartRate:    e.AvgHeartRate,
 		CaloriesBurned:  e.CaloriesBurned,
+		WorkoutID:       e.WorkoutID,
+		WorkoutItemID:   e.WorkoutItemID,
+		RoundNumber:     e.RoundNumber,
 		CreatedAt:       e.CreatedAt,
 	}
 }
@@ -328,17 +339,27 @@ type CreateSetInput struct {
 // set must carry duration_seconds and distance_meters; for
 // strength exercises reps must be at least 1 (enforced after
 // binding, keyed off the linked exercise's type).
+//
+// The optional workout linkage (workout_id, workout_item_id,
+// round_number) logs the whole submission into a dated workout.
+// An item link requires a workout; a positive round requires a
+// workout. Standalone logging omits all three.
 type CreateExerciseEntriesRequest struct {
-	ExerciseID string           `json:"exercise_id" validate:"required"`
-	Notes      string           `json:"notes"       validate:"max=500"`
-	CreatedAt  *time.Time       `json:"created_at,omitempty"`
-	Sets       []CreateSetInput `json:"sets"        validate:"required,min=1,dive"`
+	ExerciseID    string           `json:"exercise_id"      validate:"required"`
+	Notes         string           `json:"notes"            validate:"max=500"`
+	CreatedAt     *time.Time       `json:"created_at,omitempty"`
+	Sets          []CreateSetInput `json:"sets"             validate:"required,min=1,dive"`
+	WorkoutID     string           `json:"workout_id,omitempty"`
+	WorkoutItemID string           `json:"workout_item_id,omitempty"`
+	RoundNumber   int              `json:"round_number"     validate:"gte=0"`
 }
 
 // UpdateExerciseEntryRequest is the body for
 // PUT /api/v1/exercise-entries/:id. The single-set shape
 // matches the create request; the same type-driven validation
-// applies using the entry's current exercise.
+// applies using the entry's current exercise. The workout linkage
+// replaces the entry's links wholesale: omitting the IDs unlinks a
+// previously linked set (moves it back to standalone).
 type UpdateExerciseEntryRequest struct {
 	ExerciseID      string     `json:"exercise_id"      validate:"required"`
 	Notes           string     `json:"notes"            validate:"max=500"`
@@ -350,6 +371,9 @@ type UpdateExerciseEntryRequest struct {
 	AvgHeartRate    int        `json:"avg_heart_rate"   validate:"gte=0,lte=300"`
 	CaloriesBurned  float64    `json:"calories_burned"  validate:"gte=0,lte=10000"`
 	CreatedAt       *time.Time `json:"created_at,omitempty"`
+	WorkoutID       string     `json:"workout_id,omitempty"`
+	WorkoutItemID   string     `json:"workout_item_id,omitempty"`
+	RoundNumber     int        `json:"round_number"     validate:"gte=0"`
 }
 
 // HistoryStatsDTO is the lifetime-stats header shown above
@@ -808,4 +832,292 @@ type HealthSnapshotItem struct {
 // (user_id, snapshot_date) upsert, so retries are safe.
 type UpsertHealthSnapshotsRequest struct {
 	Snapshots []HealthSnapshotItem `json:"snapshots" validate:"required,min=1,max=120,dive"`
+}
+
+// --- Workouts ---
+
+// WorkoutItemDTO is one prescribed exercise inside a workout block.
+// The target pair that carries meaning depends on ExerciseType (same
+// duality as ExerciseEntryDTO): strength items use
+// target_reps/target_weight/target_rest_seconds, cardio items use
+// target_duration_seconds/target_distance_meters (+ optional
+// target_avg_heart_rate/target_calories). TargetSets is how many
+// sets/sessions are prescribed. All targets are optional — an item
+// may be just a linked exercise with all-zero targets.
+type WorkoutItemDTO struct {
+	ID                    string  `json:"id"`
+	ExerciseID            string  `json:"exercise_id"`
+	ExerciseName          string  `json:"exercise_name"`
+	ExerciseType          string  `json:"exercise_type"`
+	Position              int     `json:"position"`
+	TargetSets            int     `json:"target_sets"`
+	TargetReps            int     `json:"target_reps"`
+	TargetWeight          float64 `json:"target_weight"`
+	TargetRestSeconds     int     `json:"target_rest_seconds"`
+	TargetDurationSeconds int     `json:"target_duration_seconds"`
+	TargetDistanceMeters  float64 `json:"target_distance_meters"`
+	TargetAvgHeartRate    int     `json:"target_avg_heart_rate"`
+	TargetCalories        float64 `json:"target_calories"`
+}
+
+// WorkoutItemFromWorkoutModel converts a models.WorkoutItem into its DTO.
+func WorkoutItemFromWorkoutModel(item models.WorkoutItem) WorkoutItemDTO {
+	return WorkoutItemDTO{
+		ID:                    item.ID,
+		ExerciseID:            item.ExerciseID,
+		ExerciseName:          item.ExerciseName,
+		ExerciseType:          string(item.ExerciseType),
+		Position:              item.Position,
+		TargetSets:            item.TargetSets,
+		TargetReps:            item.TargetReps,
+		TargetWeight:          item.TargetWeight,
+		TargetRestSeconds:     item.TargetRestSeconds,
+		TargetDurationSeconds: item.TargetDurationSeconds,
+		TargetDistanceMeters:  item.TargetDistanceMeters,
+		TargetAvgHeartRate:    item.TargetAvgHeartRate,
+		TargetCalories:        item.TargetCalories,
+	}
+}
+
+// WorkoutBlockDTO is one ordered group of prescribed items. Type is
+// one of straight | superset | circuit | emom | amrap; rounds applies
+// to every type but straight (always 1), rest_between_rounds_seconds
+// to superset/circuit, interval_seconds to emom, time_cap_seconds to
+// amrap.
+type WorkoutBlockDTO struct {
+	ID                       string           `json:"id"`
+	Type                     string           `json:"type"`
+	Position                 int              `json:"position"`
+	Rounds                   int              `json:"rounds"`
+	RestBetweenRoundsSeconds int              `json:"rest_between_rounds_seconds"`
+	IntervalSeconds          int              `json:"interval_seconds"`
+	TimeCapSeconds           int              `json:"time_cap_seconds"`
+	Items                    []WorkoutItemDTO `json:"items"`
+}
+
+// WorkoutBlockFromWorkoutModel converts a models.WorkoutBlockWithItems into its DTO.
+func WorkoutBlockFromWorkoutModel(b models.WorkoutBlockWithItems) WorkoutBlockDTO {
+	dto := WorkoutBlockDTO{
+		ID:                       b.Block.ID,
+		Type:                     string(b.Block.Type),
+		Position:                 b.Block.Position,
+		Rounds:                   b.Block.Rounds,
+		RestBetweenRoundsSeconds: b.Block.RestBetweenRoundsSeconds,
+		IntervalSeconds:          b.Block.IntervalSeconds,
+		TimeCapSeconds:           b.Block.TimeCapSeconds,
+		Items:                    make([]WorkoutItemDTO, 0, len(b.Items)),
+	}
+	for _, item := range b.Items {
+		dto.Items = append(dto.Items, WorkoutItemFromWorkoutModel(item))
+	}
+	return dto
+}
+
+// WorkoutDTO is the list shape for a dated workout (header only).
+// ScheduledStart/End and CompletedAt are omitted when unset so
+// clients can rely on presence.
+type WorkoutDTO struct {
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
+	Notes          string     `json:"notes"`
+	Status         string     `json:"status"`
+	ScheduledStart *time.Time `json:"scheduled_start,omitempty"`
+	ScheduledEnd   *time.Time `json:"scheduled_end,omitempty"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+}
+
+// WorkoutFromModel converts a models.Workout into its DTO.
+func WorkoutFromModel(w models.Workout) WorkoutDTO {
+	return WorkoutDTO{
+		ID:             w.ID,
+		Name:           w.Name,
+		Notes:          w.Notes,
+		Status:         string(w.Status),
+		ScheduledStart: w.ScheduledStart,
+		ScheduledEnd:   w.ScheduledEnd,
+		CompletedAt:    w.CompletedAt,
+		CreatedAt:      w.CreatedAt,
+		UpdatedAt:      w.UpdatedAt,
+	}
+}
+
+// WorkoutsFromModels converts a slice of workouts into the DTO slice.
+// Returns a non-nil empty slice so the JSON encoder writes `[]`
+// rather than `null`.
+func WorkoutsFromModels(ws []models.Workout) []WorkoutDTO {
+	out := make([]WorkoutDTO, 0, len(ws))
+	for _, w := range ws {
+		out = append(out, WorkoutFromModel(w))
+	}
+	return out
+}
+
+// WorkoutDetailDTO is a workout with its full block/item tree plus the
+// exercise entries logged into it. Entries that reference a workout
+// item render under that item client-side via their workout_item_id;
+// AdHocEntries holds the entries logged into the workout without an
+// item link.
+type WorkoutDetailDTO struct {
+	ID               string             `json:"id"`
+	Name             string             `json:"name"`
+	Notes            string             `json:"notes"`
+	Status           string             `json:"status"`
+	ScheduledStart   *time.Time         `json:"scheduled_start,omitempty"`
+	ScheduledEnd     *time.Time         `json:"scheduled_end,omitempty"`
+	CompletedAt      *time.Time         `json:"completed_at,omitempty"`
+	Blocks           []WorkoutBlockDTO  `json:"blocks"`
+	LoggedEntries    []ExerciseEntryDTO `json:"logged_entries"`
+	AdHocEntries     []ExerciseEntryDTO `json:"ad_hoc_entries"`
+	CreatedAt        time.Time          `json:"created_at"`
+	UpdatedAt        time.Time          `json:"updated_at"`
+}
+
+// WorkoutDetailFromModel converts a models.WorkoutDetail into its DTO.
+func WorkoutDetailFromModel(d *models.WorkoutDetail) WorkoutDetailDTO {
+	out := WorkoutDetailDTO{
+		ID:             d.Workout.ID,
+		Name:           d.Workout.Name,
+		Notes:          d.Workout.Notes,
+		Status:         string(d.Workout.Status),
+		ScheduledStart: d.Workout.ScheduledStart,
+		ScheduledEnd:   d.Workout.ScheduledEnd,
+		CompletedAt:    d.Workout.CompletedAt,
+		Blocks:         make([]WorkoutBlockDTO, 0, len(d.Blocks)),
+		LoggedEntries:  ExerciseEntriesFromModels(d.LoggedExerciseEntries),
+		AdHocEntries:   ExerciseEntriesFromModels(d.AdHocExerciseEntries),
+		CreatedAt:      d.Workout.CreatedAt,
+		UpdatedAt:      d.Workout.UpdatedAt,
+	}
+	for _, b := range d.Blocks {
+		out.Blocks = append(out.Blocks, WorkoutBlockFromWorkoutModel(b))
+	}
+	return out
+}
+
+// WorkoutItemInputDTO is one prescribed exercise in a block write.
+// Target limits mirror the create-set limits so the JSON surface
+// rejects the same out-of-range inputs; which targets are mandatory
+// is decided after binding, keyed off the linked exercise's type.
+type WorkoutItemInputDTO struct {
+	ExerciseID            string  `json:"exercise_id"             validate:"required"`
+	TargetSets            int     `json:"target_sets"             validate:"gte=0,lte=1000"`
+	TargetReps            int     `json:"target_reps"             validate:"gte=0,lte=1000"`
+	TargetWeight          float64 `json:"target_weight"           validate:"gte=0,lte=5000"`
+	TargetRestSeconds     int     `json:"target_rest_seconds"     validate:"gte=0,lte=3600"`
+	TargetDurationSeconds int     `json:"target_duration_seconds" validate:"gte=0,lte=86400"`
+	TargetDistanceMeters  float64 `json:"target_distance_meters"  validate:"gte=0,lte=500000"`
+	TargetAvgHeartRate    int     `json:"target_avg_heart_rate"   validate:"gte=0,lte=300"`
+	TargetCalories        float64 `json:"target_calories"         validate:"gte=0,lte=10000"`
+}
+
+// WorkoutItemInputFromDTO maps one item DTO onto the controller input.
+func WorkoutItemInputFromDTO(in WorkoutItemInputDTO) models.WorkoutItemInput {
+	return models.WorkoutItemInput{
+		ExerciseID: in.ExerciseID,
+		TargetSets: in.TargetSets,
+		Targets: models.WorkoutItemTargets{
+			TargetReps:            in.TargetReps,
+			TargetWeight:          in.TargetWeight,
+			TargetRestSeconds:     in.TargetRestSeconds,
+			TargetDurationSeconds: in.TargetDurationSeconds,
+			TargetDistanceMeters:  in.TargetDistanceMeters,
+			TargetAvgHeartRate:    in.TargetAvgHeartRate,
+			TargetCalories:        in.TargetCalories,
+		},
+	}
+}
+
+// WorkoutBlockInputDTO is one block in a workout tree write.
+// Positions are assigned server-side by index. A block must carry at
+// least one item; the tree itself may be empty (bare workout shell).
+type WorkoutBlockInputDTO struct {
+	Type                     string                `json:"type"                        validate:"required,oneof=straight superset circuit emom amrap"`
+	Rounds                   int                   `json:"rounds"                      validate:"gte=0,lte=100"`
+	RestBetweenRoundsSeconds int                   `json:"rest_between_rounds_seconds" validate:"gte=0,lte=3600"`
+	IntervalSeconds          int                   `json:"interval_seconds"            validate:"gte=0,lte=3600"`
+	TimeCapSeconds           int                   `json:"time_cap_seconds"            validate:"gte=0,lte=86400"`
+	Items                    []WorkoutItemInputDTO `json:"items"                       validate:"required,min=1,dive"`
+}
+
+// WorkoutBlockInputFromDTO maps one block DTO onto the controller input.
+func WorkoutBlockInputFromDTO(in WorkoutBlockInputDTO) models.WorkoutBlockInput {
+	out := models.WorkoutBlockInput{
+		Type:                     models.WorkoutBlockType(in.Type),
+		Rounds:                   in.Rounds,
+		RestBetweenRoundsSeconds: in.RestBetweenRoundsSeconds,
+		IntervalSeconds:          in.IntervalSeconds,
+		TimeCapSeconds:           in.TimeCapSeconds,
+		Items:                    make([]models.WorkoutItemInput, 0, len(in.Items)),
+	}
+	for _, item := range in.Items {
+		out.Items = append(out.Items, WorkoutItemInputFromDTO(item))
+	}
+	return out
+}
+
+// WorkoutBlockInputsFromDTOs maps block DTOs onto controller inputs,
+// preserving order (positions are assigned by index downstream).
+func WorkoutBlockInputsFromDTOs(ins []WorkoutBlockInputDTO) []models.WorkoutBlockInput {
+	if ins == nil {
+		return nil
+	}
+	out := make([]models.WorkoutBlockInput, 0, len(ins))
+	for _, in := range ins {
+		out = append(out, WorkoutBlockInputFromDTO(in))
+	}
+	return out
+}
+
+// CreateWorkoutRequest is the body for POST /api/v1/workouts: the
+// header plus the block/item tree in order (may be empty for a bare
+// shell).
+type CreateWorkoutRequest struct {
+	Name           string                 `json:"name"            validate:"required,min=1,max=200"`
+	Notes          string                 `json:"notes"           validate:"max=2000"`
+	ScheduledStart *time.Time             `json:"scheduled_start,omitempty"`
+	ScheduledEnd   *time.Time             `json:"scheduled_end,omitempty"`
+	Blocks         []WorkoutBlockInputDTO `json:"blocks"          validate:"dive"`
+}
+
+// UpdateWorkoutRequest is the body for PUT /api/v1/workouts/:id.
+// Header fields only — the tree is fixed at creation in v1 and status
+// moves through the dedicated complete/reopen/cancel routes so the
+// server owns the completed_at timestamp.
+type UpdateWorkoutRequest struct {
+	Name           string     `json:"name"            validate:"required,min=1,max=200"`
+	Notes          string     `json:"notes"           validate:"max=2000"`
+	ScheduledStart *time.Time `json:"scheduled_start,omitempty"`
+	ScheduledEnd   *time.Time `json:"scheduled_end,omitempty"`
+}
+
+// BulkWorkoutInstanceDTO is one dated copy in a plan-ahead bulk
+// create. A blank name falls back to the source workout name
+// server-side.
+type BulkWorkoutInstanceDTO struct {
+	Name           string     `json:"name"            validate:"max=200"`
+	Notes          string     `json:"notes"           validate:"max=2000"`
+	ScheduledStart *time.Time `json:"scheduled_start,omitempty"`
+	ScheduledEnd   *time.Time `json:"scheduled_end,omitempty"`
+}
+
+// BulkCreateWorkoutsRequest is the body for POST
+// /api/v1/workouts/bulk: one source workout snapshotted into one dated
+// copy per instance, atomically (all or nothing). Capped at 31
+// instances — enough for a month of daily plans with headroom;
+// larger plans chunk client-side.
+type BulkCreateWorkoutsRequest struct {
+	WorkoutID string                   `json:"workout_id" validate:"required"`
+	Instances []BulkWorkoutInstanceDTO `json:"instances"  validate:"required,min=1,max=31,dive"`
+}
+
+// DuplicateWorkoutRequest is the body for POST
+// /api/v1/workouts/:id/duplicate. A blank name becomes "Copy of
+// <source>" server-side; nil schedule bounds inherit the source's
+// window.
+type DuplicateWorkoutRequest struct {
+	Name           string     `json:"name"            validate:"max=200"`
+	ScheduledStart *time.Time `json:"scheduled_start,omitempty"`
+	ScheduledEnd   *time.Time `json:"scheduled_end,omitempty"`
 }

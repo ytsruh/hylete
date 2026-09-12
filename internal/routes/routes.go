@@ -30,9 +30,13 @@ type Handler struct {
 	weightCtrl        *controllers.WeightController
 	goalsCtrl         *controllers.GoalsController
 	healthCtrl        *controllers.HealthSnapshotController
-	userRepo          models.UserRepo
-	jwtService        *utils.JWTService
-	validator         utils.Validator
+	// workoutCtrl is the workout feature's orchestrator. Attached
+	// via SetWorkoutServices so Handler construction sites stay
+	// stable (same pattern as SetCoachService).
+	workoutCtrl *controllers.WorkoutController
+	userRepo            models.UserRepo
+	jwtService          *utils.JWTService
+	validator           utils.Validator
 	// clock is the time source the profile route uses
 	// when computing the next reminder fire time on form
 	// save. Tests substitute a fixed clock to assert on
@@ -218,6 +222,21 @@ func registerAPIRoutes(e *echo.Echo, h *Handler) {
 	// Per-exercise history & chart data
 	e.GET("/api/v1/exercises/:id/history", h.APIGetExerciseHistory)
 	e.GET("/api/v1/exercises/:id/chart", h.APIGetExerciseChartData)
+
+	// Workouts (iOS beta Workouts surfaces; no web UI in v1).
+	// Workouts are dated containers users plan ahead and log
+	// exercise entries into; plan-ahead copies snapshot a source
+	// workout, never a live reference.
+	e.GET("/api/v1/workouts", h.APIListWorkouts)
+	e.POST("/api/v1/workouts", h.APICreateWorkout)
+	e.POST("/api/v1/workouts/bulk", h.APIBulkCreateWorkouts)
+	e.GET("/api/v1/workouts/:id", h.APIGetWorkout)
+	e.PUT("/api/v1/workouts/:id", h.APIUpdateWorkout)
+	e.DELETE("/api/v1/workouts/:id", h.APIDeleteWorkout)
+	e.POST("/api/v1/workouts/:id/duplicate", h.APIDuplicateWorkout)
+	e.POST("/api/v1/workouts/:id/complete", h.APICompleteWorkout)
+	e.POST("/api/v1/workouts/:id/reopen", h.APIReopenWorkout)
+	e.POST("/api/v1/workouts/:id/cancel", h.APICancelWorkout)
 
 	// Goals (JSON mirror of the HTML goals routes — used by
 	// the iOS client). All handlers are JWT-protected via the

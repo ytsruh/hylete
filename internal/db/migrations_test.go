@@ -176,3 +176,73 @@ func TestMigrate_AddsExerciseAliasesColumn(t *testing.T) {
 		t.Error("exercises.aliases column missing after migrate")
 	}
 }
+
+// TestMigrate_CreatesWorkoutTables boots a fresh local database
+// (running every embedded goose migration) and asserts the three
+// workout tables exist with their indexes, and that exercise_entries
+// carries the workout linkage columns. This executes the 00019 and
+// 00020 migration SQL itself — a syntax error there would otherwise
+// surface only at first boot.
+func TestMigrate_CreatesWorkoutTables(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	database, err := NewLocalConnection(dbPath)
+	if err != nil {
+		t.Fatalf("NewLocalConnection: %v", err)
+	}
+	defer database.Close()
+
+	for _, table := range []string{
+		"workouts", "workout_blocks", "workout_items",
+	} {
+		var name string
+		if err := database.Conn().QueryRow(
+			"SELECT name FROM sqlite_master WHERE type='table' AND name=?", table,
+		).Scan(&name); err != nil {
+			t.Errorf("table %s missing after migrate: %v", table, err)
+		}
+	}
+
+	for _, index := range []string{
+		"idx_workouts_user",
+		"idx_workouts_user_status",
+		"idx_workouts_user_scheduled",
+		"idx_workout_blocks_workout",
+		"idx_workout_items_block",
+		"idx_workout_items_exercise",
+		"idx_entries_workout",
+		"idx_entries_workout_item",
+	} {
+		var name string
+		if err := database.Conn().QueryRow(
+			"SELECT name FROM sqlite_master WHERE type='index' AND name=?", index,
+		).Scan(&name); err != nil {
+			t.Errorf("index %s missing after migrate: %v", index, err)
+		}
+	}
+
+	rows, err := database.Conn().Query(`PRAGMA table_info('exercise_entries')`)
+	if err != nil {
+		t.Fatalf("PRAGMA table_info: %v", err)
+	}
+	defer rows.Close()
+	found := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			t.Fatalf("scan table_info: %v", err)
+		}
+		found[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("table_info rows: %v", err)
+	}
+	for _, want := range []string{"workout_id", "workout_item_id", "round_number"} {
+		if !found[want] {
+			t.Errorf("exercise_entries.%s column missing after migrate", want)
+		}
+	}
+}

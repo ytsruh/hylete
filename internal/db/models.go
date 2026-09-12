@@ -57,6 +57,9 @@ type ExerciseEntry struct {
 	DistanceMeters  float64
 	AvgHeartRate    int64
 	CaloriesBurned  float64
+	WorkoutID       sql.NullString
+	WorkoutItemID   sql.NullString
+	RoundNumber     int64
 	CreatedAt       sql.NullTime
 }
 
@@ -163,4 +166,44 @@ type WeightEntry struct {
 	SidePhotoKey  sql.NullString
 	BackPhotoKey  sql.NullString
 	CreatedAt     time.Time
+}
+
+type Workout struct {
+	ID              string
+	UserID          string
+	SourceWorkoutID sql.NullString
+	Name            string
+	Notes           sql.NullString
+	Status          string
+	ScheduledStart  sql.NullTime
+	ScheduledEnd    sql.NullTime
+	CompletedAt     sql.NullTime
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type WorkoutBlock struct {
+	ID                       string
+	WorkoutID                string
+	Type                     string
+	Position                 int64
+	Rounds                   int64
+	RestBetweenRoundsSeconds int64
+	IntervalSeconds          int64
+	TimeCapSeconds           int64
+}
+
+type WorkoutItem struct {
+	ID                    string
+	BlockID               string
+	ExerciseID            string
+	Position              int64
+	TargetSets            int64
+	TargetReps            int64
+	TargetWeight          float64
+	TargetRestSeconds     int64
+	TargetDurationSeconds int64
+	TargetDistanceMeters  float64
+	TargetAvgHeartRate    int64
+	TargetCalories        float64
 }

@@ -425,6 +425,16 @@ public struct ExerciseEntryDTO: Codable, Equatable, Identifiable, Hashable {
     public let avgHeartRate: Int
     public let caloriesBurned: Double
     public let createdAt: Date
+    /// The dated workout this entry was logged into, if any.
+    /// Nil (or missing key on older servers) means standalone.
+    public let workoutID: String?
+    /// The planned workout item this entry logged against, if
+    /// any. Nil means ad-hoc within the workout (or standalone).
+    public let workoutItemID: String?
+    /// Which round of a multi-round block this entry belongs
+    /// to. 0 means unrounded. Defaults to 0 when the key is
+    /// absent (older servers).
+    public let roundNumber: Int
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -439,6 +449,9 @@ public struct ExerciseEntryDTO: Codable, Equatable, Identifiable, Hashable {
         case distanceMeters = "distance_meters"
         case avgHeartRate = "avg_heart_rate"
         case caloriesBurned = "calories_burned"
+        case workoutID = "workout_id"
+        case workoutItemID = "workout_item_id"
+        case roundNumber = "round_number"
         case createdAt = "created_at"
     }
 
@@ -455,6 +468,9 @@ public struct ExerciseEntryDTO: Codable, Equatable, Identifiable, Hashable {
         distanceMeters: Double = 0,
         avgHeartRate: Int = 0,
         caloriesBurned: Double = 0,
+        workoutID: String? = nil,
+        workoutItemID: String? = nil,
+        roundNumber: Int = 0,
         createdAt: Date
     ) {
         self.id = id
@@ -469,7 +485,34 @@ public struct ExerciseEntryDTO: Codable, Equatable, Identifiable, Hashable {
         self.distanceMeters = distanceMeters
         self.avgHeartRate = avgHeartRate
         self.caloriesBurned = caloriesBurned
+        self.workoutID = workoutID
+        self.workoutItemID = workoutItemID
+        self.roundNumber = roundNumber
         self.createdAt = createdAt
+    }
+
+    /// Custom decoder. The workout linkage keys are absent on
+    /// older servers — they default to nil / 0 (standalone)
+    /// rather than failing the decode, so mixed-version fleets
+    /// keep working.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        exerciseID = try container.decode(String.self, forKey: .exerciseID)
+        exerciseName = try container.decode(String.self, forKey: .exerciseName)
+        exerciseType = try container.decodeIfPresent(String.self, forKey: .exerciseType)
+        reps = try container.decode(Int.self, forKey: .reps)
+        weight = try container.decode(Double.self, forKey: .weight)
+        notes = try container.decode(String.self, forKey: .notes)
+        restTime = try container.decode(Int.self, forKey: .restTime)
+        durationSeconds = try container.decodeIfPresent(Int.self, forKey: .durationSeconds) ?? 0
+        distanceMeters = try container.decodeIfPresent(Double.self, forKey: .distanceMeters) ?? 0
+        avgHeartRate = try container.decodeIfPresent(Int.self, forKey: .avgHeartRate) ?? 0
+        caloriesBurned = try container.decodeIfPresent(Double.self, forKey: .caloriesBurned) ?? 0
+        workoutID = try container.decodeIfPresent(String.self, forKey: .workoutID)
+        workoutItemID = try container.decodeIfPresent(String.self, forKey: .workoutItemID)
+        roundNumber = try container.decodeIfPresent(Int.self, forKey: .roundNumber) ?? 0
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
     }
 
     /// `true` when this entry belongs to a cardio exercise. Nil type
@@ -528,19 +571,53 @@ public struct CreateExerciseEntriesRequest: Encodable {
     public let notes: String
     public let createdAt: Date?
     public let sets: [CreateSetInput]
+    /// Optional workout linkage shared by the whole
+    /// submission. Nil IDs mean standalone logging. The round
+    /// defaults to 0 (unrounded / ad-hoc).
+    public let workoutID: String?
+    public let workoutItemID: String?
+    public let roundNumber: Int
 
     enum CodingKeys: String, CodingKey {
         case exerciseID = "exercise_id"
         case notes
         case createdAt = "created_at"
         case sets
+        case workoutID = "workout_id"
+        case workoutItemID = "workout_item_id"
+        case roundNumber = "round_number"
     }
 
-    public init(exerciseID: String, notes: String, createdAt: Date?, sets: [CreateSetInput]) {
+    public init(
+        exerciseID: String,
+        notes: String,
+        createdAt: Date?,
+        sets: [CreateSetInput],
+        workoutID: String? = nil,
+        workoutItemID: String? = nil,
+        roundNumber: Int = 0
+    ) {
         self.exerciseID = exerciseID
         self.notes = notes
         self.createdAt = createdAt
         self.sets = sets
+        self.workoutID = workoutID
+        self.workoutItemID = workoutItemID
+        self.roundNumber = roundNumber
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(exerciseID, forKey: .exerciseID)
+        try container.encode(notes, forKey: .notes)
+        try container.encodeIfPresent(createdAt, forKey: .createdAt)
+        try container.encode(sets, forKey: .sets)
+        // Omit nil IDs so older servers that don't know the
+        // fields keep decoding the request. The round is
+        // always sent (0 = unrounded, valid on every build).
+        try container.encodeIfPresent(workoutID, forKey: .workoutID)
+        try container.encodeIfPresent(workoutItemID, forKey: .workoutItemID)
+        try container.encode(roundNumber, forKey: .roundNumber)
     }
 }
 
@@ -555,6 +632,12 @@ public struct UpdateExerciseEntryRequest: Encodable {
     public var avgHeartRate: Int
     public var caloriesBurned: Double
     public let createdAt: Date?
+    /// Workout linkage, replacing the entry's links wholesale:
+    /// nil IDs unlink a previously linked set (back to
+    /// standalone). The round defaults to 0 (unrounded).
+    public let workoutID: String?
+    public let workoutItemID: String?
+    public let roundNumber: Int
 
     enum CodingKeys: String, CodingKey {
         case exerciseID = "exercise_id"
@@ -567,6 +650,9 @@ public struct UpdateExerciseEntryRequest: Encodable {
         case avgHeartRate = "avg_heart_rate"
         case caloriesBurned = "calories_burned"
         case createdAt = "created_at"
+        case workoutID = "workout_id"
+        case workoutItemID = "workout_item_id"
+        case roundNumber = "round_number"
     }
 
     public init(
@@ -579,7 +665,10 @@ public struct UpdateExerciseEntryRequest: Encodable {
         distanceMeters: Double = 0,
         avgHeartRate: Int = 0,
         caloriesBurned: Double = 0,
-        createdAt: Date?
+        createdAt: Date?,
+        workoutID: String? = nil,
+        workoutItemID: String? = nil,
+        roundNumber: Int = 0
     ) {
         self.exerciseID = exerciseID
         self.notes = notes
@@ -591,6 +680,26 @@ public struct UpdateExerciseEntryRequest: Encodable {
         self.avgHeartRate = avgHeartRate
         self.caloriesBurned = caloriesBurned
         self.createdAt = createdAt
+        self.workoutID = workoutID
+        self.workoutItemID = workoutItemID
+        self.roundNumber = roundNumber
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(exerciseID, forKey: .exerciseID)
+        try container.encode(notes, forKey: .notes)
+        try container.encode(reps, forKey: .reps)
+        try container.encode(weight, forKey: .weight)
+        try container.encode(restTime, forKey: .restTime)
+        try container.encode(durationSeconds, forKey: .durationSeconds)
+        try container.encode(distanceMeters, forKey: .distanceMeters)
+        try container.encode(avgHeartRate, forKey: .avgHeartRate)
+        try container.encode(caloriesBurned, forKey: .caloriesBurned)
+        try container.encodeIfPresent(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(workoutID, forKey: .workoutID)
+        try container.encodeIfPresent(workoutItemID, forKey: .workoutItemID)
+        try container.encode(roundNumber, forKey: .roundNumber)
     }
 }
 
@@ -1453,5 +1562,575 @@ public struct UpdateCoachPreferencesRequest: Encodable, Equatable {
     public init(optIn: Bool, goalText: String) {
         self.optIn = optIn
         self.goalText = goalText
+    }
+}
+
+// MARK: Workouts
+
+/// How the items inside a workout or template block relate to
+/// each other during execution. Mirrors the server's block
+/// `type` (`straight | superset | circuit | emom | amrap`).
+public enum WorkoutBlockType: String, Codable, Equatable, CaseIterable {
+    case straight
+    case superset
+    case circuit
+    case emom
+    case amrap
+
+    /// Pretty display name for the block badge.
+    public var displayName: String {
+        switch self {
+        case .straight: return "Straight"
+        case .superset: return "Superset"
+        case .circuit: return "Circuit"
+        case .emom: return "EMOM"
+        case .amrap: return "AMRAP"
+        }
+    }
+
+    /// Lenient decode: unknown future types fall back to
+    /// straight (ordered, unlinked) so new server types never
+    /// break old clients.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = WorkoutBlockType(rawValue: raw.lowercased()) ?? .straight
+    }
+}
+
+/// One prescribed exercise inside a workout or template block.
+/// Mirrors the server's `WorkoutItemDTO`. The target pair that
+/// carries meaning depends on `exerciseType` (same duality as
+/// `ExerciseEntryDTO`): strength items use targetReps /
+/// targetWeight / targetRestSeconds, cardio items use
+/// targetDurationSeconds / targetDistanceMeters (+ optional
+/// heart-rate / calories). `targetSets` is how many
+/// sets/sessions are prescribed.
+public struct WorkoutItemDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let exerciseID: String
+    public let exerciseName: String
+    /// `"strength" | "cardio" | "other"`. Optional so rows
+    /// from older servers still decode; nil reads as strength.
+    public let exerciseType: String?
+    public let position: Int
+    public let targetSets: Int
+    public let targetReps: Int
+    public let targetWeight: Double
+    public let targetRestSeconds: Int
+    public let targetDurationSeconds: Int
+    public let targetDistanceMeters: Double
+    public let targetAvgHeartRate: Int
+    public let targetCalories: Double
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case exerciseID = "exercise_id"
+        case exerciseName = "exercise_name"
+        case exerciseType = "exercise_type"
+        case position
+        case targetSets = "target_sets"
+        case targetReps = "target_reps"
+        case targetWeight = "target_weight"
+        case targetRestSeconds = "target_rest_seconds"
+        case targetDurationSeconds = "target_duration_seconds"
+        case targetDistanceMeters = "target_distance_meters"
+        case targetAvgHeartRate = "target_avg_heart_rate"
+        case targetCalories = "target_calories"
+    }
+
+    public init(
+        id: String,
+        exerciseID: String,
+        exerciseName: String,
+        exerciseType: String? = nil,
+        position: Int,
+        targetSets: Int,
+        targetReps: Int = 0,
+        targetWeight: Double = 0,
+        targetRestSeconds: Int = 0,
+        targetDurationSeconds: Int = 0,
+        targetDistanceMeters: Double = 0,
+        targetAvgHeartRate: Int = 0,
+        targetCalories: Double = 0
+    ) {
+        self.id = id
+        self.exerciseID = exerciseID
+        self.exerciseName = exerciseName
+        self.exerciseType = exerciseType
+        self.position = position
+        self.targetSets = targetSets
+        self.targetReps = targetReps
+        self.targetWeight = targetWeight
+        self.targetRestSeconds = targetRestSeconds
+        self.targetDurationSeconds = targetDurationSeconds
+        self.targetDistanceMeters = targetDistanceMeters
+        self.targetAvgHeartRate = targetAvgHeartRate
+        self.targetCalories = targetCalories
+    }
+
+    /// `true` when the linked exercise is cardio. Nil type
+    /// (legacy rows) reads as strength.
+    public var isCardio: Bool { exerciseType?.lowercased() == "cardio" }
+
+    /// `true` when any target number was prescribed. All-zero
+    /// targets mean an open prescription (just the exercise) —
+    /// unambiguous, since a real prescription always carries
+    /// reps > 0 or a positive duration/distance.
+    public var isPrescribed: Bool {
+        targetReps != 0 || targetWeight != 0 || targetRestSeconds != 0
+            || targetDurationSeconds != 0 || targetDistanceMeters != 0
+            || targetAvgHeartRate != 0 || targetCalories != 0
+    }
+}
+
+/// One ordered group of prescribed items. Mirrors the server's
+/// `WorkoutBlockDTO`. `rounds` applies to every type but straight
+/// (always 1); `restBetweenRoundsSeconds` to superset/circuit,
+/// `intervalSeconds` to emom, `timeCapSeconds` to amrap.
+public struct WorkoutBlockDTO: Codable, Equatable, Identifiable {
+    public let id: String
+    public let type: WorkoutBlockType
+    public let position: Int
+    public let rounds: Int
+    public let restBetweenRoundsSeconds: Int
+    public let intervalSeconds: Int
+    public let timeCapSeconds: Int
+    public let items: [WorkoutItemDTO]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case type
+        case position
+        case rounds
+        case restBetweenRoundsSeconds = "rest_between_rounds_seconds"
+        case intervalSeconds = "interval_seconds"
+        case timeCapSeconds = "time_cap_seconds"
+        case items
+    }
+
+    public init(
+        id: String,
+        type: WorkoutBlockType,
+        position: Int,
+        rounds: Int = 1,
+        restBetweenRoundsSeconds: Int = 0,
+        intervalSeconds: Int = 0,
+        timeCapSeconds: Int = 0,
+        items: [WorkoutItemDTO] = []
+    ) {
+        self.id = id
+        self.type = type
+        self.position = position
+        self.rounds = rounds
+        self.restBetweenRoundsSeconds = restBetweenRoundsSeconds
+        self.intervalSeconds = intervalSeconds
+        self.timeCapSeconds = timeCapSeconds
+        self.items = items
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        type = try container.decode(WorkoutBlockType.self, forKey: .type)
+        position = try container.decodeIfPresent(Int.self, forKey: .position) ?? 0
+        rounds = try container.decodeIfPresent(Int.self, forKey: .rounds) ?? 1
+        restBetweenRoundsSeconds = try container.decodeIfPresent(Int.self, forKey: .restBetweenRoundsSeconds) ?? 0
+        intervalSeconds = try container.decodeIfPresent(Int.self, forKey: .intervalSeconds) ?? 0
+        timeCapSeconds = try container.decodeIfPresent(Int.self, forKey: .timeCapSeconds) ?? 0
+        items = try container.decodeIfPresent([WorkoutItemDTO].self, forKey: .items) ?? []
+    }
+}
+
+/// List shape for a dated workout (header only). Mirrors the
+/// server's `WorkoutDTO`. `isCompleted` is
+/// the source of truth for "done" — use it rather than checking
+/// `completedAt != nil` at call sites.
+public struct WorkoutDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let name: String
+    public let notes: String
+    public let status: String
+    public let scheduledStart: Date?
+    public let scheduledEnd: Date?
+    public let completedAt: Date?
+    public let createdAt: Date
+    public let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case notes
+        case status
+        case scheduledStart = "scheduled_start"
+        case scheduledEnd = "scheduled_end"
+        case completedAt = "completed_at"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    public init(
+        id: String,
+        name: String,
+        notes: String,
+        status: String,
+        scheduledStart: Date? = nil,
+        scheduledEnd: Date? = nil,
+        completedAt: Date? = nil,
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.name = name
+        self.notes = notes
+        self.status = status
+        self.scheduledStart = scheduledStart
+        self.scheduledEnd = scheduledEnd
+        self.completedAt = completedAt
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    /// Convenience flag — equivalent to `status == "completed"`
+    /// but reads better at call sites.
+    public var isCompleted: Bool { status == "completed" }
+
+    /// Convenience flag for the planned/upcoming sections.
+    public var isPlanned: Bool { status == "planned" }
+}
+
+/// A workout with its full block/item tree plus the exercise
+/// entries logged into it. Mirrors the server's
+/// `WorkoutDetailDTO`. Entries that reference a workout item
+/// render under that item client-side via their
+/// `workoutItemID`; `adHocEntries` holds the entries logged
+/// into the workout without an item link.
+public struct WorkoutDetailDTO: Codable, Equatable, Identifiable {
+    public let id: String
+    public let name: String
+    public let notes: String
+    public let status: String
+    public let scheduledStart: Date?
+    public let scheduledEnd: Date?
+    public let completedAt: Date?
+    public let blocks: [WorkoutBlockDTO]
+    public let loggedEntries: [ExerciseEntryDTO]
+    public let adHocEntries: [ExerciseEntryDTO]
+    public let createdAt: Date
+    public let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case notes
+        case status
+        case scheduledStart = "scheduled_start"
+        case scheduledEnd = "scheduled_end"
+        case completedAt = "completed_at"
+        case blocks
+        case loggedEntries = "logged_entries"
+        case adHocEntries = "ad_hoc_entries"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    public init(
+        id: String,
+        name: String,
+        notes: String,
+        status: String,
+        scheduledStart: Date? = nil,
+        scheduledEnd: Date? = nil,
+        completedAt: Date? = nil,
+        blocks: [WorkoutBlockDTO] = [],
+        loggedEntries: [ExerciseEntryDTO] = [],
+        adHocEntries: [ExerciseEntryDTO] = [],
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.name = name
+        self.notes = notes
+        self.status = status
+        self.scheduledStart = scheduledStart
+        self.scheduledEnd = scheduledEnd
+        self.completedAt = completedAt
+        self.blocks = blocks
+        self.loggedEntries = loggedEntries
+        self.adHocEntries = adHocEntries
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        status = try container.decode(String.self, forKey: .status)
+        scheduledStart = try container.decodeIfPresent(Date.self, forKey: .scheduledStart)
+        scheduledEnd = try container.decodeIfPresent(Date.self, forKey: .scheduledEnd)
+        completedAt = try container.decodeIfPresent(Date.self, forKey: .completedAt)
+        blocks = try container.decodeIfPresent([WorkoutBlockDTO].self, forKey: .blocks) ?? []
+        loggedEntries = try container.decodeIfPresent([ExerciseEntryDTO].self, forKey: .loggedEntries) ?? []
+        adHocEntries = try container.decodeIfPresent([ExerciseEntryDTO].self, forKey: .adHocEntries) ?? []
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+
+    /// Convenience flag — equivalent to `status == "completed"`.
+    public var isCompleted: Bool { status == "completed" }
+
+    /// Every entry logged into the workout, item-linked and
+    /// ad-hoc combined, in server (logging) order.
+    public var allLoggedEntries: [ExerciseEntryDTO] { loggedEntries + adHocEntries }
+}
+
+// MARK: Workout tree writes
+
+/// One prescribed exercise in a block write. Target limits mirror
+/// the server's validation tags; which targets are mandatory is
+/// decided server-side keyed off the linked exercise's type.
+public struct WorkoutItemInputRequest: Encodable, Equatable {
+    public let exerciseID: String
+    public let targetSets: Int
+    public let targetReps: Int
+    public let targetWeight: Double
+    public let targetRestSeconds: Int
+    public let targetDurationSeconds: Int
+    public let targetDistanceMeters: Double
+    public let targetAvgHeartRate: Int
+    public let targetCalories: Double
+
+    enum CodingKeys: String, CodingKey {
+        case exerciseID = "exercise_id"
+        case targetSets = "target_sets"
+        case targetReps = "target_reps"
+        case targetWeight = "target_weight"
+        case targetRestSeconds = "target_rest_seconds"
+        case targetDurationSeconds = "target_duration_seconds"
+        case targetDistanceMeters = "target_distance_meters"
+        case targetAvgHeartRate = "target_avg_heart_rate"
+        case targetCalories = "target_calories"
+    }
+
+    public init(
+        exerciseID: String,
+        targetSets: Int = 0,
+        targetReps: Int = 0,
+        targetWeight: Double = 0,
+        targetRestSeconds: Int = 0,
+        targetDurationSeconds: Int = 0,
+        targetDistanceMeters: Double = 0,
+        targetAvgHeartRate: Int = 0,
+        targetCalories: Double = 0
+    ) {
+        self.exerciseID = exerciseID
+        self.targetSets = targetSets
+        self.targetReps = targetReps
+        self.targetWeight = targetWeight
+        self.targetRestSeconds = targetRestSeconds
+        self.targetDurationSeconds = targetDurationSeconds
+        self.targetDistanceMeters = targetDistanceMeters
+        self.targetAvgHeartRate = targetAvgHeartRate
+        self.targetCalories = targetCalories
+    }
+}
+
+/// One block in a workout tree write. Positions are
+/// assigned server-side by index; a block must carry at least
+/// one item (the server rejects empty item lists).
+public struct WorkoutBlockInputRequest: Encodable, Equatable {
+    public let type: WorkoutBlockType
+    public let rounds: Int
+    public let restBetweenRoundsSeconds: Int
+    public let intervalSeconds: Int
+    public let timeCapSeconds: Int
+    public let items: [WorkoutItemInputRequest]
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case rounds
+        case restBetweenRoundsSeconds = "rest_between_rounds_seconds"
+        case intervalSeconds = "interval_seconds"
+        case timeCapSeconds = "time_cap_seconds"
+        case items
+    }
+
+    public init(
+        type: WorkoutBlockType,
+        rounds: Int = 1,
+        restBetweenRoundsSeconds: Int = 0,
+        intervalSeconds: Int = 0,
+        timeCapSeconds: Int = 0,
+        items: [WorkoutItemInputRequest]
+    ) {
+        self.type = type
+        self.rounds = rounds
+        self.restBetweenRoundsSeconds = restBetweenRoundsSeconds
+        self.intervalSeconds = intervalSeconds
+        self.timeCapSeconds = timeCapSeconds
+        self.items = items
+    }
+}
+
+/// JSON body for `POST /api/v1/workouts`. The header plus
+/// the block/item tree in order (may be empty for a bare
+/// shell).
+public struct CreateWorkoutRequest: Encodable, Equatable {
+    public let name: String
+    public let notes: String
+    public let scheduledStart: Date?
+    public let scheduledEnd: Date?
+    public let blocks: [WorkoutBlockInputRequest]
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case notes
+        case scheduledStart = "scheduled_start"
+        case scheduledEnd = "scheduled_end"
+        case blocks
+    }
+
+    public init(
+        name: String,
+        notes: String = "",
+        scheduledStart: Date? = nil,
+        scheduledEnd: Date? = nil,
+        blocks: [WorkoutBlockInputRequest] = []
+    ) {
+        self.name = name
+        self.notes = notes
+        self.scheduledStart = scheduledStart
+        self.scheduledEnd = scheduledEnd
+        self.blocks = blocks
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(notes, forKey: .notes)
+        try container.encodeIfPresent(scheduledStart, forKey: .scheduledStart)
+        try container.encodeIfPresent(scheduledEnd, forKey: .scheduledEnd)
+        try container.encode(blocks, forKey: .blocks)
+    }
+}
+
+/// JSON body for `PUT /api/v1/workouts/:id`. Header fields only
+/// — the tree is fixed at creation in v1 and status moves
+/// through the dedicated complete/reopen/cancel endpoints.
+public struct UpdateWorkoutRequest: Encodable, Equatable {
+    public let name: String
+    public let notes: String
+    public let scheduledStart: Date?
+    public let scheduledEnd: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case notes
+        case scheduledStart = "scheduled_start"
+        case scheduledEnd = "scheduled_end"
+    }
+
+    public init(
+        name: String,
+        notes: String = "",
+        scheduledStart: Date? = nil,
+        scheduledEnd: Date? = nil
+    ) {
+        self.name = name
+        self.notes = notes
+        self.scheduledStart = scheduledStart
+        self.scheduledEnd = scheduledEnd
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(notes, forKey: .notes)
+        try container.encodeIfPresent(scheduledStart, forKey: .scheduledStart)
+        try container.encodeIfPresent(scheduledEnd, forKey: .scheduledEnd)
+    }
+}
+
+/// One dated copy in a plan-ahead bulk create. A blank name
+/// falls back to the source workout name server-side.
+public struct BulkWorkoutInstanceRequest: Encodable, Equatable {
+    public let name: String
+    public let notes: String
+    public let scheduledStart: Date?
+    public let scheduledEnd: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case notes
+        case scheduledStart = "scheduled_start"
+        case scheduledEnd = "scheduled_end"
+    }
+
+    public init(
+        name: String = "",
+        notes: String = "",
+        scheduledStart: Date? = nil,
+        scheduledEnd: Date? = nil
+    ) {
+        self.name = name
+        self.notes = notes
+        self.scheduledStart = scheduledStart
+        self.scheduledEnd = scheduledEnd
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(notes, forKey: .notes)
+        try container.encodeIfPresent(scheduledStart, forKey: .scheduledStart)
+        try container.encodeIfPresent(scheduledEnd, forKey: .scheduledEnd)
+    }
+}
+
+/// JSON body for `POST /api/v1/workouts/bulk`: one source
+/// workout snapshotted into one dated copy per instance,
+/// atomically (all or nothing).
+public struct BulkCreateWorkoutsRequest: Encodable, Equatable {
+    public let workoutID: String
+    public let instances: [BulkWorkoutInstanceRequest]
+
+    enum CodingKeys: String, CodingKey {
+        case workoutID = "workout_id"
+        case instances
+    }
+
+    public init(workoutID: String, instances: [BulkWorkoutInstanceRequest]) {
+        self.workoutID = workoutID
+        self.instances = instances
+    }
+}
+
+/// JSON body for `POST /api/v1/workouts/:id/duplicate`. A blank
+/// name becomes "Copy of <source>" server-side; nil schedule
+/// bounds inherit the source's window.
+public struct DuplicateWorkoutRequest: Encodable, Equatable {
+    public let name: String
+    public let scheduledStart: Date?
+    public let scheduledEnd: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case scheduledStart = "scheduled_start"
+        case scheduledEnd = "scheduled_end"
+    }
+
+    public init(name: String = "", scheduledStart: Date? = nil, scheduledEnd: Date? = nil) {
+        self.name = name
+        self.scheduledStart = scheduledStart
+        self.scheduledEnd = scheduledEnd
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(scheduledStart, forKey: .scheduledStart)
+        try container.encodeIfPresent(scheduledEnd, forKey: .scheduledEnd)
     }
 }

@@ -23,6 +23,16 @@ import SwiftUI
 /// `/exercises/:id/new` route, which renders the same form
 /// with `preselectedExerciseID` set so the user lands
 /// ready to log a set for the exercise they came from.
+///
+/// Workout logging passes `workoutID` (plus `workoutName` for
+/// the title), and per-item logging additionally passes
+/// `workoutItemID` with the round to log into and the block's
+/// round count for the picker. An item link locks the exercise
+/// picker (changing exercises would orphan the item link);
+/// workout-only logging keeps the picker enabled for ad-hoc
+/// sets. `targetHint` renders the prescription ("3 × 8 @
+/// 60.0 kg") under the rows. `onSaved` fires after a
+/// successful save so the caller can refresh workout progress.
 struct NewSetView: View {
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var authStore: AuthStore
@@ -32,6 +42,12 @@ struct NewSetView: View {
     /// existing "auto-pick the first exercise" behaviour so
     /// the dashboard's `+` button is unchanged.
     private let initialExerciseID: String?
+    private let workoutID: String?
+    private let workoutItemID: String?
+    private let blockRounds: Int
+    private let workoutName: String?
+    private let targetHint: String?
+    private let onSaved: () -> Void
 
     @State private var exercises: [ExerciseDTO] = []
     @State private var selectedExerciseID: String?
@@ -39,13 +55,30 @@ struct NewSetView: View {
     @State private var notes: String = ""
     @State private var timestamp: Date = Date()
     @State private var includeTimestamp: Bool = false
+    @State private var roundNumber: Int
     @State private var isLoadingExercises: Bool = true
     @State private var isSaving: Bool = false
     @State private var errorMessage: String?
     @State private var showingExercisePicker: Bool = false
 
-    init(initialExerciseID: String? = nil) {
+    init(
+        initialExerciseID: String? = nil,
+        workoutID: String? = nil,
+        workoutItemID: String? = nil,
+        roundNumber: Int = 0,
+        blockRounds: Int = 0,
+        workoutName: String? = nil,
+        targetHint: String? = nil,
+        onSaved: @escaping () -> Void = {}
+    ) {
         self.initialExerciseID = initialExerciseID
+        self.workoutID = workoutID
+        self.workoutItemID = workoutItemID
+        self.blockRounds = blockRounds
+        self.workoutName = workoutName
+        self.targetHint = targetHint
+        self.onSaved = onSaved
+        _roundNumber = State(initialValue: roundNumber)
     }
 
     /// The currently selected exercise, resolved once the catalogue
@@ -61,6 +94,26 @@ struct NewSetView: View {
         selectedExercise?.type.lowercased() == "cardio"
     }
 
+    /// `true` when logging into a dated workout. The title names
+    /// the workout and the payload carries the linkage.
+    private var isWorkoutMode: Bool {
+        workoutID != nil
+    }
+
+    /// `true` when logging against a planned item. Locks the
+    /// exercise picker: switching exercises would orphan the
+    /// item link the caller attached.
+    private var isItemLinked: Bool {
+        workoutItemID != nil
+    }
+
+    /// `true` when the round picker applies: item-linked logging
+    /// into a multi-round block. Straight blocks (and ad-hoc
+    /// sets) log unrounded (round 0).
+    private var showsRoundPicker: Bool {
+        isItemLinked && blockRounds > 1
+    }
+
     /// The user's preferred distance unit ("km"/"mi"); cardio
     /// distances are typed in this unit and converted to metres on
     /// save.
@@ -72,6 +125,9 @@ struct NewSetView: View {
         NavigationStack {
             Form {
                 exerciseSection
+                if showsRoundPicker {
+                    roundSection
+                }
                 setsSection
                 notesSection
                 timestampSection
@@ -83,7 +139,7 @@ struct NewSetView: View {
                     }
                 }
             }
-            .navigationTitle(isCardioMode ? "New Session" : "New Set")
+            .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -114,6 +170,16 @@ struct NewSetView: View {
 
     // MARK: - Sections
 
+    /// Form title: workout logging names the destination
+    /// ("Log to Lower A"), standalone keeps the set/session
+    /// wording.
+    private var navigationTitle: String {
+        if isWorkoutMode, let workoutName, !workoutName.isEmpty {
+            return "Log to \(workoutName)"
+        }
+        return isCardioMode ? "New Session" : "New Set"
+    }
+
     private var exerciseSection: some View {
         Section("Exercise") {
             if isLoadingExercises {
@@ -121,6 +187,17 @@ struct NewSetView: View {
             } else if exercises.isEmpty {
                 Text("No exercises available. Ask an admin to add some.")
                     .foregroundStyle(DSColors.textSecondary)
+            } else if isItemLinked, let selectedExercise {
+                // Locked: the item link names this exact
+                // exercise, so the picker would only offer a
+                // way to break the linkage.
+                HStack {
+                    Text(selectedExercise.name)
+                        .foregroundStyle(DSColors.text)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    ExerciseTypeChip(type: selectedExercise.type)
+                }
             } else {
                 Button {
                     showingExercisePicker = true
@@ -151,6 +228,14 @@ struct NewSetView: View {
                     )
                 }
             }
+        }
+    }
+
+    private var roundSection: some View {
+        Section {
+            Stepper("Round: \(roundNumber) of \(blockRounds)", value: $roundNumber, in: 1...max(blockRounds, 1))
+        } footer: {
+            Text("Which round of this block the sets count towards.")
         }
     }
 
@@ -191,9 +276,13 @@ struct NewSetView: View {
         } header: {
             Text(isCardioMode ? "Session" : "Sets")
         } footer: {
-            Text(isCardioMode
-                 ? "A cardio entry is a single session. Duration and distance are required; heart rate and calories are optional."
-                 : "Swipe a row to remove it. Each set is saved separately but shares this exercise, notes, and timestamp.")
+            if let targetHint, !targetHint.isEmpty {
+                Text("Target: \(targetHint)")
+            } else if isCardioMode {
+                Text("A cardio entry is a single session. Duration and distance are required; heart rate and calories are optional.")
+            } else {
+                Text("Swipe a row to remove it. Each set is saved separately but shares this exercise, notes, and timestamp.")
+            }
         }
     }
 
@@ -306,9 +395,13 @@ struct NewSetView: View {
                     exerciseID: exerciseID,
                     notes: notes,
                     createdAt: includeTimestamp ? timestamp : nil,
-                    sets: validSets
+                    sets: validSets,
+                    workoutID: workoutID,
+                    workoutItemID: workoutItemID,
+                    roundNumber: showsRoundPicker ? roundNumber : 0
                 )
             )
+            onSaved()
             dismiss()
         } catch let error as APIError {
             errorMessage = error.errorDescription
