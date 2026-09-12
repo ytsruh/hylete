@@ -187,3 +187,28 @@ type WeightEntry struct {
 	BackPhotoKey  sql.NullString
 	CreatedAt     time.Time
 }
+
+type Workout struct {
+	ID          string
+	UserID      string
+	Title       string
+	Description string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type WorkoutAssignment struct {
+	ID            string
+	WorkoutID     string
+	UserID        string
+	ScheduledDate string
+	CreatedAt     time.Time
+}
+
+type WorkoutBlock struct {
+	ID        string
+	WorkoutID string
+	BlockID   string
+	Position  int64
+	CreatedAt time.Time
+}

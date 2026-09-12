@@ -286,6 +286,73 @@ public final class APIClient: @unchecked Sendable {
         try await sendVoid("DELETE", "blocks/\(id)")
     }
 
+    // MARK: - Workouts
+
+    /// Lists the user's planned workouts (Beta). The server
+    /// returns summaries (newest first) with block counts;
+    /// full blocks load per-workout via `getWorkout(id:)`.
+    public func listWorkouts() async throws -> [WorkoutSummaryDTO] {
+        let response: WorkoutsResponse = try await send("GET", "workouts")
+        return response.workouts
+    }
+
+    public func getWorkout(id: String) async throws -> WorkoutDTO {
+        try await send("GET", "workouts/\(id)")
+    }
+
+    public func createWorkout(_ request: CreateWorkoutRequest) async throws -> WorkoutDTO {
+        try await send("POST", "workouts", body: request)
+    }
+
+    /// Updates a workout. Block links are fully replaced — send
+    /// the complete desired block-ID list in order. Assignments
+    /// are untouched (use `addWorkoutAssignments` /
+    /// `deleteWorkoutAssignment` to reschedule).
+    public func updateWorkout(id: String, request: UpdateWorkoutRequest) async throws -> WorkoutDTO {
+        try await send("PUT", "workouts/\(id)", body: request)
+    }
+
+    public func deleteWorkout(id: String) async throws {
+        try await sendVoid("DELETE", "workouts/\(id)")
+    }
+
+    /// Duplicates a workout server-side ("<title> copy" with
+    /// the same blocks). The schedule is copied only when
+    /// `copySchedule` is true.
+    public func duplicateWorkout(id: String, copySchedule: Bool = false) async throws -> WorkoutDTO {
+        try await send("POST", "workouts/\(id)/duplicate", body: DuplicateWorkoutRequest(copySchedule: copySchedule))
+    }
+
+    /// Plans the workout on explicit "YYYY-MM-DD" days.
+    /// Repeats are expanded client-side; duplicate days are
+    /// skipped idempotently by the server. Returns the
+    /// assignments actually created.
+    public func addWorkoutAssignments(workoutID: String, dates: [String]) async throws -> [WorkoutAssignmentDTO] {
+        let response: WorkoutAssignmentsResponse = try await send(
+            "POST", "workouts/\(workoutID)/assignments",
+            body: AddWorkoutAssignmentsRequest(dates: dates)
+        )
+        return response.assignments
+    }
+
+    public func deleteWorkoutAssignment(id: String) async throws {
+        try await sendVoid("DELETE", "workout-assignments/\(id)")
+    }
+
+    /// Lists planned workout days in an explicit date range
+    /// (`GET /api/v1/workouts/schedule?from=YYYY-MM-DD&to=YYYY-MM-DD`,
+    /// inclusive on both ends). The week calendar uses this so
+    /// day boundaries stay computed client-side: callers pass
+    /// calendar dates and bucket the returned assignments by
+    /// their `day` (local midnight). Date-only strings contain
+    /// no "+" sign, so no percent-encoding pitfalls.
+    public func listWorkoutSchedule(from: String, to: String) async throws -> [WorkoutAssignmentDTO] {
+        let response: WorkoutAssignmentsResponse = try await send(
+            "GET", "workouts/schedule?from=\(from)&to=\(to)"
+        )
+        return response.assignments
+    }
+
     // MARK: - Feedback
 
     /// Submits user feedback to the server. Mirrors the web

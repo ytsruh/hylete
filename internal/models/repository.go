@@ -208,6 +208,53 @@ type BlockRepo interface {
 // Compile-time check to ensure BlockRepository implements BlockRepo.
 var _ BlockRepo = (*BlockRepository)(nil)
 
+// WorkoutRepo defines the interface for workout data access. The
+// controller depends on this so route tests can substitute an
+// in-memory fake without touching the real sqlc repository.
+type WorkoutRepo interface {
+	// Create persists a new workout with its block links,
+	// assigning generated IDs back onto the supplied value.
+	Create(w *Workout) error
+	// GetByID returns the workout with blocks, or nil when not
+	// found. Scoped to the user.
+	GetByID(id, userID string) (*Workout, error)
+	// List returns every workout for the user (newest first)
+	// with block counts; blocks are not loaded.
+	List(userID string) ([]WorkoutSummary, error)
+	// Update overwrites the workout fields and fully replaces
+	// its block links. Scoped to the user.
+	Update(w *Workout, userID string) error
+	// Delete removes a workout, its block links, and its
+	// assignments. Scoped to the user.
+	Delete(id, userID string) error
+	// Duplicate copies a workout (title + " copy") with its
+	// block links, optionally copying the schedule too.
+	// Returns nil when the source is missing. Scoped to the
+	// user.
+	Duplicate(id, userID string, copySchedule bool) (*Workout, error)
+	// ListAssignmentsForWorkout returns the planned days for a
+	// workout, ascending by date. Callers gate the workout to
+	// the user via GetByID first.
+	ListAssignmentsForWorkout(workoutID string) ([]WorkoutAssignment, error)
+	// ListAssignmentsByDateRange returns the user's planned
+	// days on [start, end] (inclusive YYYY-MM-DD) with workout
+	// titles resolved. Scoped to the user.
+	ListAssignmentsByDateRange(userID, start, end string) ([]WorkoutAssignment, error)
+	// AddAssignments plans the workout on each date,
+	// skipping duplicate (workout, date) pairs. The caller
+	// gates the workout to the user first.
+	AddAssignments(workoutID, userID string, dates []string) ([]WorkoutAssignment, error)
+	// GetAssignment returns a single planned day, or nil
+	// when missing. Scoped to the user.
+	GetAssignment(id, userID string) (*WorkoutAssignment, error)
+	// DeleteAssignment removes a single planned day. Scoped
+	// to the user.
+	DeleteAssignment(id, userID string) error
+}
+
+// Compile-time check to ensure WorkoutRepository implements WorkoutRepo.
+var _ WorkoutRepo = (*WorkoutRepository)(nil)
+
 // HealthSnapshotRepo defines the interface for health snapshot
 // data access. The controller depends on this so route tests can
 // substitute an in-memory fake without touching the real sqlc

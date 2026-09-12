@@ -35,9 +35,14 @@ type Handler struct {
 	// Attached via SetBlocksController (same pattern as
 	// SetCoachService) so Handler construction sites stay stable.
 	blocksCtrl *controllers.BlocksController
-	userRepo   models.UserRepo
-	jwtService *utils.JWTService
-	validator  utils.Validator
+	// workoutsCtrl is the Workouts orchestrator (Beta,
+	// iOS-only JSON API - no web UI per the read-only
+	// companion policy). Attached via SetWorkoutsController
+	// so Handler construction sites stay stable.
+	workoutsCtrl *controllers.WorkoutsController
+	userRepo     models.UserRepo
+	jwtService   *utils.JWTService
+	validator    utils.Validator
 	// clock is the time source the profile route uses
 	// when computing the next reminder fire time on form
 	// save. Tests substitute a fixed clock to assert on
@@ -242,6 +247,21 @@ func registerAPIRoutes(e *echo.Echo, h *Handler) {
 	e.GET("/api/v1/blocks/:id", h.APIGetBlock)
 	e.PUT("/api/v1/blocks/:id", h.APIUpdateBlock)
 	e.DELETE("/api/v1/blocks/:id", h.APIDeleteBlock)
+
+	// Workouts (Beta, iOS-only JSON API - no web UI, same
+	// policy as blocks). Workouts compose blocks many-to-many
+	// and are scheduled onto calendar days via assignments.
+	// The static /schedule route is registered before /:id so
+	// "schedule" is never captured as a workout ID.
+	e.GET("/api/v1/workouts/schedule", h.APIGetWorkoutSchedule)
+	e.GET("/api/v1/workouts", h.APIListWorkouts)
+	e.POST("/api/v1/workouts", h.APICreateWorkout)
+	e.GET("/api/v1/workouts/:id", h.APIGetWorkout)
+	e.PUT("/api/v1/workouts/:id", h.APIUpdateWorkout)
+	e.DELETE("/api/v1/workouts/:id", h.APIDeleteWorkout)
+	e.POST("/api/v1/workouts/:id/duplicate", h.APIDuplicateWorkout)
+	e.POST("/api/v1/workouts/:id/assignments", h.APIAddWorkoutAssignments)
+	e.DELETE("/api/v1/workout-assignments/:id", h.APIDeleteWorkoutAssignment)
 
 	// Feedback (JSON mirror of the HTML /feedback POST
 	// handler — used by the iOS client). The same

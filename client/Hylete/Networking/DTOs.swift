@@ -1113,6 +1113,236 @@ public struct UpdateBlockRequest: Encodable, Equatable {
     }
 }
 
+// MARK: Workouts
+
+/// One block linked into a workout. Mirrors the server's
+/// `WorkoutBlockDTO`. `blockName`/`blockType` are resolved
+/// server-side for display and never written by the client.
+public struct WorkoutBlockDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let blockID: String
+    public let blockName: String
+    public let blockType: String
+    public let position: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case blockID = "block_id"
+        case blockName = "block_name"
+        case blockType = "block_type"
+        case position
+    }
+
+    public init(id: String, blockID: String, blockName: String, blockType: String, position: Int) {
+        self.id = id
+        self.blockID = blockID
+        self.blockName = blockName
+        self.blockType = blockType
+        self.position = position
+    }
+}
+
+/// One planned calendar day for a workout. Mirrors the
+/// server's `WorkoutAssignmentDTO`. `scheduledDate` is a
+/// date-only string ("YYYY-MM-DD") in the user's local
+/// calendar, not an instant — see `WorkoutAssignmentDTO.day`.
+public struct WorkoutAssignmentDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let workoutID: String
+    public let workoutTitle: String
+    public let scheduledDate: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case workoutID = "workout_id"
+        case workoutTitle = "workout_title"
+        case scheduledDate = "scheduled_date"
+    }
+
+    public init(id: String, workoutID: String, workoutTitle: String, scheduledDate: String) {
+        self.id = id
+        self.workoutID = workoutID
+        self.workoutTitle = workoutTitle
+        self.scheduledDate = scheduledDate
+    }
+
+    /// Formatter for the server's date-only assignment
+    /// strings. Fixed `en_US_POSIX` locale plus the device
+    /// timezone so "2026-09-14" parses to local midnight —
+    /// the same instant `CalendarMath.startOfDay` buckets by.
+    public static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    /// The local-midnight instant for `scheduledDate`, or nil
+    /// when the server sent a malformed string (defensive —
+    /// the server validates on write).
+    public var day: Date? {
+        Self.dayFormatter.date(from: scheduledDate)
+    }
+}
+
+/// A full workout with its blocks and planned days. Mirrors
+/// the server's `WorkoutDTO` (detail view, create/update/
+/// duplicate responses).
+public struct WorkoutDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let title: String
+    public let description: String
+    public let blocks: [WorkoutBlockDTO]
+    public let assignments: [WorkoutAssignmentDTO]
+    public let createdAt: Date
+    public let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case description
+        case blocks
+        case assignments
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    public init(
+        id: String,
+        title: String,
+        description: String,
+        blocks: [WorkoutBlockDTO],
+        assignments: [WorkoutAssignmentDTO],
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.title = title
+        self.description = description
+        self.blocks = blocks
+        self.assignments = assignments
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+/// List-view shape: the workout without blocks plus the block
+/// count. Mirrors the server's `WorkoutSummaryDTO`.
+public struct WorkoutSummaryDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let title: String
+    public let description: String
+    public let blockCount: Int
+    public let createdAt: Date
+    public let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case description
+        case blockCount = "block_count"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    public init(
+        id: String,
+        title: String,
+        description: String,
+        blockCount: Int,
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.title = title
+        self.description = description
+        self.blockCount = blockCount
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+/// Response body for `GET /api/v1/workouts`.
+public struct WorkoutsResponse: Decodable, Equatable {
+    public let workouts: [WorkoutSummaryDTO]
+}
+
+/// Response body for the assignments endpoints (`POST
+/// /workouts/:id/assignments` and `GET /workouts/schedule`).
+public struct WorkoutAssignmentsResponse: Decodable, Equatable {
+    public let assignments: [WorkoutAssignmentDTO]
+}
+
+/// JSON body for `POST /api/v1/workouts`. Block IDs are
+/// ordered (position = array order); the same block may
+/// repeat. The workout starts unscheduled — days are added
+/// via `AddWorkoutAssignmentsRequest`.
+public struct CreateWorkoutRequest: Encodable, Equatable {
+    public let title: String
+    public let description: String
+    public let blockIDs: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case description
+        case blockIDs = "block_ids"
+    }
+
+    public init(title: String, description: String, blockIDs: [String]) {
+        self.title = title
+        self.description = description
+        self.blockIDs = blockIDs
+    }
+}
+
+/// JSON body for `PUT /api/v1/workouts/:id`. Block links are
+/// fully replaced — same shape and validation as create;
+/// assignments are untouched.
+public struct UpdateWorkoutRequest: Encodable, Equatable {
+    public let title: String
+    public let description: String
+    public let blockIDs: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case description
+        case blockIDs = "block_ids"
+    }
+
+    public init(title: String, description: String, blockIDs: [String]) {
+        self.title = title
+        self.description = description
+        self.blockIDs = blockIDs
+    }
+}
+
+/// JSON body for `POST /api/v1/workouts/:id/duplicate`.
+/// Copies the workout as "<title> copy" with its block links;
+/// the schedule is copied only when `copySchedule` is true.
+public struct DuplicateWorkoutRequest: Encodable, Equatable {
+    public let copySchedule: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case copySchedule = "copy_schedule"
+    }
+
+    public init(copySchedule: Bool = false) {
+        self.copySchedule = copySchedule
+    }
+}
+
+/// JSON body for `POST /api/v1/workouts/:id/assignments`.
+/// Repeats are expanded client-side into individual
+/// "YYYY-MM-DD" days; duplicate days are skipped
+/// idempotently by the server.
+public struct AddWorkoutAssignmentsRequest: Encodable, Equatable {
+    public let dates: [String]
+
+    public init(dates: [String]) {
+        self.dates = dates
+    }
+}
+
 // MARK: Feedback
 
 /// JSON body for `POST /api/v1/feedback`. Mirrors the

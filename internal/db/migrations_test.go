@@ -162,6 +162,38 @@ func TestMigrate_CreatesBlocksTables(t *testing.T) {
 	}
 }
 
+// TestMigrate_CreatesWorkoutsTables boots a fresh local database
+// (running every embedded goose migration) and asserts the
+// workouts, workout_blocks, and workout_assignments tables plus
+// their indexes exist. This executes the 00020 migration SQL
+// itself - a syntax error there would otherwise surface only at
+// first boot.
+func TestMigrate_CreatesWorkoutsTables(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	database, err := NewLocalConnection(dbPath)
+	if err != nil {
+		t.Fatalf("NewLocalConnection: %v", err)
+	}
+	defer database.Close()
+
+	for _, table := range []string{"workouts", "workout_blocks", "workout_assignments"} {
+		var tableName string
+		if err := database.Conn().QueryRow(
+			"SELECT name FROM sqlite_master WHERE type='table' AND name=?", table,
+		).Scan(&tableName); err != nil {
+			t.Errorf("%s table missing after migrate: %v", table, err)
+		}
+	}
+	for _, want := range []string{"idx_workouts_user", "idx_workout_blocks_workout", "idx_workout_assignments_user_date"} {
+		var name string
+		if err := database.Conn().QueryRow(
+			"SELECT name FROM sqlite_master WHERE type='index' AND name=?", want,
+		).Scan(&name); err != nil {
+			t.Errorf("index %s missing after migrate: %v", want, err)
+		}
+	}
+}
+
 // TestMigrate_AddsExerciseAliasesColumn boots a fresh local
 // database (running every embedded goose migration) and asserts
 // the exercises.aliases column exists. This executes the

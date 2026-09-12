@@ -40,6 +40,17 @@ type Querier interface {
 	CreateGoal(ctx context.Context, arg CreateGoalParams) (Goal, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (string, error)
 	CreateWeightEntry(ctx context.Context, arg CreateWeightEntryParams) (WeightEntry, error)
+	// Workouts are user-owned planned sessions composed of blocks
+	// (many-to-many via workout_blocks) and scheduled onto calendar
+	// days via workout_assignments (one row per day, date-only text).
+	// Every query is scoped to user_id (via the workouts row, or the
+	// denormalized user_id on assignments) so a request can never
+	// read or mutate another user's plan.
+	CreateWorkout(ctx context.Context, arg CreateWorkoutParams) (Workout, error)
+	// One row per planned day. The UNIQUE(workout_id,
+	// scheduled_date) guard makes repeat-expansion idempotent.
+	CreateWorkoutAssignment(ctx context.Context, arg CreateWorkoutAssignmentParams) (WorkoutAssignment, error)
+	CreateWorkoutBlock(ctx context.Context, arg CreateWorkoutBlockParams) (WorkoutBlock, error)
 	DeleteBlock(ctx context.Context, arg DeleteBlockParams) error
 	// Full item replacement on update: delete-all then re-insert in a
 	// transaction (the repository owns the tx). Also keeps deletes
@@ -48,6 +59,15 @@ type Querier interface {
 	DeleteExerciseEntry(ctx context.Context, arg DeleteExerciseEntryParams) error
 	DeleteGoal(ctx context.Context, arg DeleteGoalParams) error
 	DeleteWeightEntry(ctx context.Context, arg DeleteWeightEntryParams) error
+	DeleteWorkout(ctx context.Context, arg DeleteWorkoutParams) error
+	// Removes a single planned day. Scoped to the user so a guessed
+	// assignment ID cannot move another user's plan.
+	DeleteWorkoutAssignment(ctx context.Context, arg DeleteWorkoutAssignmentParams) error
+	DeleteWorkoutAssignmentsForWorkout(ctx context.Context, workoutID string) error
+	// Full block replacement on update: delete-all then re-insert in
+	// a transaction (the repository owns the tx). Also keeps deletes
+	// correct on databases ignoring ON DELETE CASCADE.
+	DeleteWorkoutBlocks(ctx context.Context, workoutID string) error
 	// Fetch a single report for idempotency checks ((user_id, type,
 	// period_start) unique key) before deciding to call the LLM.
 	GetAIReport(ctx context.Context, arg GetAIReportParams) (AiReport, error)
@@ -84,6 +104,8 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetWeightEntriesByIDs(ctx context.Context, arg GetWeightEntriesByIDsParams) ([]WeightEntry, error)
 	GetWeightEntry(ctx context.Context, arg GetWeightEntryParams) (WeightEntry, error)
+	GetWorkout(ctx context.Context, arg GetWorkoutParams) (Workout, error)
+	GetWorkoutAssignment(ctx context.Context, id string) (WorkoutAssignment, error)
 	List(ctx context.Context) ([]Exercise, error)
 	// Every user with ai_opt_in = 1. The weekly Coach cron iterates
 	// this list; per-user report generation is idempotent on
@@ -119,6 +141,24 @@ type Querier interface {
 	// build its email payload without an extra round-trip.
 	ListUsersDueForReminder(ctx context.Context, reminderNextFireAt sql.NullTime) ([]User, error)
 	ListWeightEntries(ctx context.Context, userID string) ([]WeightEntry, error)
+	// Calendar range query: every assignment for the user on
+	// [start, end] (inclusive, YYYY-MM-DD text compares
+	// lexicographically) with the workout title resolved so the
+	// day cell can render without N+1 queries.
+	ListWorkoutAssignmentsByDateRange(ctx context.Context, arg ListWorkoutAssignmentsByDateRangeParams) ([]ListWorkoutAssignmentsByDateRangeRow, error)
+	ListWorkoutAssignmentsForWorkout(ctx context.Context, workoutID string) ([]WorkoutAssignment, error)
+	ListWorkoutBlocks(ctx context.Context, workoutID string) ([]WorkoutBlock, error)
+	// Detail view resolves each linked block's name/type in one
+	// query. Ownership is gated by the caller's prior GetWorkout
+	// (scoped to user_id); this query only orders the links. Blocks
+	// deleted after linking disappear from this join (CASCADE
+	// removes the link row) - the workout itself survives.
+	ListWorkoutBlocksWithBlock(ctx context.Context, workoutID string) ([]ListWorkoutBlocksWithBlockRow, error)
+	// Newest first; rowid breaks created_at ties (same convention as
+	// blocks and exercise_entries ordering).
+	ListWorkouts(ctx context.Context, userID string) ([]Workout, error)
+	// List view needs per-workout block counts without N+1 queries.
+	ListWorkoutsWithBlockCount(ctx context.Context, userID string) ([]ListWorkoutsWithBlockCountRow, error)
 	// Stamp dismissed_at. Idempotent: re-dismissals overwrite.
 	MarkAIReportDismissed(ctx context.Context, arg MarkAIReportDismissedParams) error
 	// Atomically set completed_at and bump updated_at. Scoped to user_id so
@@ -177,6 +217,10 @@ type Querier interface {
 	// for both "user changed preferences" and "tick just fired" callers.
 	UpdateUserReminder(ctx context.Context, arg UpdateUserReminderParams) error
 	UpdateWeightEntry(ctx context.Context, arg UpdateWeightEntryParams) error
+	// Overwrites the editable workout fields and bumps updated_at.
+	// Blocks are replaced separately via DeleteWorkoutBlocks +
+	// CreateWorkoutBlock.
+	UpdateWorkout(ctx context.Context, arg UpdateWorkoutParams) error
 	UpsertHealthSnapshot(ctx context.Context, arg UpsertHealthSnapshotParams) (HealthSnapshot, error)
 }
 

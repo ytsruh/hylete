@@ -21,6 +21,7 @@ struct MoreView: View {
 
     @ObservedObject var coachStore: CoachStore
     @ObservedObject var blockStore: BlockStore
+    @ObservedObject var workoutStore: WorkoutStore
 
     /// Mirrors the Profile beta toggle. Gates the Insights
     /// section itself (in addition to the `BetaFeature`
@@ -41,6 +42,18 @@ struct MoreView: View {
 
             if betaFeaturesEnabled {
                 Section {
+                    BetaFeature {
+                        NavigationLink {
+                            WorkoutsListView(store: workoutStore, blockStore: blockStore)
+                        } label: {
+                            hubRow(
+                                title: "Workouts",
+                                subtitle: "Plans made of blocks, on your calendar",
+                                systemImage: "calendar.badge.clock"
+                            )
+                        }
+                        .accessibilityLabel("Open Workouts")
+                    }
                     BetaFeature {
                         NavigationLink {
                             BlocksListView(store: blockStore)
@@ -166,6 +179,10 @@ struct MoreView: View {
                 tokenProvider: { nil }
             )),
             blockStore: BlockStore(api: APIClient(
+                baseURL: URL(string: "http://localhost:8080/api/v1")!,
+                tokenProvider: { nil }
+            )),
+            workoutStore: WorkoutStore(api: APIClient(
                 baseURL: URL(string: "http://localhost:8080/api/v1")!,
                 tokenProvider: { nil }
             ))

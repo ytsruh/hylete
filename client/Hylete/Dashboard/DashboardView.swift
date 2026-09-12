@@ -36,6 +36,11 @@ struct DashboardView: View {
     /// pages around; buckets are overwritten wholesale when
     /// their week is refetched.
     @State private var entriesByDay: [Date: [ExerciseEntryDTO]] = [:]
+    /// Session cache of planned workout days bucketed the
+    /// same way. Fetched from the schedule endpoint next to
+    /// the entries in `ensureWeekLoaded` so the calendar dot
+    /// and the selected-day list cover plans as well as logs.
+    @State private var assignmentsByDay: [Date: [WorkoutAssignmentDTO]] = [:]
     /// Week starts currently being fetched (drives the inline
     /// spinner under the selected day).
     @State private var loadingWeeks: Set<Date> = []
@@ -72,8 +77,45 @@ struct DashboardView: View {
     /// queries until an explicit refresh.
     @StateObject private var healthSummary: HealthViewModel
 
-    init(distanceUnit: String = "km") {
+    /// Planned workouts for the calendar. Owned by
+    /// `MainTabView` (like `BlockStore`) so the planned rows
+    /// can push the shared `WorkoutDetailView`.
+    @ObservedObject var workoutStore: WorkoutStore
+    /// Block library for the workout detail pushed from a
+    /// planned row. Same shared instance as the More hub.
+    @ObservedObject var blockStore: BlockStore
+    /// Fired with the new copy when a workout is duplicated
+    /// from a calendar-pushed detail view, so the app can
+    /// navigate to the Workouts tab to show it.
+    let onShowWorkout: ((WorkoutDTO) -> Void)?
+
+    /// The calendar-pushed workout detail. Plain state: set
+    /// by tapping a planned row, cleared to pop.
+    @State private var openWorkoutID: String?
+    /// Armed when a calendar duplicate jumps tabs. The
+    /// dashboard detail is NOT popped in the jump itself —
+    /// popping it there races the tab switch and flashes the
+    /// calendar for a frame. Instead it pops in onDisappear
+    /// below, once the tab switch has demonstrably happened
+    /// and the pop is invisible.
+    @State private var dashboardJumpArmed = false
+
+    init(
+        distanceUnit: String = "km",
+        workoutStore: WorkoutStore? = nil,
+        blockStore: BlockStore? = nil,
+        onShowWorkout: ((WorkoutDTO) -> Void)? = nil
+    ) {
+        self.onShowWorkout = onShowWorkout
         _healthSummary = StateObject(wrappedValue: HealthViewModel(distanceUnit: distanceUnit))
+        self._workoutStore = ObservedObject(wrappedValue: workoutStore ?? WorkoutStore(api: APIClient(
+            baseURL: URL(string: "http://localhost:8080/api/v1")!,
+            tokenProvider: { nil }
+        )))
+        self._blockStore = ObservedObject(wrappedValue: blockStore ?? BlockStore(api: APIClient(
+            baseURL: URL(string: "http://localhost:8080/api/v1")!,
+            tokenProvider: { nil }
+        )))
     }
 
     var body: some View {
@@ -82,6 +124,22 @@ struct DashboardView: View {
                 .navigationTitle("Dashboard")
                 .navigationDestination(for: ExerciseDTO.self) { exercise in
                     ExerciseHistoryView(exercise: exercise)
+                }
+                // Calendar-pushed workout detail. Value-driven
+                // (see openWorkoutID) so no dismiss() is ever
+                // involved. On duplicate the detail stays put
+                // while the app jumps tabs; dashboardJumpArmed
+                // pops it off-screen in onDisappear below.
+                .navigationDestination(item: $openWorkoutID) { id in
+                    WorkoutDetailView(
+                        store: workoutStore,
+                        blockStore: blockStore,
+                        workoutID: id,
+                        onDuplicate: { copy in
+                            dashboardJumpArmed = onShowWorkout != nil
+                            onShowWorkout?(copy)
+                        }
+                    )
                 }
                 // NOTE: attached to the content INSIDE the stack,
                 // not to the NavigationStack itself — the outer
@@ -93,6 +151,16 @@ struct DashboardView: View {
                         refreshIfIdle()
                     }
                     hasAppeared = true
+                }
+                .onDisappear {
+                    // The root stays mounted across pushes, so
+                    // this fires only when leaving the tab.
+                    // Pops a jumped-from duplicate detail now
+                    // that it's guaranteed off-screen.
+                    if dashboardJumpArmed {
+                        dashboardJumpArmed = false
+                        openWorkoutID = nil
+                    }
                 }
                 .sheet(isPresented: $showingNewSet, onDismiss: {
                     // `refresh()` is `@MainActor`; this unstructured
@@ -152,10 +220,10 @@ struct DashboardView: View {
 
     @ViewBuilder
     private var content: some View {
-        if isLoading && recentEntries.isEmpty && entriesByDay.isEmpty {
+        if isLoading && recentEntries.isEmpty && entriesByDay.isEmpty && assignmentsByDay.isEmpty {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let errorMessage, recentEntries.isEmpty && entriesByDay.isEmpty {
+        } else if let errorMessage, recentEntries.isEmpty && entriesByDay.isEmpty && assignmentsByDay.isEmpty {
             errorState(errorMessage)
         } else {
             loadedScrollView
@@ -177,16 +245,20 @@ struct DashboardView: View {
                 WeekCalendarView(
                     selection: $selectedDate,
                     isBusy: { day in
-                        !(entriesByDay[CalendarMath.startOfDay(day)] ?? []).isEmpty
+                        let key = CalendarMath.startOfDay(day)
+                        return !(entriesByDay[key] ?? []).isEmpty
+                            || !(assignmentsByDay[key] ?? []).isEmpty
                     }
                 ) { day in
                     SelectedDaySetList(
                         date: day,
                         entries: entriesByDay[day] ?? [],
+                        planned: assignmentsByDay[day] ?? [],
                         isLoading: loadingWeeks.contains(CalendarMath.startOfWeek(for: day)),
                         weightUnit: weightUnit,
                         distanceUnit: authStore.currentUser?.distanceUnit ?? "km",
-                        exerciseLookup: exerciseLookup
+                        exerciseLookup: exerciseLookup,
+                        openWorkoutID: $openWorkoutID
                     )
                 }
                 BetaFeature {
@@ -346,17 +418,22 @@ struct DashboardView: View {
     }
 
     /// Fetches the calendar week containing `date` unless it's
-    /// already cached. Results are bucketed by local start-of-day
-    /// into `entriesByDay`. The range is sent as absolute instants
-    /// (local midnight → next-local-midnight minus one second) so
-    /// day semantics are computed on-device, never server-side.
+    /// already cached. Entry results are bucketed by local
+    /// start-of-day into `entriesByDay`; planned workout days
+    /// land in `assignmentsByDay` next to them. The entry
+    /// range is sent as absolute instants (local midnight →
+    /// next-local-midnight minus one second) so day semantics
+    /// are computed on-device, never server-side; the
+    /// schedule range is date-only text ("YYYY-MM-DD") for
+    /// the same reason — the server stores calendar dates
+    /// opaquely and compares them lexicographically.
     ///
     /// Failures leave the week unmarked in `loadedWeeks` so a
     /// later visit retries; the spinner clears either way.
     ///
     /// `@MainActor` because this mutates `@State`
-    /// (`loadingWeeks`, `entriesByDay`, `loadedWeeks`).
-    /// See `load()` for the full rationale.
+    /// (`loadingWeeks`, `entriesByDay`, `assignmentsByDay`,
+    /// `loadedWeeks`). See `load()` for the full rationale.
     @MainActor
     private func ensureWeekLoaded(for date: Date, force: Bool = false) async {
         let weekStart = CalendarMath.startOfWeek(for: date)
@@ -373,10 +450,15 @@ struct DashboardView: View {
         defer { loadingWeeks.remove(weekStart) }
 
         do {
-            let entries = try await env.api.listExerciseEntries(
+            async let entriesTask = env.api.listExerciseEntries(
                 from: weekStart,
                 to: weekEndInclusive
             )
+            async let scheduleTask = env.api.listWorkoutSchedule(
+                from: WorkoutAssignmentDTO.dayFormatter.string(from: weekStart),
+                to: WorkoutAssignmentDTO.dayFormatter.string(from: weekEndInclusive)
+            )
+            let (entries, schedule) = try await (entriesTask, scheduleTask)
             // Defensive de-duplication by id: a duplicated row
             // (server anomaly, sync hiccup) would otherwise give
             // `SelectedDaySetList`'s ForEach duplicate identities,
@@ -384,8 +466,10 @@ struct DashboardView: View {
             var seen = Set<String>()
             let uniqueEntries = entries.filter { seen.insert($0.id).inserted }
             var byDay = entriesByDay
+            var plannedByDay = assignmentsByDay
             for day in CalendarMath.days(inWeekOf: weekStart) {
                 byDay[day] = []
+                plannedByDay[day] = []
             }
             for entry in uniqueEntries {
                 let dayKey = CalendarMath.startOfDay(entry.createdAt)
@@ -396,6 +480,19 @@ struct DashboardView: View {
                 byDay[key]?.sort { $0.createdAt > $1.createdAt }
             }
             entriesByDay = byDay
+            var seenAssignments = Set<String>()
+            for assignment in schedule where seenAssignments.insert(assignment.id).inserted {
+                // `day` parses the date-only string to local
+                // midnight; re-normalise through `startOfDay`
+                // so DST transitions can't split a bucket.
+                guard let day = assignment.day else { continue }
+                let dayKey = CalendarMath.startOfDay(day)
+                plannedByDay[dayKey, default: []].append(assignment)
+            }
+            for key in plannedByDay.keys where CalendarMath.days(inWeekOf: weekStart).contains(key) {
+                plannedByDay[key]?.sort { $0.workoutTitle < $1.workoutTitle }
+            }
+            assignmentsByDay = plannedByDay
             loadedWeeks.insert(weekStart)
         } catch let error as APIError {
             if case .unauthorized = error { return }

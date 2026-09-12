@@ -637,6 +637,166 @@ func BlockSummariesFromModels(ss []models.BlockSummary) []BlockSummaryDTO {
 	return out
 }
 
+// --- Workouts ---
+
+// WorkoutBlockDTO is the JSON shape for one block linked into a
+// workout. BlockName/Type are resolved server-side for display;
+// the client only writes ordered block IDs. Position is the
+// zero-based order in the workout.
+type WorkoutBlockDTO struct {
+	ID        string `json:"id"`
+	BlockID   string `json:"block_id"`
+	BlockName string `json:"block_name"`
+	BlockType string `json:"block_type"`
+	Position  int    `json:"position"`
+}
+
+// WorkoutAssignmentDTO is the JSON shape for one planned
+// calendar day. ScheduledDate is date-only text (YYYY-MM-DD);
+// day semantics are computed client-side. WorkoutTitle is
+// resolved server-side so calendar cells render without a
+// second fetch.
+type WorkoutAssignmentDTO struct {
+	ID            string `json:"id"`
+	WorkoutID     string `json:"workout_id"`
+	WorkoutTitle  string `json:"workout_title"`
+	ScheduledDate string `json:"scheduled_date"`
+}
+
+// WorkoutDTO is the JSON shape for a full workout with its
+// blocks and planned days (detail view, create/update/duplicate
+// responses).
+type WorkoutDTO struct {
+	ID          string                 `json:"id"`
+	Title       string                 `json:"title"`
+	Description string                 `json:"description"`
+	Blocks      []WorkoutBlockDTO      `json:"blocks"`
+	Assignments []WorkoutAssignmentDTO `json:"assignments"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+}
+
+// WorkoutSummaryDTO is the list-view shape: the workout without
+// blocks plus the block count ("3 blocks").
+type WorkoutSummaryDTO struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	BlockCount  int       `json:"block_count"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// CreateWorkoutRequest is the body for POST /api/v1/workouts.
+// BlockIDs are ordered (position = array order); the same block
+// may repeat. The workout starts unscheduled - days are added
+// via the assignments endpoint.
+type CreateWorkoutRequest struct {
+	Title       string   `json:"title" validate:"required,min=1,max=100"`
+	Description string   `json:"description" validate:"max=1000"`
+	BlockIDs    []string `json:"block_ids" validate:"required,min=1,max=20"`
+}
+
+// UpdateWorkoutRequest is the body for PUT /api/v1/workouts/:id.
+// Block links are fully replaced (same semantics as create);
+// assignments are untouched.
+type UpdateWorkoutRequest struct {
+	Title       string   `json:"title" validate:"required,min=1,max=100"`
+	Description string   `json:"description" validate:"max=1000"`
+	BlockIDs    []string `json:"block_ids" validate:"required,min=1,max=20"`
+}
+
+// DuplicateWorkoutRequest is the body for POST
+// /api/v1/workouts/:id/duplicate. Copies the workout as
+// "<title> copy" with its block links; the schedule is copied
+// only when CopySchedule is true.
+type DuplicateWorkoutRequest struct {
+	CopySchedule bool `json:"copy_schedule"`
+}
+
+// AddWorkoutAssignmentsRequest is the body for POST
+// /api/v1/workouts/:id/assignments. Dates are YYYY-MM-DD;
+// repeats are expanded client-side into individual days.
+// Duplicate days are skipped idempotently.
+type AddWorkoutAssignmentsRequest struct {
+	Dates []string `json:"dates" validate:"required,min=1,max=100"`
+}
+
+// WorkoutBlockFromModel converts a models.WorkoutBlock into its DTO.
+func WorkoutBlockFromModel(b models.WorkoutBlock) WorkoutBlockDTO {
+	return WorkoutBlockDTO{
+		ID:        b.ID,
+		BlockID:   b.BlockID,
+		BlockName: b.BlockName,
+		BlockType: string(b.BlockType),
+		Position:  b.Position,
+	}
+}
+
+// WorkoutAssignmentFromModel converts a models.WorkoutAssignment
+// into its DTO.
+func WorkoutAssignmentFromModel(a models.WorkoutAssignment) WorkoutAssignmentDTO {
+	return WorkoutAssignmentDTO{
+		ID:            a.ID,
+		WorkoutID:     a.WorkoutID,
+		WorkoutTitle:  a.WorkoutTitle,
+		ScheduledDate: a.ScheduledDate,
+	}
+}
+
+// WorkoutAssignmentsFromModels converts assignments into DTOs,
+// writing `[]` rather than `null` when there are none.
+func WorkoutAssignmentsFromModels(as []models.WorkoutAssignment) []WorkoutAssignmentDTO {
+	out := make([]WorkoutAssignmentDTO, 0, len(as))
+	for _, a := range as {
+		out = append(out, WorkoutAssignmentFromModel(a))
+	}
+	return out
+}
+
+// WorkoutFromModel converts a models.Workout (with blocks) plus
+// its assignments into its DTO. Blocks and assignments default
+// to `[]` (not null) when empty.
+func WorkoutFromModel(w models.Workout, assignments []models.WorkoutAssignment) WorkoutDTO {
+	blocks := make([]WorkoutBlockDTO, 0, len(w.Blocks))
+	for _, b := range w.Blocks {
+		blocks = append(blocks, WorkoutBlockFromModel(b))
+	}
+	return WorkoutDTO{
+		ID:          w.ID,
+		Title:       w.Title,
+		Description: w.Description,
+		Blocks:      blocks,
+		Assignments: WorkoutAssignmentsFromModels(assignments),
+		CreatedAt:   w.CreatedAt,
+		UpdatedAt:   w.UpdatedAt,
+	}
+}
+
+// WorkoutSummaryFromModel converts a models.WorkoutSummary into
+// its DTO.
+func WorkoutSummaryFromModel(s models.WorkoutSummary) WorkoutSummaryDTO {
+	return WorkoutSummaryDTO{
+		ID:          s.ID,
+		Title:       s.Title,
+		Description: s.Description,
+		BlockCount:  s.BlockCount,
+		CreatedAt:   s.CreatedAt,
+		UpdatedAt:   s.UpdatedAt,
+	}
+}
+
+// WorkoutSummariesFromModels converts workout summaries into
+// DTOs, writing `[]` rather than `null` when the user has no
+// workouts.
+func WorkoutSummariesFromModels(ss []models.WorkoutSummary) []WorkoutSummaryDTO {
+	out := make([]WorkoutSummaryDTO, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, WorkoutSummaryFromModel(s))
+	}
+	return out
+}
+
 // --- Weight ---
 
 // WeightEntryDTO is the JSON shape for a single body-weight

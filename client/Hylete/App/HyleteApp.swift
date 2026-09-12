@@ -76,11 +76,12 @@ struct SplashView: View {
 /// destination. Sheets present outside the tab hierarchy, so
 /// sheet editors keep their own stacks.
 ///
-/// `GoalStore`, `WeightStore`, and `CoachStore` are constructed
-/// once here (instead of inside their respective views) so they
-/// outlive view rebuilds and can be shared with editors and
-/// the More hub — every observer sees the same store, so a
-/// save updates all rows immediately.
+/// `GoalStore`, `WeightStore`, `CoachStore`, `BlockStore`,
+/// and `WorkoutStore` are constructed once here (instead of
+/// inside their respective views) so they outlive view
+/// rebuilds and can be shared with editors, the dashboard
+/// calendar, and the More hub — every observer sees the same
+/// store, so a save updates all rows immediately.
 struct MainTabView: View {
     @EnvironmentObject private var env: AppEnvironment
 
@@ -88,6 +89,20 @@ struct MainTabView: View {
     @StateObject private var weightStore: WeightStore
     @StateObject private var coachStore: CoachStore
     @StateObject private var blockStore: BlockStore
+    @StateObject private var workoutStore: WorkoutStore
+
+    /// Selected tab, so the dashboard can jump here (e.g.
+    /// after duplicating a workout from the calendar, the
+    /// copy opens on the Workouts screen instead of
+    /// dismissing back to the dashboard).
+    @State private var selectedTab: Tab = .dashboard
+    /// Navigation path for the More stack, so a cross-tab
+    /// jump can push straight to a workout's detail view.
+    @State private var morePath = NavigationPath()
+
+    private enum Tab: Hashable {
+        case dashboard, exercises, weight, goals, more
+    }
 
     init() {
         // Construct with a stub API; swapped to the real
@@ -103,34 +118,69 @@ struct MainTabView: View {
         _weightStore = StateObject(wrappedValue: WeightStore(api: stub))
         _coachStore = StateObject(wrappedValue: CoachStore(api: stub))
         _blockStore = StateObject(wrappedValue: BlockStore(api: stub))
+        _workoutStore = StateObject(wrappedValue: WorkoutStore(api: stub))
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             // Dashboard owns its stack (path-bound for
             // exercise-history pushes) — do NOT wrap it.
-            DashboardView(distanceUnit: env.authStore.currentUser?.distanceUnit ?? "km")
-                .tabItem { Label("Dashboard", systemImage: "house") }
+            DashboardView(
+                distanceUnit: env.authStore.currentUser?.distanceUnit ?? "km",
+                workoutStore: workoutStore,
+                blockStore: blockStore,
+                onShowWorkout: { copy in
+                    // Jump to the More tab with the copy
+                    // pushed, so a calendar duplicate lands
+                    // on the Workouts screen showing the new
+                    // workout instead of back on the dashboard.
+                    // Unanimated: the tab switch and the push
+                    // are one state change, so animating them
+                    // flashes the list for a frame before the
+                    // detail lands.
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        var path = NavigationPath()
+                        path.append(copy)
+                        morePath = path
+                        selectedTab = .more
+                    }
+                }
+            )
+            .tabItem { Label("Dashboard", systemImage: "house") }
+            .tag(Tab.dashboard)
 
             NavigationStack {
                 ExerciseListView()
             }
             .tabItem { Label("Exercises", systemImage: "dumbbell") }
+            .tag(Tab.exercises)
 
             NavigationStack {
                 WeightListView(store: weightStore)
             }
             .tabItem { Label("Weight", systemImage: Icons.weight) }
+            .tag(Tab.weight)
 
             NavigationStack {
                 GoalsListView(store: goalStore)
             }
             .tabItem { Label("Goals", systemImage: Icons.goals) }
+            .tag(Tab.goals)
 
-            NavigationStack {
-                MoreView(coachStore: coachStore, blockStore: blockStore)
+            NavigationStack(path: $morePath) {
+                MoreView(coachStore: coachStore, blockStore: blockStore, workoutStore: workoutStore)
+                    .navigationDestination(for: WorkoutDTO.self) { workout in
+                        WorkoutDetailView(
+                            store: workoutStore,
+                            blockStore: blockStore,
+                            workoutID: workout.id
+                        )
+                    }
             }
             .tabItem { Label("More", systemImage: Icons.more) }
+            .tag(Tab.more)
         }
         .onAppear {
             // The stores need the real `APIClient` (which
@@ -144,6 +194,7 @@ struct MainTabView: View {
             weightStore.replaceAPI(env.api)
             coachStore.replaceAPI(env.api)
             blockStore.replaceAPI(env.api)
+            workoutStore.replaceAPI(env.api)
         }
     }
 }
