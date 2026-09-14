@@ -97,6 +97,14 @@ UPDATE workout_blocks
 SET status = ?
 WHERE id = ? AND workout_id = ?;
 
+-- name: UpdateWorkoutStatus :exec
+-- Status-only update for the player lifecycle: first linked set flips
+-- planned to in_progress, and the last block flip to done/skipped
+-- auto-completes the workout. Bumps updated_at. Scoping to the
+-- workout ID alone is intentional; callers gate ownership via a
+-- prior scoped GetByID.
+UPDATE workouts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
+
 -- name: DeleteWorkoutBlocks :exec
 -- Full block replacement on update: delete-all then re-insert in a
 -- transaction (the repository owns the tx). Also keeps deletes

@@ -80,6 +80,9 @@ type ExerciseEntry struct {
 	DistanceMeters  float64
 	AvgHeartRate    int64
 	CaloriesBurned  float64
+	WorkoutID       sql.NullString
+	BlockID         sql.NullString
+	WorkoutBlockID  sql.NullString
 	CreatedAt       sql.NullTime
 }
 

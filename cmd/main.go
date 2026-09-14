@@ -118,6 +118,10 @@ func main() {
 	// Workouts resolve their blocks through the shared block
 	// repository (plan reads are user-scoped inside the repo).
 	workoutsCtrl := controllers.NewWorkoutsController(workoutsRepo, blocksRepo)
+	// Player linkage: exercise entries validate workout_id/block_id
+	// against the workout store and flip planned to in_progress on
+	// the first linked set.
+	exerciseEntryCtrl.SetWorkoutsResolver(workoutsRepo)
 
 	// Initialize the per-user weight-reminder orchestrator here so
 	// the hourly cron scheduler below can drive it. The orchestrator

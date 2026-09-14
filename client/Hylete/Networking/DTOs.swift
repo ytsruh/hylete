@@ -424,6 +424,12 @@ public struct ExerciseEntryDTO: Codable, Equatable, Identifiable, Hashable {
     public let distanceMeters: Double
     public let avgHeartRate: Int
     public let caloriesBurned: Double
+    /// Workout Player attribution. All nil when the set was logged
+    /// outside a workout. Optional so entries cached by older app
+    /// builds (which omit the keys) still decode.
+    public let workoutID: String?
+    public let blockID: String?
+    public let workoutBlockID: String?
     public let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -439,6 +445,9 @@ public struct ExerciseEntryDTO: Codable, Equatable, Identifiable, Hashable {
         case distanceMeters = "distance_meters"
         case avgHeartRate = "avg_heart_rate"
         case caloriesBurned = "calories_burned"
+        case workoutID = "workout_id"
+        case blockID = "block_id"
+        case workoutBlockID = "workout_block_id"
         case createdAt = "created_at"
     }
 
@@ -455,6 +464,9 @@ public struct ExerciseEntryDTO: Codable, Equatable, Identifiable, Hashable {
         distanceMeters: Double = 0,
         avgHeartRate: Int = 0,
         caloriesBurned: Double = 0,
+        workoutID: String? = nil,
+        blockID: String? = nil,
+        workoutBlockID: String? = nil,
         createdAt: Date
     ) {
         self.id = id
@@ -469,7 +481,30 @@ public struct ExerciseEntryDTO: Codable, Equatable, Identifiable, Hashable {
         self.distanceMeters = distanceMeters
         self.avgHeartRate = avgHeartRate
         self.caloriesBurned = caloriesBurned
+        self.workoutID = workoutID
+        self.blockID = blockID
+        self.workoutBlockID = workoutBlockID
         self.createdAt = createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        exerciseID = try container.decode(String.self, forKey: .exerciseID)
+        exerciseName = try container.decode(String.self, forKey: .exerciseName)
+        exerciseType = try container.decodeIfPresent(String.self, forKey: .exerciseType)
+        reps = try container.decode(Int.self, forKey: .reps)
+        weight = try container.decode(Double.self, forKey: .weight)
+        notes = try container.decode(String.self, forKey: .notes)
+        restTime = try container.decode(Int.self, forKey: .restTime)
+        durationSeconds = try container.decode(Int.self, forKey: .durationSeconds)
+        distanceMeters = try container.decode(Double.self, forKey: .distanceMeters)
+        avgHeartRate = try container.decode(Int.self, forKey: .avgHeartRate)
+        caloriesBurned = try container.decode(Double.self, forKey: .caloriesBurned)
+        workoutID = try container.decodeIfPresent(String.self, forKey: .workoutID)
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
+        workoutBlockID = try container.decodeIfPresent(String.self, forKey: .workoutBlockID)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
     }
 
     /// `true` when this entry belongs to a cardio exercise. Nil type
@@ -493,6 +528,12 @@ public struct CreateSetInput: Encodable, Equatable, Hashable {
     public var distanceMeters: Double
     public var avgHeartRate: Int
     public var caloriesBurned: Double
+    /// Workout Player attribution. All nil when logging outside a
+    /// workout. The server validates ownership/membership and flips
+    /// a planned workout to in_progress on the first linked set.
+    public var workoutID: String?
+    public var blockID: String?
+    public var workoutBlockID: String?
 
     enum CodingKeys: String, CodingKey {
         case reps
@@ -502,6 +543,9 @@ public struct CreateSetInput: Encodable, Equatable, Hashable {
         case distanceMeters = "distance_meters"
         case avgHeartRate = "avg_heart_rate"
         case caloriesBurned = "calories_burned"
+        case workoutID = "workout_id"
+        case blockID = "block_id"
+        case workoutBlockID = "workout_block_id"
     }
 
     public init(
@@ -511,7 +555,10 @@ public struct CreateSetInput: Encodable, Equatable, Hashable {
         durationSeconds: Int = 0,
         distanceMeters: Double = 0,
         avgHeartRate: Int = 0,
-        caloriesBurned: Double = 0
+        caloriesBurned: Double = 0,
+        workoutID: String? = nil,
+        blockID: String? = nil,
+        workoutBlockID: String? = nil
     ) {
         self.reps = reps
         self.weight = weight
@@ -520,6 +567,9 @@ public struct CreateSetInput: Encodable, Equatable, Hashable {
         self.distanceMeters = distanceMeters
         self.avgHeartRate = avgHeartRate
         self.caloriesBurned = caloriesBurned
+        self.workoutID = workoutID
+        self.blockID = blockID
+        self.workoutBlockID = workoutBlockID
     }
 }
 
@@ -1257,6 +1307,130 @@ public struct WorkoutDTO: Codable, Equatable, Identifiable, Hashable {
     }
 
     /// "2/3 blocks" progress label for rows and headers.
+    public var progressLabel: String {
+        let done = blocks.filter { $0.status == .done }.count
+        return "\(done)/\(blocks.count) blocks"
+    }
+}
+
+/// One planned block with its planned exercises resolved. Mirrors the
+/// server's `WorkoutBlockDetailDTO`, returned by
+/// `GET /api/v1/workouts/:id?include=items` so the Workout Player
+/// renders every block and row in one call instead of N+1 block
+/// fetches. `items` defaults to [] when the key is absent.
+public struct WorkoutBlockDetailDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let blockID: String
+    public let blockName: String
+    public let blockDescription: String
+    public let blockType: BlockTypeDTO
+    public let position: Int
+    public let status: WorkoutBlockStatusDTO
+    public let itemCount: Int
+    public let items: [BlockItemDTO]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case blockID = "block_id"
+        case blockName = "block_name"
+        case blockDescription = "block_description"
+        case blockType = "block_type"
+        case position
+        case status
+        case itemCount = "item_count"
+        case items
+    }
+
+    public init(
+        id: String,
+        blockID: String,
+        blockName: String,
+        blockDescription: String = "",
+        blockType: BlockTypeDTO,
+        position: Int,
+        status: WorkoutBlockStatusDTO,
+        itemCount: Int,
+        items: [BlockItemDTO] = []
+    ) {
+        self.id = id
+        self.blockID = blockID
+        self.blockName = blockName
+        self.blockDescription = blockDescription
+        self.blockType = blockType
+        self.position = position
+        self.status = status
+        self.itemCount = itemCount
+        self.items = items
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        blockID = try container.decode(String.self, forKey: .blockID)
+        blockName = try container.decode(String.self, forKey: .blockName)
+        blockDescription = try container.decodeIfPresent(String.self, forKey: .blockDescription) ?? ""
+        blockType = try container.decode(BlockTypeDTO.self, forKey: .blockType)
+        position = try container.decode(Int.self, forKey: .position)
+        status = try container.decode(WorkoutBlockStatusDTO.self, forKey: .status)
+        itemCount = try container.decode(Int.self, forKey: .itemCount)
+        items = try container.decodeIfPresent([BlockItemDTO].self, forKey: .items) ?? []
+    }
+
+    /// The matching row from the plain detail shape, for reuse in
+    /// progress helpers.
+    public var asWorkoutBlock: WorkoutBlockDTO {
+        WorkoutBlockDTO(
+            id: id, blockID: blockID, blockName: blockName,
+            blockDescription: blockDescription, blockType: blockType,
+            position: position, status: status, itemCount: itemCount
+        )
+    }
+}
+
+/// The player-fetch shape: a full workout with every block's items
+/// embedded. Mirrors the server's `WorkoutWithItemsDTO`.
+public struct WorkoutWithItemsDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let name: String
+    public let description: String
+    public let scheduledDate: String
+    public let status: WorkoutStatusDTO
+    public let blocks: [WorkoutBlockDetailDTO]
+    public let createdAt: Date
+    public let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case description
+        case scheduledDate = "scheduled_date"
+        case status
+        case blocks
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    public init(
+        id: String,
+        name: String,
+        description: String,
+        scheduledDate: String,
+        status: WorkoutStatusDTO,
+        blocks: [WorkoutBlockDetailDTO],
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.scheduledDate = scheduledDate
+        self.status = status
+        self.blocks = blocks
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    /// "2/3 blocks" progress label, mirroring `WorkoutDTO`.
     public var progressLabel: String {
         let done = blocks.filter { $0.status == .done }.count
         return "\(done)/\(blocks.count) blocks"

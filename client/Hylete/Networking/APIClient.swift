@@ -310,6 +310,22 @@ public final class APIClient: @unchecked Sendable {
         try await send("GET", "workouts/\(id)")
     }
 
+    /// Player single-call fetch: the workout with every block's
+    /// planned exercises embedded
+    /// (`GET /api/v1/workouts/:id?include=items`). Blocks stay in
+    /// position order; a block whose catalogue row is gone arrives
+    /// with an empty items list.
+    public func getWorkoutWithItems(id: String) async throws -> WorkoutWithItemsDTO {
+        try await send("GET", "workouts/\(id)?include=items")
+    }
+
+    /// Player resume: every exercise entry logged against one
+    /// workout, newest first. Used for per-exercise "logged(n)"
+    /// counts when reopening a workout already in progress.
+    public func listWorkoutExerciseEntries(workoutID: String) async throws -> [ExerciseEntryDTO] {
+        try await send("GET", "workouts/\(workoutID)/exercise-entries")
+    }
+
     public func createWorkout(_ request: CreateWorkoutRequest) async throws -> WorkoutDTO {
         try await send("POST", "workouts", body: request)
     }

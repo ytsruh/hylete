@@ -551,3 +551,22 @@ func (q *Queries) UpdateWorkoutBlockStatus(ctx context.Context, arg UpdateWorkou
 	_, err := q.db.ExecContext(ctx, updateWorkoutBlockStatus, arg.Status, arg.ID, arg.WorkoutID)
 	return err
 }
+
+const updateWorkoutStatus = `-- name: UpdateWorkoutStatus :exec
+UPDATE workouts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+`
+
+type UpdateWorkoutStatusParams struct {
+	Status string
+	ID     string
+}
+
+// Status-only update for the player lifecycle: first linked set flips
+// planned to in_progress, and the last block flip to done/skipped
+// auto-completes the workout. Bumps updated_at. Scoping to the
+// workout ID alone is intentional; callers gate ownership via a
+// prior scoped GetByID.
+func (q *Queries) UpdateWorkoutStatus(ctx context.Context, arg UpdateWorkoutStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateWorkoutStatus, arg.Status, arg.ID)
+	return err
+}

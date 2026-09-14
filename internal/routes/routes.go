@@ -251,7 +251,8 @@ func registerAPIRoutes(e *echo.Echo, h *Handler) {
 	// Workouts (Beta, iOS-only JSON API — no web UI: the web app is
 	// a read-only companion and never creates/edits workout data).
 	// List accepts an optional ?from=&to= (YYYY-MM-DD) range for
-	// schedule views such as the dashboard calendar.
+	// schedule views such as the dashboard calendar. Detail accepts
+	// ?include=items for the Workout Player's single-call fetch.
 	e.GET("/api/v1/workouts", h.APIListWorkouts)
 	e.POST("/api/v1/workouts", h.APICreateWorkout)
 	e.GET("/api/v1/workouts/:id", h.APIGetWorkout)
@@ -260,6 +261,8 @@ func registerAPIRoutes(e *echo.Echo, h *Handler) {
 	e.PATCH("/api/v1/workouts/:id/blocks/:blockId", h.APIUpdateWorkoutBlockStatus)
 	e.POST("/api/v1/workouts/:id/duplicate", h.APIDuplicateWorkout)
 	e.POST("/api/v1/workouts/:id/duplicate-batch", h.APIDuplicateWorkoutBatch)
+	// Player resume: every exercise entry logged against one workout.
+	e.GET("/api/v1/workouts/:id/exercise-entries", h.APIListWorkoutExerciseEntries)
 
 	// Feedback (JSON mirror of the HTML /feedback POST
 	// handler — used by the iOS client). The same

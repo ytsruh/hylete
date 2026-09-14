@@ -67,6 +67,7 @@ func BuildExerciseEntriesZip(ctx context.Context, w io.Writer, entries []models.
 		"id", "created_at", "date", "exercise_id", "exercise_name", "exercise_type",
 		"reps", "weight", "weight_unit", "rest_time_seconds",
 		"duration_seconds", "distance_km", "avg_heart_rate_bpm", "calories_burned", "pace_sec_per_km",
+		"workout_id", "block_id",
 		"notes",
 	}); err != nil {
 		_ = zw.Close()
@@ -93,6 +94,8 @@ func BuildExerciseEntriesZip(ctx context.Context, w io.Writer, entries []models.
 			strconv.Itoa(e.AvgHeartRate),
 			fmt.Sprintf("%.1f", e.CaloriesBurned),
 			pace,
+			stringValue(e.WorkoutID),
+			stringValue(e.BlockID),
 			e.Notes,
 		}); err != nil {
 			_ = zw.Close()
@@ -131,4 +134,13 @@ func BuildExerciseEntriesZip(ctx context.Context, w io.Writer, entries []models.
 		return result, fmt.Errorf("export: close zip: %w", err)
 	}
 	return result, nil
+}
+
+// stringValue renders an optional workout link ID for the CSV: the ID
+// itself when set, or "" when the set was logged outside a workout.
+func stringValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

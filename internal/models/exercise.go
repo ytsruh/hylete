@@ -171,6 +171,11 @@ func (r *ExerciseRepository) Update(id string, params UpdateExerciseParams) (*Ex
 }
 
 // CreateExerciseEntry persists a new exercise entry and links it to its exercise.
+// Workout attribution (WorkoutID/BlockID/WorkoutBlockID) is carried through
+// when the exercise entry was logged from the Workout Player; nil means
+// logged outside a workout. The workout linkage is write-once: updates
+// never change it (UpdateExerciseEntry* omit the columns so the values
+// are preserved).
 func (r *ExerciseRepository) CreateExerciseEntry(exerciseEntry *ExerciseEntry) error {
 	return r.db.Transaction(func(tx *sql.Tx) error {
 		ctx := context.Background()
@@ -189,6 +194,9 @@ func (r *ExerciseRepository) CreateExerciseEntry(exerciseEntry *ExerciseEntry) e
 			DistanceMeters:  exerciseEntry.DistanceMeters,
 			AvgHeartRate:    int64(exerciseEntry.AvgHeartRate),
 			CaloriesBurned:  exerciseEntry.CaloriesBurned,
+			WorkoutID:       stringPtrToNullString(exerciseEntry.WorkoutID),
+			BlockID:         stringPtrToNullString(exerciseEntry.BlockID),
+			WorkoutBlockID:  stringPtrToNullString(exerciseEntry.WorkoutBlockID),
 			CreatedAt:       timeToNullTime(exerciseEntry.CreatedAt),
 		})
 		if err != nil {
@@ -198,6 +206,31 @@ func (r *ExerciseRepository) CreateExerciseEntry(exerciseEntry *ExerciseEntry) e
 		exerciseEntry.ID = entryUUID
 		return nil
 	})
+}
+
+// ListExerciseEntriesByWorkout returns every exercise entry the user logged
+// against one workout, newest first. Scoped to the user. Backs player
+// resume (per-exercise "logged(n)" counts) without leaking another user's
+// sets via a guessed workout ID.
+func (r *ExerciseRepository) ListExerciseEntriesByWorkout(workoutID, userID string) ([]ExerciseEntry, error) {
+	ctx := context.Background()
+	rows, err := r.queries.ListExerciseEntriesByWorkout(ctx, db.ListExerciseEntriesByWorkoutParams{
+		WorkoutID: sql.NullString{String: workoutID, Valid: true},
+		UserID:    sql.NullString{String: userID, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list exercise entries by workout: %w", err)
+	}
+	out := make([]ExerciseEntry, 0, len(rows))
+	for _, row := range rows {
+		e := ExerciseEntry{}
+		mapExerciseEntryFields(&e, row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+		e.WorkoutID = nullInterfaceToStringPtr(row.WorkoutID)
+		e.BlockID = nullInterfaceToStringPtr(row.BlockID)
+		e.WorkoutBlockID = nullInterfaceToStringPtr(row.WorkoutBlockID)
+		out = append(out, e)
+	}
+	return out, nil
 }
 
 // GetExerciseEntry retrieves a single exercise entry by ID with its exercise name.
@@ -464,6 +497,9 @@ func mapExerciseEntryFields(target *ExerciseEntry, id, exerciseID, exerciseName,
 func mapGetExerciseEntryRow(row db.GetExerciseEntryRow) *ExerciseEntry {
 	e := &ExerciseEntry{}
 	mapExerciseEntryFields(e, row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+	e.WorkoutID = nullInterfaceToStringPtr(row.WorkoutID)
+	e.BlockID = nullInterfaceToStringPtr(row.BlockID)
+	e.WorkoutBlockID = nullInterfaceToStringPtr(row.WorkoutBlockID)
 	return e
 }
 
@@ -471,6 +507,9 @@ func mapListExerciseEntriesRows(rows []db.ListExerciseEntriesRow) []ExerciseEntr
 	exerciseEntries := make([]ExerciseEntry, len(rows))
 	for i, row := range rows {
 		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+		exerciseEntries[i].WorkoutID = nullInterfaceToStringPtr(row.WorkoutID)
+		exerciseEntries[i].BlockID = nullInterfaceToStringPtr(row.BlockID)
+		exerciseEntries[i].WorkoutBlockID = nullInterfaceToStringPtr(row.WorkoutBlockID)
 	}
 	return exerciseEntries
 }
@@ -479,6 +518,9 @@ func mapListExerciseEntriesWithLimitRows(rows []db.ListExerciseEntriesWithLimitR
 	exerciseEntries := make([]ExerciseEntry, len(rows))
 	for i, row := range rows {
 		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+		exerciseEntries[i].WorkoutID = nullInterfaceToStringPtr(row.WorkoutID)
+		exerciseEntries[i].BlockID = nullInterfaceToStringPtr(row.BlockID)
+		exerciseEntries[i].WorkoutBlockID = nullInterfaceToStringPtr(row.WorkoutBlockID)
 	}
 	return exerciseEntries
 }
@@ -487,6 +529,9 @@ func mapGetExerciseEntriesByExercisePaginatedRows(rows []db.GetExerciseEntriesBy
 	exerciseEntries := make([]ExerciseEntry, len(rows))
 	for i, row := range rows {
 		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+		exerciseEntries[i].WorkoutID = nullInterfaceToStringPtr(row.WorkoutID)
+		exerciseEntries[i].BlockID = nullInterfaceToStringPtr(row.BlockID)
+		exerciseEntries[i].WorkoutBlockID = nullInterfaceToStringPtr(row.WorkoutBlockID)
 	}
 	return exerciseEntries
 }
@@ -494,6 +539,9 @@ func mapGetExerciseEntriesByExercisePaginatedRows(rows []db.GetExerciseEntriesBy
 func mapGetLastSetByExerciseRow(row db.GetLastSetByExerciseRow) *ExerciseEntry {
 	e := &ExerciseEntry{}
 	mapExerciseEntryFields(e, row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+	e.WorkoutID = nullInterfaceToStringPtr(row.WorkoutID)
+	e.BlockID = nullInterfaceToStringPtr(row.BlockID)
+	e.WorkoutBlockID = nullInterfaceToStringPtr(row.WorkoutBlockID)
 	return e
 }
 
@@ -501,6 +549,9 @@ func mapGetExerciseEntriesByDateRangeRows(rows []db.GetExerciseEntriesByDateRang
 	exerciseEntries := make([]ExerciseEntry, len(rows))
 	for i, row := range rows {
 		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+		exerciseEntries[i].WorkoutID = nullInterfaceToStringPtr(row.WorkoutID)
+		exerciseEntries[i].BlockID = nullInterfaceToStringPtr(row.BlockID)
+		exerciseEntries[i].WorkoutBlockID = nullInterfaceToStringPtr(row.WorkoutBlockID)
 	}
 	return exerciseEntries
 }
@@ -509,8 +560,56 @@ func mapListExerciseEntriesLast7DaysRows(rows []db.ListExerciseEntriesLast7DaysR
 	exerciseEntries := make([]ExerciseEntry, len(rows))
 	for i, row := range rows {
 		mapExerciseEntryFields(&exerciseEntries[i], row.ID, row.ExerciseID, row.ExerciseName, row.ExerciseType, nullStringToString(row.UserID), row.Reps, row.Weight, nullStringToString(row.Notes), row.RestTime, row.DurationSeconds, row.DistanceMeters, row.AvgHeartRate, row.CaloriesBurned, row.CreatedAt)
+		exerciseEntries[i].WorkoutID = nullInterfaceToStringPtr(row.WorkoutID)
+		exerciseEntries[i].BlockID = nullInterfaceToStringPtr(row.BlockID)
+		exerciseEntries[i].WorkoutBlockID = nullInterfaceToStringPtr(row.WorkoutBlockID)
 	}
 	return exerciseEntries
+}
+
+// stringPtrToNullString converts an optional link ID into a sql.NullString
+// for sqlc's interface{} workout columns. Nil or empty maps to an
+// invalid NullString so the row stores NULL.
+func stringPtrToNullString(s *string) sql.NullString {
+	if s == nil || *s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *s, Valid: true}
+}
+
+// nullInterfaceToStringPtr converts sqlc's interface{} workout columns
+// (TEXT NULL with FKs) back into an optional string. Handles the driver
+// shapes tursogo/libsql can return (string, []byte, sql.NullString) and
+// maps NULL/empty to nil so historic rows decode as "logged outside a
+// workout".
+func nullInterfaceToStringPtr(v any) *string {
+	switch t := v.(type) {
+	case nil:
+		return nil
+	case string:
+		if t == "" {
+			return nil
+		}
+		c := t
+		return &c
+	case []byte:
+		if len(t) == 0 {
+			return nil
+		}
+		c := string(t)
+		if c == "" {
+			return nil
+		}
+		return &c
+	case sql.NullString:
+		if !t.Valid || t.String == "" {
+			return nil
+		}
+		c := t.String
+		return &c
+	default:
+		return nil
+	}
 }
 
 func nullStringToString(ns sql.NullString) string {

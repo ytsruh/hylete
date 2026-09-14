@@ -45,6 +45,13 @@ type Exercise struct {
 // The server zeroes the pair that does not apply, so exactly one pair is
 // ever non-zero. Distance is stored canonically in metres; pace is never
 // stored, only derived via PaceSecPerKm.
+//
+// WorkoutID/BlockID/WorkoutBlockID attribute the exercise entry to a
+// Workout Player session. All are nil when logged outside a workout.
+// WorkoutID + BlockID are stable across workout edits (UpdateWorkout
+// regenerates every workout_blocks join ID); WorkoutBlockID is the
+// precise join row but is nulled when the workout is edited. History,
+// charts, and exports must never depend on these being set.
 type ExerciseEntry struct {
 	ID              string
 	ExerciseID      string
@@ -59,7 +66,16 @@ type ExerciseEntry struct {
 	AvgHeartRate    int
 	CaloriesBurned  float64
 	ExerciseType    ExerciseType
-	CreatedAt       time.Time
+	// WorkoutID is the scheduled workout this exercise entry was logged
+	// from, or nil when logged outside a workout.
+	WorkoutID *string
+	// BlockID is the catalogue block this exercise entry was logged
+	// from, or nil. Stable across workout edits.
+	BlockID *string
+	// WorkoutBlockID is the precise workout_blocks join row, or nil.
+	// Nulled when the workout is edited (join IDs regenerate).
+	WorkoutBlockID *string
+	CreatedAt      time.Time
 }
 
 // IsCardio reports whether this exercise entry belongs to a cardio exercise.

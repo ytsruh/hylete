@@ -158,6 +158,33 @@ func (f *fakeWorkoutRepo) Delete(id, userID string) error {
 	return nil
 }
 
+func (f *fakeWorkoutRepo) MarkInProgressIfPlanned(workoutID, userID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if w, ok := f.workouts[workoutID]; ok && w.UserID == userID && w.Status == models.WorkoutStatusPlanned {
+		w.Status = models.WorkoutStatusInProgress
+	}
+	return nil
+}
+
+func (f *fakeWorkoutRepo) MarkCompletedIfBlocksDone(workoutID, userID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	w, ok := f.workouts[workoutID]
+	if !ok || w.UserID != userID {
+		return nil
+	}
+	for _, b := range w.Blocks {
+		if b.Status == models.WorkoutBlockPending {
+			return nil
+		}
+	}
+	if len(w.Blocks) > 0 {
+		w.Status = models.WorkoutStatusCompleted
+	}
+	return nil
+}
+
 func (f *fakeWorkoutRepo) CreateBatch(ws []*models.Workout) error {
 	for _, w := range ws {
 		if err := f.Create(w); err != nil {
@@ -297,6 +324,76 @@ func TestSetWorkoutBlockStatus(t *testing.T) {
 	}
 	if _, err := ctrl.SetWorkoutBlockStatus(w.ID, "missing", "u1", models.WorkoutBlockDone); !errors.Is(err, ErrWorkoutNotFound) {
 		t.Errorf("err = %v, want ErrWorkoutNotFound", err)
+	}
+}
+
+// TestSetWorkoutBlockStatus_AutoCompletes is the second half of the
+// "both" status rule: flipping the last pending block to done/skipped
+// auto-completes the workout. A flip that leaves a pending block must
+// not complete it.
+func TestSetWorkoutBlockStatus_AutoCompletes(t *testing.T) {
+	ctrl, _ := setupWorkoutsController()
+	in := validWorkoutInput()
+	in.Blocks = []WorkoutBlockInput{{BlockID: "blk-1"}, {BlockID: "blk-2"}}
+	w, err := ctrl.CreateWorkout("u1", in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := ctrl.SetWorkoutBlockStatus(w.ID, w.Blocks[0].ID, "u1", models.WorkoutBlockDone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Status == models.WorkoutStatusCompleted {
+		t.Error("workout completed with a block still pending")
+	}
+	updated, err = ctrl.SetWorkoutBlockStatus(w.ID, w.Blocks[1].ID, "u1", models.WorkoutBlockSkipped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Status != models.WorkoutStatusCompleted {
+		t.Errorf("status = %q, want completed after last block resolved", updated.Status)
+	}
+}
+
+// TestGetWorkoutWithItems resolves every block's planned exercises in
+// position order for the player single-call fetch. A block whose
+// catalogue row is gone keeps its row with no items so the player can
+// still show its name and offer Skip.
+func TestGetWorkoutWithItems(t *testing.T) {
+	repo := newFakeWorkoutRepo()
+	lookup := &fakeWorkoutBlockLookup{blocks: map[string]*models.Block{
+		"blk-1": {ID: "blk-1", UserID: "u1", Name: "Push", Type: models.BlockTypeStandard, Items: []models.BlockItem{
+			{ID: "i1", BlockID: "blk-1", ExerciseID: "ex-1", ExerciseName: "Squat", Position: 0},
+			{ID: "i2", BlockID: "blk-1", ExerciseID: "ex-2", ExerciseName: "Bench", Position: 1},
+		}},
+	}}
+	ctrl := NewWorkoutsController(repo, lookup)
+	w, err := ctrl.CreateWorkout("u1", validWorkoutInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ctrl.GetWorkoutWithItems(w.ID, "u1")
+	if err != nil {
+		t.Fatalf("GetWorkoutWithItems failed: %v", err)
+	}
+	if len(got.Blocks) != 1 || len(got.Blocks[0].Items) != 2 {
+		t.Fatalf("blocks = %+v, want 1 block with 2 items", got.Blocks)
+	}
+	if got.Blocks[0].Items[0].ExerciseName != "Squat" {
+		t.Errorf("first item = %q, want Squat", got.Blocks[0].Items[0].ExerciseName)
+	}
+	if _, err := ctrl.GetWorkoutWithItems(w.ID, "u2"); !errors.Is(err, ErrWorkoutNotFound) {
+		t.Errorf("wrong-user err = %v, want ErrWorkoutNotFound", err)
+	}
+
+	// Deleted catalogue block: row kept, items empty.
+	delete(lookup.blocks, "blk-1")
+	got, err = ctrl.GetWorkoutWithItems(w.ID, "u1")
+	if err != nil {
+		t.Fatalf("GetWorkoutWithItems after block delete failed: %v", err)
+	}
+	if len(got.Blocks) != 1 || len(got.Blocks[0].Items) != 0 {
+		t.Errorf("blocks = %+v, want 1 row with 0 items", got.Blocks)
 	}
 }
 

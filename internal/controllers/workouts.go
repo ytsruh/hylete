@@ -199,7 +199,11 @@ func (wc *WorkoutsController) DeleteWorkout(id, userID string) error {
 
 // SetWorkoutBlockStatus marks one block in a workout done/skipped/
 // pending. Returns ErrWorkoutNotFound when the workout or join row
-// is missing (or owned by another user).
+// is missing (or owned by another user). When the flip leaves every
+// block done or skipped the workout auto-completes (the second half
+// of the "both" status rule — the first half is the planned ->
+// in_progress flip on the first linked set in
+// ExerciseEntryController.CreateExerciseEntries).
 func (wc *WorkoutsController) SetWorkoutBlockStatus(workoutID, workoutBlockID, userID string, status models.WorkoutBlockStatus) (*models.Workout, error) {
 	if !status.IsValid() {
 		return nil, ErrWorkoutBlockStatusInvalid
@@ -221,7 +225,44 @@ func (wc *WorkoutsController) SetWorkoutBlockStatus(workoutID, workoutBlockID, u
 	if err := wc.repo.SetBlockStatus(workoutID, workoutBlockID, status); err != nil {
 		return nil, err
 	}
+	if err := wc.repo.MarkCompletedIfBlocksDone(workoutID, userID); err != nil {
+		return nil, err
+	}
 	return wc.repo.GetByID(workoutID, userID)
+}
+
+// GetWorkoutWithItems fetches a workout with every block's planned
+// exercises resolved, for the Workout Player's single-call fetch
+// (GET /api/v1/workouts/:id?include=items). Blocks stay in position
+// order; each block's items come from the block catalogue in position
+// order. Returns ErrWorkoutNotFound when missing or owned by another
+// user.
+func (wc *WorkoutsController) GetWorkoutWithItems(id, userID string) (*models.WorkoutWithItems, error) {
+	w, err := wc.repo.GetByID(id, userID)
+	if err != nil {
+		return nil, err
+	}
+	if w == nil {
+		return nil, ErrWorkoutNotFound
+	}
+	out := &models.WorkoutWithItems{Workout: *w}
+	out.Blocks = make([]models.WorkoutBlockDetail, 0, len(w.Blocks))
+	for _, wb := range w.Blocks {
+		b, err := wc.blocks.GetByID(wb.BlockID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if b == nil {
+			// Block deleted or owned by another user after the
+			// workout was planned: keep the block row with no
+			// items so the player can still show its name and
+			// let the user mark it skipped.
+			out.Blocks = append(out.Blocks, models.WorkoutBlockDetail{WorkoutBlock: wb})
+			continue
+		}
+		out.Blocks = append(out.Blocks, models.WorkoutBlockDetail{WorkoutBlock: wb, Items: b.Items})
+	}
+	return out, nil
 }
 
 // DuplicateWorkout copies a workout (exact name, description,

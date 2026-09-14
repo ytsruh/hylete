@@ -11,6 +11,7 @@ import SwiftUI
 /// delete confirms then pops back to the list.
 struct WorkoutDetailView: View {
     @EnvironmentObject private var env: AppEnvironment
+    @EnvironmentObject private var authStore: AuthStore
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var store: WorkoutStore
     @ObservedObject var blockStore: BlockStore
@@ -20,6 +21,7 @@ struct WorkoutDetailView: View {
     @State private var showingEditor: Bool = false
     @State private var showingDuplicate: Bool = false
     @State private var showingDelete: Bool = false
+    @State private var showingPlayer: Bool = false
     @State private var didRequestLoad: Bool = false
 
     private var workout: WorkoutDTO? {
@@ -82,6 +84,20 @@ struct WorkoutDetailView: View {
             } message: {
                 Text("This permanently removes the workout and its plan. Logged sets are unaffected.")
             }
+            .fullScreenCover(isPresented: $showingPlayer) {
+                WorkoutPlayerView(
+                    workoutID: workoutID,
+                    workoutStore: store,
+                    player: WorkoutPlayerStore(
+                        workoutID: workoutID,
+                        api: env.api,
+                        weightUnit: authStore.currentUser?.weightUnit ?? "kg",
+                        distanceUnit: authStore.currentUser?.distanceUnit ?? "km"
+                    )
+                )
+                .environmentObject(env)
+                .environmentObject(authStore)
+            }
             .task {
                 guard !didRequestLoad else { return }
                 didRequestLoad = true
@@ -141,6 +157,23 @@ struct WorkoutDetailView: View {
                         Text(status.displayName).tag(status)
                     }
                 }
+            }
+
+            // Primary entry to the Workout Player: full-screen
+            // session that walks through every block, logging sets
+            // as exercise entries. "Start" is UI state only — the
+            // workout flips to in_progress on the first logged set.
+            Section {
+                Button {
+                    showingPlayer = true
+                } label: {
+                    Text("Start workout")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.dsPrimary)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
             }
 
             Section {
@@ -295,4 +328,8 @@ struct WorkoutDetailView: View {
         )
     }
     .environmentObject(AppEnvironment.live(baseURL: URL(string: "http://localhost:8080/api/v1")!))
+    .environmentObject(AuthStore(api: APIClient(
+        baseURL: URL(string: "http://localhost:8080/api/v1")!,
+        tokenProvider: { nil }
+    )))
 }

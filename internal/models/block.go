@@ -222,14 +222,21 @@ func (r *BlockRepository) Update(b *Block, userID string) error {
 }
 
 // Delete removes a block and its items (explicit item delete first
-// so databases ignoring ON DELETE CASCADE stay correct). Scoped to
-// the user.
+// so databases ignoring ON DELETE CASCADE stay correct). Logged
+// exercise entries are detached first (block_id nulled) so history
+// survives the delete. Scoped to the user.
 func (r *BlockRepository) Delete(id, userID string) error {
 	ctx := context.Background()
-	if err := r.queries.DeleteBlockItems(ctx, id); err != nil {
-		return fmt.Errorf("failed to delete block items: %w", err)
-	}
-	return r.queries.DeleteBlock(ctx, db.DeleteBlockParams{ID: id, UserID: userID})
+	return r.db.Transaction(func(tx *sql.Tx) error {
+		q := r.queries.WithTx(tx)
+		if err := q.NullExerciseEntryLinksForBlock(ctx, sql.NullString{String: id, Valid: true}); err != nil {
+			return fmt.Errorf("failed to detach block exercise entries: %w", err)
+		}
+		if err := q.DeleteBlockItems(ctx, id); err != nil {
+			return fmt.Errorf("failed to delete block items: %w", err)
+		}
+		return q.DeleteBlock(ctx, db.DeleteBlockParams{ID: id, UserID: userID})
+	})
 }
 
 // replaceItems deletes every item on the block then inserts the

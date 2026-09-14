@@ -254,6 +254,10 @@ func ExercisesFromModels(es []models.Exercise) []ExerciseDTO {
 // for the non-applicable pair, so clients can decode one struct and branch on
 // exercise_type instead of probing for nulls. Distance is metres; pace is not
 // sent — derive it as duration_seconds / (distance_meters/1000).
+//
+// WorkoutID/BlockID/WorkoutBlockID attribute the set to a Workout Player
+// session. Omitted when the set was logged outside a workout so older
+// clients (decoding without the keys) keep parsing.
 type ExerciseEntryDTO struct {
 	ID              string    `json:"id"`
 	ExerciseID      string    `json:"exercise_id"`
@@ -267,6 +271,9 @@ type ExerciseEntryDTO struct {
 	DistanceMeters  float64   `json:"distance_meters"`
 	AvgHeartRate    int       `json:"avg_heart_rate"`
 	CaloriesBurned  float64   `json:"calories_burned"`
+	WorkoutID       *string   `json:"workout_id,omitempty"`
+	BlockID         *string   `json:"block_id,omitempty"`
+	WorkoutBlockID  *string   `json:"workout_block_id,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 }
 
@@ -285,6 +292,9 @@ func ExerciseEntryFromModel(e models.ExerciseEntry) ExerciseEntryDTO {
 		DistanceMeters:  e.DistanceMeters,
 		AvgHeartRate:    e.AvgHeartRate,
 		CaloriesBurned:  e.CaloriesBurned,
+		WorkoutID:       e.WorkoutID,
+		BlockID:         e.BlockID,
+		WorkoutBlockID:  e.WorkoutBlockID,
 		CreatedAt:       e.CreatedAt,
 	}
 }
@@ -307,6 +317,11 @@ func ExerciseEntriesFromModels(es []models.ExerciseEntry) []ExerciseEntryDTO {
 // here because which fields are mandatory depends on the exercise's type
 // — that check lives in the controller's ValidateExerciseSetInput so the
 // JSON and any future surface share one rule set.
+//
+// WorkoutID/BlockID/WorkoutBlockID attribute the set to a Workout Player
+// session (all omitted = logged outside a workout). Ownership and
+// membership are validated in the controller; unknown IDs surface as
+// 400s, never FK errors.
 type CreateSetInput struct {
 	Reps            int     `json:"reps"             validate:"gte=0,lte=1000"`
 	Weight          float64 `json:"weight"           validate:"gte=0,lte=5000"`
@@ -315,6 +330,9 @@ type CreateSetInput struct {
 	DistanceMeters  float64 `json:"distance_meters"  validate:"gte=0,lte=500000"`
 	AvgHeartRate    int     `json:"avg_heart_rate"   validate:"gte=0,lte=300"`
 	CaloriesBurned  float64 `json:"calories_burned"  validate:"gte=0,lte=10000"`
+	WorkoutID       *string `json:"workout_id,omitempty"`
+	BlockID         *string `json:"block_id,omitempty"`
+	WorkoutBlockID  *string `json:"workout_block_id,omitempty"`
 }
 
 // CreateExerciseEntriesRequest is the body for
@@ -741,6 +759,54 @@ func WorkoutBlockFromModel(b models.WorkoutBlock) WorkoutBlockDTO {
 		Position:         b.Position,
 		Status:           string(b.Status),
 		ItemCount:        b.ItemCount,
+	}
+}
+
+// WorkoutBlockDetailDTO is one planned block with its planned exercises
+// resolved. Returned by GET /api/v1/workouts/:id?include=items so the
+// Workout Player renders every block and row in one call.
+type WorkoutBlockDetailDTO struct {
+	WorkoutBlockDTO
+	Items []BlockItemDTO `json:"items"`
+}
+
+// WorkoutWithItemsDTO is the player-fetch shape: the full workout with
+// every block's items embedded. Blocks stay in position order.
+type WorkoutWithItemsDTO struct {
+	ID            string                  `json:"id"`
+	Name          string                  `json:"name"`
+	Description   string                  `json:"description"`
+	ScheduledDate string                  `json:"scheduled_date"`
+	Status        string                  `json:"status"`
+	Blocks        []WorkoutBlockDetailDTO `json:"blocks"`
+	CreatedAt     time.Time               `json:"created_at"`
+	UpdatedAt     time.Time               `json:"updated_at"`
+}
+
+// WorkoutWithItemsFromModel converts a models.WorkoutWithItems into its
+// DTO. Item slices default to [] (not null) when a block has no items
+// (e.g. its catalogue block was deleted after planning).
+func WorkoutWithItemsFromModel(w models.WorkoutWithItems) WorkoutWithItemsDTO {
+	blocks := make([]WorkoutBlockDetailDTO, 0, len(w.Blocks))
+	for _, b := range w.Blocks {
+		items := make([]BlockItemDTO, 0, len(b.Items))
+		for _, it := range b.Items {
+			items = append(items, BlockItemFromModel(it))
+		}
+		blocks = append(blocks, WorkoutBlockDetailDTO{
+			WorkoutBlockDTO: WorkoutBlockFromModel(b.WorkoutBlock),
+			Items:           items,
+		})
+	}
+	return WorkoutWithItemsDTO{
+		ID:            w.ID,
+		Name:          w.Name,
+		Description:   w.Description,
+		ScheduledDate: w.ScheduledDate,
+		Status:        string(w.Status),
+		Blocks:        blocks,
+		CreatedAt:     w.CreatedAt,
+		UpdatedAt:     w.UpdatedAt,
 	}
 }
 

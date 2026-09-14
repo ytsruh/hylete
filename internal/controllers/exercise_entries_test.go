@@ -315,6 +315,18 @@ func (m *mockRepository) ListExerciseEntriesLast7Days(userID string) ([]models.E
 	return result, nil
 }
 
+func (m *mockRepository) ListExerciseEntriesByWorkout(workoutID string, userID string) ([]models.ExerciseEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var result []models.ExerciseEntry
+	for _, e := range m.exerciseEntries {
+		if e.WorkoutID != nil && *e.WorkoutID == workoutID && e.UserID == userID {
+			result = append(result, e)
+		}
+	}
+	return result, nil
+}
+
 func (m *mockRepository) GetExerciseByID(id string, userID string) (*models.Exercise, error) {
 	if m.errGetExerciseByID != nil {
 		return nil, m.errGetExerciseByID
@@ -983,5 +995,182 @@ func TestExerciseEntryController_GetAllExerciseEntriesForChart_Empty(t *testing.
 	}
 	if len(got) != 0 {
 		t.Errorf("expected empty chart exercise entries, got %d", len(got))
+	}
+}
+
+// fakeExerciseWorkoutLinks is an in-memory ExerciseWorkoutLinks for
+// player-linkage tests. Workouts are keyed by ID with their owning
+// user; join rows live on the workout's Blocks slice.
+type fakeExerciseWorkoutLinks struct {
+	mu       sync.Mutex
+	workouts map[string]*models.Workout
+	progress []string
+}
+
+func newFakeExerciseWorkoutLinks() *fakeExerciseWorkoutLinks {
+	return &fakeExerciseWorkoutLinks{workouts: map[string]*models.Workout{}}
+}
+
+func (f *fakeExerciseWorkoutLinks) GetByID(id, userID string) (*models.Workout, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	w, ok := f.workouts[id]
+	if !ok || w.UserID != userID {
+		return nil, nil
+	}
+	cp := *w
+	cp.Blocks = append([]models.WorkoutBlock{}, w.Blocks...)
+	return &cp, nil
+}
+
+func (f *fakeExerciseWorkoutLinks) GetWorkoutBlock(workoutID, workoutBlockID string) (*models.WorkoutBlock, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	w, ok := f.workouts[workoutID]
+	if !ok {
+		return nil, nil
+	}
+	for _, b := range w.Blocks {
+		if b.ID == workoutBlockID {
+			cp := b
+			return &cp, nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *fakeExerciseWorkoutLinks) MarkInProgressIfPlanned(workoutID, userID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if w, ok := f.workouts[workoutID]; ok && w.UserID == userID && w.Status == models.WorkoutStatusPlanned {
+		w.Status = models.WorkoutStatusInProgress
+	}
+	f.progress = append(f.progress, workoutID)
+	return nil
+}
+
+func strPtr(s string) *string { return &s }
+
+// TestExerciseEntryController_CreateLinked_FlipsPlannedToInProgress is the
+// first half of the "both" status rule: Start is pure UI state, so the
+// planned -> in_progress flip happens as a side-effect of the first
+// submitted linked set.
+func TestExerciseEntryController_CreateLinked_FlipsPlannedToInProgress(t *testing.T) {
+	ec, _ := setupExerciseEntryController(t)
+	links := newFakeExerciseWorkoutLinks()
+	links.workouts["wo-1"] = &models.Workout{
+		ID: "wo-1", UserID: "u1", Name: "Day 1", ScheduledDate: "2026-09-14",
+		Status: models.WorkoutStatusPlanned,
+		Blocks: []models.WorkoutBlock{{ID: "wb-1", WorkoutID: "wo-1", BlockID: "blk-1", Status: models.WorkoutBlockPending}},
+	}
+	ec.SetWorkoutsResolver(links)
+
+	created, err := ec.CreateExerciseEntries("u1", "ex-1", models.ExerciseTypeStrength, "", time.Now(), []ExerciseSetInput{
+		{Reps: 5, Weight: 100, WorkoutID: strPtr("wo-1"), BlockID: strPtr("blk-1"), WorkoutBlockID: strPtr("wb-1")},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(created) != 1 {
+		t.Fatalf("expected 1 exercise entry, got %d", len(created))
+	}
+	if created[0].WorkoutID == nil || *created[0].WorkoutID != "wo-1" {
+		t.Errorf("workout link not persisted: %+v", created[0])
+	}
+	if created[0].BlockID == nil || *created[0].BlockID != "blk-1" {
+		t.Errorf("block link not persisted: %+v", created[0])
+	}
+	if links.workouts["wo-1"].Status != models.WorkoutStatusInProgress {
+		t.Errorf("status = %q, want in_progress", links.workouts["wo-1"].Status)
+	}
+}
+
+// TestExerciseEntryController_CreateLinked_Validation covers the linkage
+// failure modes: unknown workout, another user's workout, join row from
+// another workout, and block not in the workout. Nothing is stored on
+// failure.
+func TestExerciseEntryController_CreateLinked_Validation(t *testing.T) {
+	ec, _ := setupExerciseEntryController(t)
+	links := newFakeExerciseWorkoutLinks()
+	links.workouts["wo-1"] = &models.Workout{
+		ID: "wo-1", UserID: "u1", Name: "Day 1", ScheduledDate: "2026-09-14",
+		Status: models.WorkoutStatusPlanned,
+		Blocks: []models.WorkoutBlock{{ID: "wb-1", WorkoutID: "wo-1", BlockID: "blk-1", Status: models.WorkoutBlockPending}},
+	}
+	links.workouts["wo-9"] = &models.Workout{
+		ID: "wo-9", UserID: "u1", Name: "Other", ScheduledDate: "2026-09-15",
+		Status: models.WorkoutStatusPlanned,
+		Blocks: []models.WorkoutBlock{{ID: "wb-9", WorkoutID: "wo-9", BlockID: "blk-9", Status: models.WorkoutBlockPending}},
+	}
+	ec.SetWorkoutsResolver(links)
+
+	cases := []struct {
+		name string
+		set  ExerciseSetInput
+		want error
+	}{
+		{"unknown workout", ExerciseSetInput{Reps: 5, Weight: 100, WorkoutID: strPtr("nope")}, ErrEntryWorkoutNotFound},
+		{"join row from another workout", ExerciseSetInput{Reps: 5, Weight: 100, WorkoutID: strPtr("wo-1"), WorkoutBlockID: strPtr("wb-9")}, ErrEntryWorkoutBlockNotFound},
+		{"block not in workout", ExerciseSetInput{Reps: 5, Weight: 100, WorkoutID: strPtr("wo-1"), BlockID: strPtr("blk-9")}, ErrEntryBlockMismatch},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := ec.repo.(*mockRepository)
+			before := len(mock.exerciseEntries)
+			if _, err := ec.CreateExerciseEntries("u1", "ex-1", models.ExerciseTypeStrength, "", time.Now(), []ExerciseSetInput{tc.set}); !errors.Is(err, tc.want) {
+				t.Errorf("err = %v, want %v", err, tc.want)
+			}
+			if n := len(mock.exerciseEntries); n != before {
+				t.Errorf("stored %d exercise entries on validation failure, want 0 new", n-before)
+			}
+		})
+	}
+
+	// Another user's workout reads as not found.
+	if _, err := ec.CreateExerciseEntries("u2", "ex-1", models.ExerciseTypeStrength, "", time.Now(), []ExerciseSetInput{{Reps: 5, Weight: 100, WorkoutID: strPtr("wo-1")}}); !errors.Is(err, ErrEntryWorkoutNotFound) {
+		t.Errorf("wrong-user err = %v, want %v", err, ErrEntryWorkoutNotFound)
+	}
+}
+
+// TestExerciseEntryController_CreateLinked_BlockIDWithoutJoinID allows the
+// stable block_id pointer on its own so attribution survives workout edits
+// that regenerate every workout_blocks join ID.
+func TestExerciseEntryController_CreateLinked_BlockIDWithoutJoinID(t *testing.T) {
+	ec, _ := setupExerciseEntryController(t)
+	links := newFakeExerciseWorkoutLinks()
+	links.workouts["wo-1"] = &models.Workout{
+		ID: "wo-1", UserID: "u1", Name: "Day 1", ScheduledDate: "2026-09-14",
+		Status: models.WorkoutStatusInProgress,
+		Blocks: []models.WorkoutBlock{{ID: "wb-2", WorkoutID: "wo-1", BlockID: "blk-1", Status: models.WorkoutBlockPending}},
+	}
+	ec.SetWorkoutsResolver(links)
+
+	created, err := ec.CreateExerciseEntries("u1", "ex-1", models.ExerciseTypeStrength, "", time.Now(), []ExerciseSetInput{
+		{Reps: 5, Weight: 100, WorkoutID: strPtr("wo-1"), BlockID: strPtr("blk-1")},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if created[0].WorkoutBlockID != nil {
+		t.Errorf("expected nil join pointer, got %q", *created[0].WorkoutBlockID)
+	}
+}
+
+// TestExerciseEntryController_ListByWorkout scopes resume reads to the
+// user so a guessed workout ID cannot leak another user's sets.
+func TestExerciseEntryController_ListByWorkout(t *testing.T) {
+	ec, mock := setupExerciseEntryController(t)
+	wid := "wo-1"
+	mock.exerciseEntries = []models.ExerciseEntry{
+		{ID: "e1", UserID: "u1", ExerciseID: "ex-1", WorkoutID: &wid},
+		{ID: "e2", UserID: "u2", ExerciseID: "ex-1", WorkoutID: &wid},
+		{ID: "e3", UserID: "u1", ExerciseID: "ex-1"},
+	}
+	got, err := ec.ListExerciseEntriesByWorkout("wo-1", "u1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "e1" {
+		t.Errorf("got %+v, want only e1", got)
 	}
 }

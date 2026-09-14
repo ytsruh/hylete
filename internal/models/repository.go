@@ -86,6 +86,11 @@ type Repository interface {
 	// created_at descending with insertion order (rowid descending) as the tie-breaker.
 	// Scopes to the given user ID.
 	ListExerciseEntriesLast7Days(userID string) ([]ExerciseEntry, error)
+
+	// ListExerciseEntriesByWorkout returns every exercise entry the user logged
+	// against one workout, newest first. Scoped to the user. Backs player
+	// resume (per-exercise "logged(n)" counts).
+	ListExerciseEntriesByWorkout(workoutID string, userID string) ([]ExerciseEntry, error)
 }
 
 // UserRepo defines the interface for user data access.
@@ -242,6 +247,12 @@ type WorkoutRepo interface {
 	CountBlockUsage(blockID, userID string) (int64, error)
 	// Delete removes a workout and its blocks. Scoped to the user.
 	Delete(id, userID string) error
+	// MarkInProgressIfPlanned flips a planned workout to in_progress
+	// on the first linked exercise entry. No-op otherwise.
+	MarkInProgressIfPlanned(workoutID, userID string) error
+	// MarkCompletedIfBlocksDone sets the workout to completed when
+	// every block is done or skipped. No-op otherwise.
+	MarkCompletedIfBlocksDone(workoutID, userID string) error
 }
 
 // Compile-time check to ensure WorkoutRepository implements WorkoutRepo.

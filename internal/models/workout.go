@@ -97,6 +97,38 @@ type WorkoutSummary struct {
 	DoneCount  int
 }
 
+// WorkoutBlockDetail is one planned block inside a workout with its
+// planned exercises resolved. Used by GET /api/v1/workouts/:id
+// ?include=items so the Workout Player can render every block and
+// row in one call instead of N+1 BlockStore.detail fetches.
+type WorkoutBlockDetail struct {
+	WorkoutBlock
+	Items []BlockItem
+}
+
+// WorkoutWithItems is a workout with every block's planned items
+// resolved. The Blocks slice stays in position order.
+type WorkoutWithItems struct {
+	Workout
+	Blocks []WorkoutBlockDetail
+}
+
+// AllBlocksDoneOrSkipped reports whether every block in the workout
+// is done or skipped (no pending rows). Backs the auto-complete rule:
+// the last block flip to done/skipped completes the workout. An empty
+// workout never counts as complete.
+func (w *Workout) AllBlocksDoneOrSkipped() bool {
+	if len(w.Blocks) == 0 {
+		return false
+	}
+	for _, b := range w.Blocks {
+		if b.Status == WorkoutBlockPending {
+			return false
+		}
+	}
+	return true
+}
+
 // StatusDisplayName returns the user-facing label for the workout
 // status.
 func (w *Workout) StatusDisplayName() string {
@@ -345,20 +377,37 @@ func (r *WorkoutRepository) CountBlockUsage(blockID, userID string) (int64, erro
 
 // Delete removes a workout and its blocks (explicit block delete
 // first so databases ignoring ON DELETE CASCADE stay correct).
+// Logged exercise entries are detached first (workout_id and
+// workout_block_id nulled) so history survives the delete.
 // Scoped to the user.
 func (r *WorkoutRepository) Delete(id, userID string) error {
 	ctx := context.Background()
-	if err := r.queries.DeleteWorkoutBlocks(ctx, id); err != nil {
-		return fmt.Errorf("failed to delete workout blocks: %w", err)
-	}
-	return r.queries.DeleteWorkout(ctx, db.DeleteWorkoutParams{ID: id, UserID: userID})
+	return r.db.Transaction(func(tx *sql.Tx) error {
+		q := r.queries.WithTx(tx)
+		if err := q.NullExerciseEntryLinksForWorkout(ctx, db.NullExerciseEntryLinksForWorkoutParams{
+			WorkoutID: sql.NullString{String: id, Valid: true},
+			UserID:    sql.NullString{String: userID, Valid: true},
+		}); err != nil {
+			return fmt.Errorf("failed to detach workout exercise entries: %w", err)
+		}
+		if err := q.DeleteWorkoutBlocks(ctx, id); err != nil {
+			return fmt.Errorf("failed to delete workout blocks: %w", err)
+		}
+		return q.DeleteWorkout(ctx, db.DeleteWorkoutParams{ID: id, UserID: userID})
+	})
 }
 
 // replaceBlocks deletes every block on the workout then inserts the
-// supplied blocks in slice order. Join IDs are regenerated.
+// supplied blocks in slice order. Join IDs are regenerated, so linked
+// exercise entries lose their precise workout_block_id pointer first
+// (nulled explicitly — SQLite FKs default to OFF); their stable
+// workout_id + block_id attribution is retained.
 func (r *WorkoutRepository) replaceBlocks(ctx context.Context, workoutID string, blocks []WorkoutBlock, out *[]WorkoutBlock) error {
 	return r.db.Transaction(func(tx *sql.Tx) error {
 		q := r.queries.WithTx(tx)
+		if err := q.NullWorkoutBlockLinksForWorkout(ctx, sql.NullString{String: workoutID, Valid: true}); err != nil {
+			return err
+		}
 		if err := q.DeleteWorkoutBlocks(ctx, workoutID); err != nil {
 			return err
 		}
@@ -368,6 +417,42 @@ func (r *WorkoutRepository) replaceBlocks(ctx context.Context, workoutID string,
 		}
 		*out = fresh
 		return nil
+	})
+}
+
+// MarkCompletedIfBlocksDone sets the workout to completed when every
+// block is done or skipped. No-op otherwise. Used by the
+// auto-complete rule after a block status flip. Scoped to the user.
+func (r *WorkoutRepository) MarkCompletedIfBlocksDone(workoutID, userID string) error {
+	ctx := context.Background()
+	w, err := r.GetByID(workoutID, userID)
+	if err != nil {
+		return err
+	}
+	if w == nil || !w.AllBlocksDoneOrSkipped() || w.Status == WorkoutStatusCompleted {
+		return nil
+	}
+	return r.queries.UpdateWorkoutStatus(ctx, db.UpdateWorkoutStatusParams{
+		Status: string(WorkoutStatusCompleted),
+		ID:     workoutID,
+	})
+}
+
+// MarkInProgressIfPlanned flips a planned workout to in_progress on
+// the first linked exercise entry. No-op for any other status.
+// Backs the "Start is UI state until data is submitted" rule.
+func (r *WorkoutRepository) MarkInProgressIfPlanned(workoutID, userID string) error {
+	ctx := context.Background()
+	w, err := r.GetByID(workoutID, userID)
+	if err != nil {
+		return err
+	}
+	if w == nil || w.Status != WorkoutStatusPlanned {
+		return nil
+	}
+	return r.queries.UpdateWorkoutStatus(ctx, db.UpdateWorkoutStatusParams{
+		Status: string(WorkoutStatusInProgress),
+		ID:     workoutID,
 	})
 }
 

@@ -324,7 +324,11 @@ struct NewSetView: View {
 /// plus optional heart rate and calories. Empty values are kept
 /// as `nil` / `""` so freshly added rows don't trigger validation
 /// errors before the user types.
-struct SetDraft: Identifiable, Equatable {
+///
+/// `Codable` so the Workout Player can persist half-typed rows
+/// on-device mid-workout (every member is a value type or
+/// optional, so synthesis is safe).
+struct SetDraft: Identifiable, Equatable, Codable {
     let id = UUID()
 
     // Strength fields.

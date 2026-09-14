@@ -170,15 +170,45 @@ func (m *mockWorkoutRepository) CreateBatch(ws []*models.Workout) error {
 	return nil
 }
 
+func (m *mockWorkoutRepository) MarkInProgressIfPlanned(workoutID, userID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if w, ok := m.workouts[workoutID]; ok && w.UserID == userID && w.Status == models.WorkoutStatusPlanned {
+		w.Status = models.WorkoutStatusInProgress
+	}
+	return nil
+}
+
+func (m *mockWorkoutRepository) MarkCompletedIfBlocksDone(workoutID, userID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w, ok := m.workouts[workoutID]
+	if !ok || w.UserID != userID {
+		return nil
+	}
+	for _, b := range w.Blocks {
+		if b.Status == models.WorkoutBlockPending {
+			return nil
+		}
+	}
+	if len(w.Blocks) > 0 {
+		w.Status = models.WorkoutStatusCompleted
+	}
+	return nil
+}
+
 // mockWorkoutBlockLookup resolves block IDs for workout validation.
 // blk-1/blk-2 belong to whoever asks (tests set UserID-agnostic
-// rows); anything else is unknown.
+// rows); anything else is unknown. blk-1 carries one planned item so
+// ?include=items tests can assert the embed path.
 type mockWorkoutBlockLookup struct{}
 
 func (mockWorkoutBlockLookup) GetByID(id string, userID string) (*models.Block, error) {
 	switch id {
 	case "blk-1":
-		return &models.Block{ID: "blk-1", UserID: userID, Name: "Push", Type: models.BlockTypeStandard}, nil
+		return &models.Block{ID: "blk-1", UserID: userID, Name: "Push", Type: models.BlockTypeStandard, Items: []models.BlockItem{
+			{ID: "bi-1", BlockID: "blk-1", ExerciseID: "ex-1", ExerciseName: "Squat", ExerciseType: models.ExerciseTypeStrength, Position: 0, TargetText: "3x5"},
+		}}, nil
 	case "blk-2":
 		return &models.Block{ID: "blk-2", UserID: userID, Name: "Pull", Type: models.BlockTypeCircuit}, nil
 	default:
@@ -187,12 +217,15 @@ func (mockWorkoutBlockLookup) GetByID(id string, userID string) (*models.Block, 
 }
 
 // setupWorkoutsHandler wires workout + block routes onto the shared
-// test handler with fresh in-memory repos.
+// test handler with fresh in-memory repos. The exercise entry
+// controller is pointed at the same mock workout repo so linked-set
+// tests exercise the real validation + in_progress flip.
 func setupWorkoutsHandler(t *testing.T) (*Handler, *mockWorkoutRepository, *mockUserRepository, *mockBlockRepository, *echo.Echo) {
 	t.Helper()
 	h, mockExercises, mockUser, e := setupHandler(t)
 	workoutRepo := newMockWorkoutRepository()
 	h.SetWorkoutsController(controllers.NewWorkoutsController(workoutRepo, mockWorkoutBlockLookup{}))
+	h.SetExerciseWorkoutsResolver(workoutRepo)
 	blockRepo := newMockBlockRepository()
 	h.SetBlocksController(controllers.NewBlocksController(blockRepo, mockExercises))
 	return h, workoutRepo, mockUser, blockRepo, e
@@ -464,3 +497,103 @@ func TestAPIDuplicateWorkoutBatch(t *testing.T) {
 		t.Errorf("missing source status = %d, want 404", rec.Code)
 	}
 }
+
+// TestAPIWorkout_IncludeItems is the player single-call fetch: detail
+// with ?include=items embeds every block's planned exercises. Without
+// the param the shape is unchanged (plain WorkoutDTO).
+func TestAPIWorkout_IncludeItems(t *testing.T) {
+	h, _, mockUser, _, e := setupWorkoutsHandler(t)
+	token, _ := loginUser(t, h, mockUser, "pi@example.com", "PI")
+
+	created := decodeAPI[WorkoutDTO](t, apiDo(t, e, http.MethodPost, "/api/v1/workouts", token, validCreateWorkoutRequest()), http.StatusCreated)
+
+	plain := decodeAPI[WorkoutDTO](t, apiDo(t, e, http.MethodGet, "/api/v1/workouts/"+created.ID, token, nil), http.StatusOK)
+	if len(plain.Blocks) != 2 {
+		t.Fatalf("plain blocks = %d, want 2", len(plain.Blocks))
+	}
+
+	withItems := decodeAPI[WorkoutWithItemsDTO](t, apiDo(t, e, http.MethodGet, "/api/v1/workouts/"+created.ID+"?include=items", token, nil), http.StatusOK)
+	if withItems.ID != created.ID {
+		t.Errorf("id = %q, want %q", withItems.ID, created.ID)
+	}
+	if len(withItems.Blocks) != 2 {
+		t.Fatalf("blocks = %d, want 2", len(withItems.Blocks))
+	}
+	// blk-1 carries one planned item in the mock lookup; blk-2 none.
+	if len(withItems.Blocks[0].Items) != 1 || withItems.Blocks[0].Items[0].ExerciseName != "Squat" {
+		t.Errorf("block 0 items = %+v, want 1 Squat row", withItems.Blocks[0].Items)
+	}
+	if withItems.Blocks[1].Items == nil || len(withItems.Blocks[1].Items) != 0 {
+		t.Errorf("block 1 items = %+v, want empty non-nil slice", withItems.Blocks[1].Items)
+	}
+
+	rec := apiDo(t, e, http.MethodGet, "/api/v1/workouts/missing?include=items", token, nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("missing status = %d, want 404", rec.Code)
+	}
+}
+
+// TestAPIWorkout_PlayerLogging covers the player loop over HTTP: log a
+// linked set (echoes the link IDs, flips planned to in_progress),
+// resume via the per-workout entries endpoint, then resolve every
+// block and watch the workout auto-complete.
+func TestAPIWorkout_PlayerLogging(t *testing.T) {
+	h, _, mockUser, _, e := setupWorkoutsHandler(t)
+	token, _ := loginUser(t, h, mockUser, "pl@example.com", "PL")
+
+	created := decodeAPI[WorkoutDTO](t, apiDo(t, e, http.MethodPost, "/api/v1/workouts", token, CreateWorkoutRequest{
+		Name: "Solo", Description: "", ScheduledDate: "2026-09-14",
+		Blocks: []CreateWorkoutBlockRequest{{BlockID: "blk-1"}},
+	}), http.StatusCreated)
+
+	wid := created.ID
+	wbid := created.Blocks[0].ID
+	entries := decodeAPI[[]ExerciseEntryDTO](t, apiDo(t, e, http.MethodPost, "/api/v1/exercise-entries", token, CreateExerciseEntriesRequest{
+		ExerciseID: "ex-1",
+		Sets: []CreateSetInput{
+			{Reps: 5, Weight: 100, WorkoutID: &wid, BlockID: strPtr("blk-1"), WorkoutBlockID: &wbid},
+		},
+	}), http.StatusCreated)
+	if entries[0].WorkoutID == nil || *entries[0].WorkoutID != wid {
+		t.Errorf("workout_id = %+v, want %q", entries[0].WorkoutID, wid)
+	}
+	if entries[0].BlockID == nil || *entries[0].BlockID != "blk-1" {
+		t.Errorf("block_id = %+v, want blk-1", entries[0].BlockID)
+	}
+
+	got := decodeAPI[WorkoutDTO](t, apiDo(t, e, http.MethodGet, "/api/v1/workouts/"+wid, token, nil), http.StatusOK)
+	if got.Status != "in_progress" {
+		t.Errorf("status = %q, want in_progress after first linked set", got.Status)
+	}
+
+	resume := decodeAPI[[]ExerciseEntryDTO](t, apiDo(t, e, http.MethodGet, "/api/v1/workouts/"+wid+"/exercise-entries", token, nil), http.StatusOK)
+	if len(resume) != 1 || resume[0].ID != entries[0].ID {
+		t.Errorf("resume = %+v, want the 1 linked set", resume)
+	}
+
+	// Unknown link: 400, and the resume list is unchanged.
+	badID := "nope"
+	rec := apiDo(t, e, http.MethodPost, "/api/v1/exercise-entries", token, CreateExerciseEntriesRequest{
+		ExerciseID: "ex-1",
+		Sets:       []CreateSetInput{{Reps: 5, Weight: 100, WorkoutID: &badID}},
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("unknown workout status = %d, want 400", rec.Code)
+	}
+
+	// Last block to done: workout auto-completes.
+	done := decodeAPI[WorkoutDTO](t, apiDo(t, e, http.MethodPatch, "/api/v1/workouts/"+wid+"/blocks/"+wbid, token,
+		UpdateWorkoutBlockStatusRequest{Status: "done"}), http.StatusOK)
+	if done.Status != "completed" {
+		t.Errorf("status = %q, want completed after last block done", done.Status)
+	}
+
+	// Cross-user resume: 404, no leak.
+	otherToken, _ := loginUser(t, h, mockUser, "other@example.com", "Other")
+	rec = apiDo(t, e, http.MethodGet, "/api/v1/workouts/"+wid+"/exercise-entries", otherToken, nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("cross-user status = %d, want 404", rec.Code)
+	}
+}
+
+func strPtr(s string) *string { return &s }

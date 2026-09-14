@@ -147,6 +147,92 @@ func TestWorkoutRepository_EndToEnd(t *testing.T) {
 	}
 }
 
+// TestWorkoutRepository_LinkSurvival exercises the player-link lifecycle
+// against real SQLite: a linked exercise entry keeps its stable
+// workout_id + block_id across a workout edit (which regenerates every
+// workout_blocks join ID) while losing the precise workout_block_id
+// pointer; a workout delete detaches workout_id + workout_block_id but
+// retains block_id; a block delete then nulls block_id. History is
+// never destroyed.
+func TestWorkoutRepository_LinkSurvival(t *testing.T) {
+	database, err := db.NewLocalConnection(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("NewLocalConnection: %v", err)
+	}
+	defer database.Close()
+	userID, blockID := seedWorkoutFixture(t, database)
+	wrepo := NewWorkoutRepository(database)
+	erepo := NewExerciseRepository(database)
+
+	w := &Workout{
+		UserID: userID, Name: "Monday", ScheduledDate: "2026-09-14",
+		Status: WorkoutStatusPlanned,
+		Blocks: []WorkoutBlock{{BlockID: blockID}},
+	}
+	if err := wrepo.Create(w); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	joinID := w.Blocks[0].ID
+
+	entry := &ExerciseEntry{
+		ExerciseID: "ex-1", UserID: userID, Reps: 5, Weight: 100,
+		WorkoutID: &w.ID, BlockID: &blockID, WorkoutBlockID: &joinID,
+	}
+	if err := erepo.CreateExerciseEntry(entry); err != nil {
+		t.Fatalf("CreateExerciseEntry: %v", err)
+	}
+
+	// Edit regenerates join IDs: precise pointer nulled, stable pair kept.
+	w.Name = "Renamed"
+	if err := wrepo.Update(w, userID); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	got, err := erepo.GetExerciseEntry(entry.ID, userID)
+	if err != nil || got == nil {
+		t.Fatalf("GetExerciseEntry = %+v, %v", got, err)
+	}
+	if got.WorkoutID == nil || *got.WorkoutID != w.ID {
+		t.Errorf("workout_id = %+v, want %q", got.WorkoutID, w.ID)
+	}
+	if got.BlockID == nil || *got.BlockID != blockID {
+		t.Errorf("block_id = %+v, want %q", got.BlockID, blockID)
+	}
+	if got.WorkoutBlockID != nil {
+		t.Errorf("workout_block_id = %q, want NULL after edit", *got.WorkoutBlockID)
+	}
+
+	// Workout delete detaches workout pointers, retains the block.
+	if err := wrepo.Delete(w.ID, userID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	got, err = erepo.GetExerciseEntry(entry.ID, userID)
+	if err != nil || got == nil {
+		t.Fatalf("GetExerciseEntry after delete = %+v, %v", got, err)
+	}
+	if got.WorkoutID != nil {
+		t.Errorf("workout_id = %q, want NULL after workout delete", *got.WorkoutID)
+	}
+	if got.BlockID == nil || *got.BlockID != blockID {
+		t.Errorf("block_id = %+v, want %q retained", got.BlockID, blockID)
+	}
+
+	// Block delete detaches the last pointer; the logged set survives.
+	brepo := NewBlockRepository(database)
+	if err := brepo.Delete(blockID, userID); err != nil {
+		t.Fatalf("block Delete: %v", err)
+	}
+	got, err = erepo.GetExerciseEntry(entry.ID, userID)
+	if err != nil || got == nil {
+		t.Fatalf("GetExerciseEntry after block delete = %+v, %v", got, err)
+	}
+	if got.BlockID != nil {
+		t.Errorf("block_id = %q, want NULL after block delete", *got.BlockID)
+	}
+	if got.Reps != 5 || got.Weight != 100 {
+		t.Errorf("metrics not preserved: %+v", got)
+	}
+}
+
 // TestWorkoutRepository_CreateBatch persists several workouts
 // atomically against real SQLite: all rows (plus their blocks) land
 // together, IDs come back on every value, and the per-copy block

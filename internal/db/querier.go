@@ -124,6 +124,10 @@ type Querier interface {
 	// Completed goals: completed_at IS NOT NULL. Most recently completed first.
 	ListCompletedGoals(ctx context.Context, userID string) ([]Goal, error)
 	ListExerciseEntries(ctx context.Context, userID sql.NullString) ([]ListExerciseEntriesRow, error)
+	// Player resume: every exercise entry the user logged against one
+	// workout, newest first. Scoped to the user via e.user_id so a
+	// guessed workout ID cannot leak another user's sets.
+	ListExerciseEntriesByWorkout(ctx context.Context, arg ListExerciseEntriesByWorkoutParams) ([]ListExerciseEntriesByWorkoutRow, error)
 	ListExerciseEntriesLast7Days(ctx context.Context, userID sql.NullString) ([]ListExerciseEntriesLast7DaysRow, error)
 	ListExerciseEntriesWithLimit(ctx context.Context, arg ListExerciseEntriesWithLimitParams) ([]ListExerciseEntriesWithLimitRow, error)
 	ListHealthSnapshotsRange(ctx context.Context, arg ListHealthSnapshotsRangeParams) ([]HealthSnapshot, error)
@@ -162,6 +166,19 @@ type Querier interface {
 	// the row's edit history stays accurate (useful for future "when was
 	// this user last updated" UI).
 	MarkUserReminderFired(ctx context.Context, arg MarkUserReminderFiredParams) error
+	// Block delete must never destroy logged history: detach the stable
+	// block pointer first (explicit, not relying on FK pragma).
+	NullExerciseEntryLinksForBlock(ctx context.Context, blockID sql.NullString) error
+	// Workout delete must never destroy logged history: detach every
+	// linked exercise entry first (explicit, not relying on FK pragma).
+	NullExerciseEntryLinksForWorkout(ctx context.Context, arg NullExerciseEntryLinksForWorkoutParams) error
+	// Workout edits regenerate every workout_blocks join ID
+	// (delete-all + re-insert), which would orphan
+	// exercise_entries.workout_block_id. Null the precise join pointer
+	// before the join rows are replaced; block_id (stable) is retained
+	// so block attribution survives. FKs alone cannot be relied on
+	// (SQLite defaults PRAGMA foreign_keys=OFF), so this is explicit.
+	NullWorkoutBlockLinksForWorkout(ctx context.Context, workoutID sql.NullString) error
 	// Clear dismissed_at, returning the report to the card list.
 	// Idempotent: reopening a non-dismissed row is a no-op that
 	// still matches (so the route can call it without checking).
@@ -214,6 +231,12 @@ type Querier interface {
 	// CreateWorkoutBlock.
 	UpdateWorkout(ctx context.Context, arg UpdateWorkoutParams) error
 	UpdateWorkoutBlockStatus(ctx context.Context, arg UpdateWorkoutBlockStatusParams) error
+	// Status-only update for the player lifecycle: first linked set flips
+	// planned to in_progress, and the last block flip to done/skipped
+	// auto-completes the workout. Bumps updated_at. Scoping to the
+	// workout ID alone is intentional; callers gate ownership via a
+	// prior scoped GetByID.
+	UpdateWorkoutStatus(ctx context.Context, arg UpdateWorkoutStatusParams) error
 	UpsertHealthSnapshot(ctx context.Context, arg UpsertHealthSnapshotParams) (HealthSnapshot, error)
 }
 

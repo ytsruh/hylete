@@ -50,6 +50,16 @@ CREATE TABLE exercise_entries (
     distance_meters REAL NOT NULL DEFAULT 0,
     avg_heart_rate INTEGER NOT NULL DEFAULT 0,
     calories_burned REAL NOT NULL DEFAULT 0,
+    -- Workout Player attribution (all nullable; NULL = logged outside a
+    -- workout). workout_id + block_id are stable across workout edits;
+    -- workout_block_id is the precise join row but is nulled when
+    -- UpdateWorkout regenerates join IDs. All ON DELETE SET NULL so
+    -- deleting a workout/block never destroys logged history. Columns
+    -- are plain TEXT (nullable by default); do not add an explicit
+    -- NULL keyword - libsql misparses it as NOT NULL.
+    workout_id TEXT REFERENCES workouts(id) ON DELETE SET NULL,
+    block_id TEXT REFERENCES blocks(id) ON DELETE SET NULL,
+    workout_block_id TEXT REFERENCES workout_blocks(id) ON DELETE SET NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (exercise_id) REFERENCES exercises(id)
 );
@@ -57,6 +67,8 @@ CREATE TABLE exercise_entries (
 CREATE INDEX idx_entries_exercise ON exercise_entries(exercise_id);
 CREATE INDEX idx_entries_user ON exercise_entries(user_id);
 CREATE INDEX idx_entries_created ON exercise_entries(created_at);
+CREATE INDEX idx_entries_workout ON exercise_entries(user_id, workout_id);
+CREATE INDEX idx_entries_block ON exercise_entries(block_id);
 CREATE INDEX idx_users_email ON users(email);
 
 CREATE TABLE feedback (

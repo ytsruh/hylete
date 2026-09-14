@@ -122,9 +122,25 @@ func (h *Handler) APICreateWorkout(c echo.Context) error {
 
 // APIGetWorkout handles GET /api/v1/workouts/:id. Returns 404 when
 // the workout is missing or owned by another user.
+//
+// ?include=items embeds every block's planned exercises (the Workout
+// Player's single-call fetch). Without it the response is the plain
+// workout with blocks only — the shape the list, calendar, and detail
+// views already consume.
 func (h *Handler) APIGetWorkout(c echo.Context) error {
 	claims := GetClaims(c)
 	id := c.Param("id")
+
+	if c.QueryParam("include") == "items" {
+		w, err := h.workoutsCtrl.GetWorkoutWithItems(id, claims.UserID)
+		if err != nil {
+			if errors.Is(err, controllers.ErrWorkoutNotFound) {
+				return c.JSON(http.StatusNotFound, APIError{Error: "workout not found"})
+			}
+			return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to load workout"})
+		}
+		return c.JSON(http.StatusOK, WorkoutWithItemsFromModel(*w))
+	}
 
 	w, err := h.workoutsCtrl.GetWorkout(id, claims.UserID)
 	if err != nil {
@@ -134,6 +150,28 @@ func (h *Handler) APIGetWorkout(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to load workout"})
 	}
 	return c.JSON(http.StatusOK, WorkoutFromModel(*w))
+}
+
+// APIListWorkoutExerciseEntries handles GET
+// /api/v1/workouts/:id/exercise-entries. Returns every exercise entry
+// the user logged against the workout, newest first. The workout must
+// exist and belong to the user (404 otherwise) so a guessed ID cannot
+// leak another user's sets. Backs player resume ("2 logged" counts).
+func (h *Handler) APIListWorkoutExerciseEntries(c echo.Context) error {
+	claims := GetClaims(c)
+	id := c.Param("id")
+
+	if _, err := h.workoutsCtrl.GetWorkout(id, claims.UserID); err != nil {
+		if errors.Is(err, controllers.ErrWorkoutNotFound) {
+			return c.JSON(http.StatusNotFound, APIError{Error: "workout not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to load workout"})
+	}
+	entries, err := h.exerciseEntryCtrl.ListExerciseEntriesByWorkout(id, claims.UserID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to load workout exercise entries"})
+	}
+	return c.JSON(http.StatusOK, ExerciseEntriesFromModels(entries))
 }
 
 // APIUpdateWorkout handles PUT /api/v1/workouts/:id. Blocks are
