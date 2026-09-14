@@ -1,7 +1,7 @@
 -- +goose Up
 -- Per-user weight reminder preferences. Each user picks their own
 -- frequency, day-of-week, time-of-day, and channels (push + email).
--- The reminders package reads reminder_next_fire_at to decide who is
+-- The cron package reads reminder_next_fire_at to decide who is
 -- due; the periodic tick (every hour) advances it after firing.
 --
 -- reminder_day_of_week uses Go's time.Weekday convention: 0=Sunday,

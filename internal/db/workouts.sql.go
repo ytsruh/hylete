@@ -10,6 +10,22 @@ import (
 	"time"
 )
 
+const countPendingWorkoutBlocks = `-- name: CountPendingWorkoutBlocks :one
+SELECT COUNT(*) AS pending_count
+FROM workout_blocks
+WHERE workout_id = ? AND status = 'pending'
+`
+
+// Pending-block count for one workout, read inside the sweep
+// transaction before flipping so the tick can log how many blocks
+// moved alongside the workout.
+func (q *Queries) CountPendingWorkoutBlocks(ctx context.Context, workoutID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPendingWorkoutBlocks, workoutID)
+	var pending_count int64
+	err := row.Scan(&pending_count)
+	return pending_count, err
+}
+
 const countWorkoutsUsingBlock = `-- name: CountWorkoutsUsingBlock :one
 SELECT COUNT(*) AS use_count
 FROM workout_blocks wb
@@ -190,6 +206,44 @@ func (q *Queries) GetWorkoutBlock(ctx context.Context, arg GetWorkoutBlockParams
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listStalePlannedWorkoutsWithoutEntries = `-- name: ListStalePlannedWorkoutsWithoutEntries :many
+SELECT w.id
+FROM workouts w
+LEFT JOIN exercise_entries e ON e.workout_id = w.id
+WHERE w.status = 'planned'
+  AND w.scheduled_date < ?
+  AND e.id IS NULL
+`
+
+// Auto-skip sweep (1am UTC cron): every still-planned workout with
+// scheduled_date before today (YYYY-MM-DD, lexical compare is
+// chronological) that has zero linked exercise entries. Planned-only:
+// in_progress means the user started it, so it is left alone even
+// when nothing is linked yet. Block-less workouts are included (no
+// blocks plus no entries means nothing was done).
+func (q *Queries) ListStalePlannedWorkoutsWithoutEntries(ctx context.Context, scheduledDate string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listStalePlannedWorkoutsWithoutEntries, scheduledDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listWorkoutBlocks = `-- name: ListWorkoutBlocks :many
@@ -499,6 +553,17 @@ func (q *Queries) ListWorkoutsWithBlockCounts(ctx context.Context, userID string
 		return nil, err
 	}
 	return items, nil
+}
+
+const markPendingWorkoutBlocksSkipped = `-- name: MarkPendingWorkoutBlocksSkipped :exec
+UPDATE workout_blocks SET status = 'skipped' WHERE workout_id = ? AND status = 'pending'
+`
+
+// Sweep body: flip every still-pending block on one workout to
+// skipped. done/skipped rows are untouched.
+func (q *Queries) MarkPendingWorkoutBlocksSkipped(ctx context.Context, workoutID string) error {
+	_, err := q.db.ExecContext(ctx, markPendingWorkoutBlocksSkipped, workoutID)
+	return err
 }
 
 const updateWorkout = `-- name: UpdateWorkout :exec

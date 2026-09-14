@@ -21,6 +21,10 @@ type Querier interface {
 	// decides what "expired" means. SQLite's datetime('now') returns
 	// UTC, matching the value written by the application.
 	ConsumeAuthToken(ctx context.Context, arg ConsumeAuthTokenParams) (AuthToken, error)
+	// Pending-block count for one workout, read inside the sweep
+	// transaction before flipping so the tick can log how many blocks
+	// moved alongside the workout.
+	CountPendingWorkoutBlocks(ctx context.Context, workoutID string) (int64, error)
 	// Guards block deletion: a block referenced by any of the user's
 	// workouts is rejected with a 409 instead of being silently
 	// unlinked. Scoped to the user via the workouts join.
@@ -131,6 +135,13 @@ type Querier interface {
 	ListExerciseEntriesLast7Days(ctx context.Context, userID sql.NullString) ([]ListExerciseEntriesLast7DaysRow, error)
 	ListExerciseEntriesWithLimit(ctx context.Context, arg ListExerciseEntriesWithLimitParams) ([]ListExerciseEntriesWithLimitRow, error)
 	ListHealthSnapshotsRange(ctx context.Context, arg ListHealthSnapshotsRangeParams) ([]HealthSnapshot, error)
+	// Auto-skip sweep (1am UTC cron): every still-planned workout with
+	// scheduled_date before today (YYYY-MM-DD, lexical compare is
+	// chronological) that has zero linked exercise entries. Planned-only:
+	// in_progress means the user started it, so it is left alone even
+	// when nothing is linked yet. Block-less workouts are included (no
+	// blocks plus no entries means nothing was done).
+	ListStalePlannedWorkoutsWithoutEntries(ctx context.Context, scheduledDate string) ([]string, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	// Returns every enabled user whose next_fire_at is at or before the
 	// supplied reference time. The hourly tick calls this once per hour;
@@ -160,6 +171,9 @@ type Querier interface {
 	// Atomically set completed_at and bump updated_at. Scoped to user_id so
 	// the request cannot mark another user's goal complete.
 	MarkGoalComplete(ctx context.Context, arg MarkGoalCompleteParams) error
+	// Sweep body: flip every still-pending block on one workout to
+	// skipped. done/skipped rows are untouched.
+	MarkPendingWorkoutBlocksSkipped(ctx context.Context, workoutID string) error
 	// Atomically set last_fired_at = now and advance next_fire_at to the
 	// caller's computed next occurrence. Scoped to id so a misbehaving
 	// caller cannot advance another user's row. updated_at is bumped so

@@ -119,7 +119,7 @@ func (s *Service) SendWelcome(ctx context.Context, user *models.User) error {
 // whichever weekday the user picked, so no email text names a
 // day or a time.
 //
-// The caller (the reminders package) is expected to fire this
+// The caller (the cron package) is expected to fire this
 // from a goroutine with a recover so a single SMTP failure does
 // not take the whole batch down.
 func (s *Service) SendWeightReminder(ctx context.Context, user *models.User) error {

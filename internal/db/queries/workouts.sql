@@ -126,3 +126,30 @@ SELECT COUNT(*) AS use_count
 FROM workout_blocks wb
 JOIN workouts w ON w.id = wb.workout_id
 WHERE wb.block_id = ? AND w.user_id = ?;
+
+-- name: ListStalePlannedWorkoutsWithoutEntries :many
+-- Auto-skip sweep (1am UTC cron): every still-planned workout with
+-- scheduled_date before today (YYYY-MM-DD, lexical compare is
+-- chronological) that has zero linked exercise entries. Planned-only:
+-- in_progress means the user started it, so it is left alone even
+-- when nothing is linked yet. Block-less workouts are included (no
+-- blocks plus no entries means nothing was done).
+SELECT w.id
+FROM workouts w
+LEFT JOIN exercise_entries e ON e.workout_id = w.id
+WHERE w.status = 'planned'
+  AND w.scheduled_date < ?
+  AND e.id IS NULL;
+
+-- name: CountPendingWorkoutBlocks :one
+-- Pending-block count for one workout, read inside the sweep
+-- transaction before flipping so the tick can log how many blocks
+-- moved alongside the workout.
+SELECT COUNT(*) AS pending_count
+FROM workout_blocks
+WHERE workout_id = ? AND status = 'pending';
+
+-- name: MarkPendingWorkoutBlocksSkipped :exec
+-- Sweep body: flip every still-pending block on one workout to
+-- skipped. done/skipped rows are untouched.
+UPDATE workout_blocks SET status = 'skipped' WHERE workout_id = ? AND status = 'pending';

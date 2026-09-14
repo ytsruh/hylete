@@ -461,6 +461,55 @@ func (r *WorkoutRepository) SetWorkoutStatus(workoutID, userID string, status Wo
 	})
 }
 
+// SweepStalePlannedWorkouts auto-skips every still-planned workout
+// scheduled before today (YYYY-MM-DD) that has zero linked exercise
+// entries, and flips each one's still-pending blocks to skipped.
+// done/skipped blocks are left untouched; in_progress, completed
+// and skipped workouts are never matched (see
+// ListStalePlannedWorkoutsWithoutEntries). Block-less workouts are
+// included: no blocks plus no exercise entries means nothing was
+// done.
+//
+// Each workout is swept in its own transaction (pending count read,
+// workout flip, pending-block flip) so one bad row cannot abort the
+// whole tick. today is compared lexically against scheduled_date,
+// which is chronological for YYYY-MM-DD. Returns the number of
+// workouts flipped and the number of blocks flipped.
+func (r *WorkoutRepository) SweepStalePlannedWorkouts(today string) (workoutsSkipped int64, blocksSkipped int64, err error) {
+	ctx := context.Background()
+	ids, err := r.queries.ListStalePlannedWorkoutsWithoutEntries(ctx, today)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to list stale planned workouts: %w", err)
+	}
+	for _, id := range ids {
+		var pending int64
+		txErr := r.db.Transaction(func(tx *sql.Tx) error {
+			q := r.queries.WithTx(tx)
+			n, err := q.CountPendingWorkoutBlocks(ctx, id)
+			if err != nil {
+				return fmt.Errorf("failed to count pending blocks: %w", err)
+			}
+			pending = n
+			if err := q.UpdateWorkoutStatus(ctx, db.UpdateWorkoutStatusParams{
+				Status: string(WorkoutStatusSkipped),
+				ID:     id,
+			}); err != nil {
+				return fmt.Errorf("failed to mark workout skipped: %w", err)
+			}
+			if err := q.MarkPendingWorkoutBlocksSkipped(ctx, id); err != nil {
+				return fmt.Errorf("failed to mark pending blocks skipped: %w", err)
+			}
+			return nil
+		})
+		if txErr != nil {
+			return workoutsSkipped, blocksSkipped, txErr
+		}
+		workoutsSkipped++
+		blocksSkipped += pending
+	}
+	return workoutsSkipped, blocksSkipped, nil
+}
+
 // MarkInProgressIfPlanned flips a planned workout to in_progress on
 // the first linked exercise entry. No-op for any other status.
 // Backs the "Start is UI state until data is submitted" rule.
