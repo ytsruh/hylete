@@ -406,6 +406,56 @@ func TestGetWorkoutWithItems(t *testing.T) {
 	}
 }
 
+// TestGetWorkoutWithItems_TimingConfig carries each block type's time
+// config into the player fetch (circuit rounds/rest, AMRAP cap, EMOM
+// interval/rounds). Before this, only Items crossed over from the
+// catalogue block — EMOM, circuit and AMRAP blocks rendered with no
+// time element at all. A deleted catalogue block keeps zeros.
+func TestGetWorkoutWithItems_TimingConfig(t *testing.T) {
+	repo := newFakeWorkoutRepo()
+	lookup := &fakeWorkoutBlockLookup{blocks: map[string]*models.Block{
+		"blk-c": {ID: "blk-c", UserID: "u1", Name: "Circ", Type: models.BlockTypeCircuit, Rounds: 4, RestSeconds: 90, Items: []models.BlockItem{{ID: "i1"}}},
+		"blk-a": {ID: "blk-a", UserID: "u1", Name: "Am", Type: models.BlockTypeAmrap, TimeCapSeconds: 600, Items: []models.BlockItem{{ID: "i1"}}},
+		"blk-e": {ID: "blk-e", UserID: "u1", Name: "Em", Type: models.BlockTypeEmom, Rounds: 12, IntervalSeconds: 60, Items: []models.BlockItem{{ID: "i1"}}},
+	}}
+	ctrl := NewWorkoutsController(repo, lookup)
+	w, err := ctrl.CreateWorkout("u1", CreateWorkoutInput{
+		Name:          "Mixed",
+		ScheduledDate: "2026-09-14",
+		Blocks:        []WorkoutBlockInput{{BlockID: "blk-c"}, {BlockID: "blk-a"}, {BlockID: "blk-e"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ctrl.GetWorkoutWithItems(w.ID, "u1")
+	if err != nil {
+		t.Fatalf("GetWorkoutWithItems failed: %v", err)
+	}
+	if len(got.Blocks) != 3 {
+		t.Fatalf("blocks = %d, want 3", len(got.Blocks))
+	}
+	c, a, e := got.Blocks[0], got.Blocks[1], got.Blocks[2]
+	if c.Rounds != 4 || c.RestSeconds != 90 {
+		t.Errorf("circuit = %d rounds/%ds rest, want 4/90", c.Rounds, c.RestSeconds)
+	}
+	if a.TimeCapSeconds != 600 {
+		t.Errorf("amrap cap = %d, want 600", a.TimeCapSeconds)
+	}
+	if e.Rounds != 12 || e.IntervalSeconds != 60 {
+		t.Errorf("emom = %d rounds/%ds interval, want 12/60", e.Rounds, e.IntervalSeconds)
+	}
+
+	// Deleted catalogue block: timing stays zero, not stale.
+	delete(lookup.blocks, "blk-a")
+	got, err = ctrl.GetWorkoutWithItems(w.ID, "u1")
+	if err != nil {
+		t.Fatalf("GetWorkoutWithItems after block delete failed: %v", err)
+	}
+	if got.Blocks[1].TimeCapSeconds != 0 {
+		t.Errorf("deleted-block cap = %d, want 0", got.Blocks[1].TimeCapSeconds)
+	}
+}
+
 // TestSetWorkoutStatus_PreservesBlocks is the regression test for the
 // "Completed but 0/2 blocks" bug: a status-only change must leave the
 // plan (blocks and their check-offs) untouched, unlike the full

@@ -484,6 +484,49 @@ final class WorkoutPlayerTests: XCTestCase {
         XCTAssertEqual(store.blockProgress().total, 0)
     }
 
+    func testBlockTimingDecodes() throws {
+        // The player fetch carries each type's time config; the
+        // subtitle helper turns it into the header line.
+        let body = """
+            {"id":"wo-1","name":"Day 1","description":"","scheduled_date":"2026-09-14","status":"planned","blocks":[{"id":"wb-1","block_id":"blk-1","block_name":"Metcon","block_description":"","block_type":"emom","position":0,"status":"pending","item_count":0,"items":[],"rounds":12,"rest_seconds":0,"time_cap_seconds":0,"interval_seconds":60}],"created_at":"2026-09-14T11:09:48.050784+01:00","updated_at":"2026-09-14T11:09:48.050784+01:00"}
+            """
+        let workout = try APIClient.jsonDecoder.decode(
+            WorkoutWithItemsDTO.self,
+            from: Data(body.utf8)
+        )
+        let block = workout.blocks[0]
+        XCTAssertEqual(block.rounds, 12)
+        XCTAssertEqual(block.intervalSeconds, 60)
+        XCTAssertEqual(block.timingSummary, "12 rounds × Every 60s")
+    }
+
+    func testBlockTimingMissingKeysDefaultToZero() throws {
+        // Servers predating the timing keys (and standard blocks)
+        // decode to zeros with an empty summary — never a throw.
+        let workout = try decodeWorkout()
+        let block = workout.blocks[0]
+        XCTAssertEqual(block.rounds, 0)
+        XCTAssertEqual(block.restSeconds, 0)
+        XCTAssertEqual(block.timeCapSeconds, 0)
+        XCTAssertEqual(block.intervalSeconds, 0)
+        XCTAssertEqual(block.timingSummary, "")
+    }
+
+    func testTimingSummaryPerType() {
+        func block(type: BlockTypeDTO, rounds: Int, rest: Int, cap: Int, interval: Int) -> WorkoutBlockDetailDTO {
+            WorkoutBlockDetailDTO(
+                id: "wb-1", blockID: "blk-1", blockName: "B",
+                blockType: type, position: 0, status: .pending,
+                itemCount: 0, rounds: rounds, restSeconds: rest,
+                timeCapSeconds: cap, intervalSeconds: interval
+            )
+        }
+        XCTAssertEqual(block(type: .circuit, rounds: 4, rest: 90, cap: 0, interval: 0).timingSummary, "4 rounds · 90s rest")
+        XCTAssertEqual(block(type: .amrap, rounds: 0, rest: 0, cap: 600, interval: 0).timingSummary, "10 mins")
+        XCTAssertEqual(block(type: .emom, rounds: 12, rest: 0, cap: 0, interval: 60).timingSummary, "12 rounds × Every 60s")
+        XCTAssertEqual(block(type: .standard, rounds: 0, rest: 0, cap: 0, interval: 0).timingSummary, "")
+    }
+
     func testBlockDescriptionDecodes() throws {
         // (Plain escaped strings: `#""...""#` raw literals swallow
         // a quote at each boundary and corrupt the JSON.)

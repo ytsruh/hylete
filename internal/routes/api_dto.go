@@ -676,14 +676,14 @@ type WorkoutBlockDTO struct {
 // WorkoutDTO is the JSON shape for a full workout with its blocks
 // (detail view, create/update/duplicate responses).
 type WorkoutDTO struct {
-	ID            string           `json:"id"`
-	Name          string           `json:"name"`
-	Description   string           `json:"description"`
-	ScheduledDate string           `json:"scheduled_date"`
-	Status        string           `json:"status"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	Description   string            `json:"description"`
+	ScheduledDate string            `json:"scheduled_date"`
+	Status        string            `json:"status"`
 	Blocks        []WorkoutBlockDTO `json:"blocks"`
-	CreatedAt     time.Time        `json:"created_at"`
-	UpdatedAt     time.Time        `json:"updated_at"`
+	CreatedAt     time.Time         `json:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at"`
 }
 
 // WorkoutSummaryDTO is the list-view shape: the workout without
@@ -773,10 +773,18 @@ func WorkoutBlockFromModel(b models.WorkoutBlock) WorkoutBlockDTO {
 
 // WorkoutBlockDetailDTO is one planned block with its planned exercises
 // resolved. Returned by GET /api/v1/workouts/:id?include=items so the
-// Workout Player renders every block and row in one call.
+// Workout Player renders every block and row in one call. The timing
+// fields mirror the catalogue block's time config so the player can
+// show each type's time structure (circuit rounds/rest, AMRAP cap,
+// EMOM interval); they are zero for standard blocks and when the
+// catalogue block is gone.
 type WorkoutBlockDetailDTO struct {
 	WorkoutBlockDTO
-	Items []BlockItemDTO `json:"items"`
+	Items           []BlockItemDTO `json:"items"`
+	Rounds          int            `json:"rounds"`
+	RestSeconds     int            `json:"rest_seconds"`
+	TimeCapSeconds  int            `json:"time_cap_seconds"`
+	IntervalSeconds int            `json:"interval_seconds"`
 }
 
 // WorkoutWithItemsDTO is the player-fetch shape: the full workout with
@@ -805,6 +813,10 @@ func WorkoutWithItemsFromModel(w models.WorkoutWithItems) WorkoutWithItemsDTO {
 		blocks = append(blocks, WorkoutBlockDetailDTO{
 			WorkoutBlockDTO: WorkoutBlockFromModel(b.WorkoutBlock),
 			Items:           items,
+			Rounds:          b.Rounds,
+			RestSeconds:     b.RestSeconds,
+			TimeCapSeconds:  b.TimeCapSeconds,
+			IntervalSeconds: b.IntervalSeconds,
 		})
 	}
 	return WorkoutWithItemsDTO{
@@ -1140,34 +1152,34 @@ type HealthSnapshotsResponse struct {
 // controller (validateSnapshotDate) so the error surfaces as a
 // sentinel-mapped 400.
 type HealthSnapshotItem struct {
-	SnapshotDate         string     `json:"snapshot_date"          validate:"required"`
-	Tz                   string     `json:"tz"                     validate:"max=64"`
-	Steps                int64      `json:"steps"                  validate:"gte=0,lte=200000"`
-	DistanceMeters       float64    `json:"distance_meters"        validate:"gte=0,lte=500000"`
-	ActiveEnergyKcal     float64    `json:"active_energy_kcal"     validate:"gte=0,lte=20000"`
-	BasalEnergyKcal      float64    `json:"basal_energy_kcal"      validate:"gte=0,lte=20000"`
-	ExerciseMinutes      float64    `json:"exercise_minutes"       validate:"gte=0,lte=1440"`
-	SleepSeconds         float64    `json:"sleep_seconds"          validate:"gte=0,lte=86400"`
-	Weight               float64    `json:"weight"                 validate:"gte=0,lte=1000"`
-	WeightMeasuredAt     *time.Time `json:"weight_measured_at,omitempty"`
-	BMI                  float64    `json:"bmi"                    validate:"gte=0,lte=100"`
-	BMIMeasuredAt        *time.Time `json:"bmi_measured_at,omitempty"`
-	BodyFatPercentage    float64    `json:"body_fat_percentage"    validate:"gte=0,lte=100"`
-	BodyFatMeasuredAt    *time.Time `json:"body_fat_measured_at,omitempty"`
-	LeanBodyMass         float64    `json:"lean_body_mass"         validate:"gte=0,lte=1000"`
-	LeanMassMeasuredAt   *time.Time `json:"lean_mass_measured_at,omitempty"`
-	HeartRate            float64    `json:"heart_rate"             validate:"gte=0,lte=300"`
-	HeartRateMeasuredAt  *time.Time `json:"heart_rate_measured_at,omitempty"`
-	RestingHeartRate     float64    `json:"resting_heart_rate"     validate:"gte=0,lte=300"`
-	RestingHRMeasuredAt  *time.Time `json:"resting_hr_measured_at,omitempty"`
-	WalkingHeartRateAvg  float64    `json:"walking_heart_rate_avg" validate:"gte=0,lte=300"`
-	WalkingHRMeasuredAt  *time.Time `json:"walking_hr_measured_at,omitempty"`
-	HRV                  float64    `json:"hrv_ms"                 validate:"gte=0,lte=1000"`
-	HRVMeasuredAt        *time.Time `json:"hrv_measured_at,omitempty"`
-	CardioRecoveryBPM    float64    `json:"cardio_recovery_bpm"    validate:"gte=0,lte=300"`
-	CardioRecoveryAt     *time.Time `json:"cardio_recovery_measured_at,omitempty"`
-	VO2Max               float64    `json:"vo2_max"                validate:"gte=0,lte=100"`
-	VO2MeasuredAt        *time.Time `json:"vo2_measured_at,omitempty"`
+	SnapshotDate        string     `json:"snapshot_date"          validate:"required"`
+	Tz                  string     `json:"tz"                     validate:"max=64"`
+	Steps               int64      `json:"steps"                  validate:"gte=0,lte=200000"`
+	DistanceMeters      float64    `json:"distance_meters"        validate:"gte=0,lte=500000"`
+	ActiveEnergyKcal    float64    `json:"active_energy_kcal"     validate:"gte=0,lte=20000"`
+	BasalEnergyKcal     float64    `json:"basal_energy_kcal"      validate:"gte=0,lte=20000"`
+	ExerciseMinutes     float64    `json:"exercise_minutes"       validate:"gte=0,lte=1440"`
+	SleepSeconds        float64    `json:"sleep_seconds"          validate:"gte=0,lte=86400"`
+	Weight              float64    `json:"weight"                 validate:"gte=0,lte=1000"`
+	WeightMeasuredAt    *time.Time `json:"weight_measured_at,omitempty"`
+	BMI                 float64    `json:"bmi"                    validate:"gte=0,lte=100"`
+	BMIMeasuredAt       *time.Time `json:"bmi_measured_at,omitempty"`
+	BodyFatPercentage   float64    `json:"body_fat_percentage"    validate:"gte=0,lte=100"`
+	BodyFatMeasuredAt   *time.Time `json:"body_fat_measured_at,omitempty"`
+	LeanBodyMass        float64    `json:"lean_body_mass"         validate:"gte=0,lte=1000"`
+	LeanMassMeasuredAt  *time.Time `json:"lean_mass_measured_at,omitempty"`
+	HeartRate           float64    `json:"heart_rate"             validate:"gte=0,lte=300"`
+	HeartRateMeasuredAt *time.Time `json:"heart_rate_measured_at,omitempty"`
+	RestingHeartRate    float64    `json:"resting_heart_rate"     validate:"gte=0,lte=300"`
+	RestingHRMeasuredAt *time.Time `json:"resting_hr_measured_at,omitempty"`
+	WalkingHeartRateAvg float64    `json:"walking_heart_rate_avg" validate:"gte=0,lte=300"`
+	WalkingHRMeasuredAt *time.Time `json:"walking_hr_measured_at,omitempty"`
+	HRV                 float64    `json:"hrv_ms"                 validate:"gte=0,lte=1000"`
+	HRVMeasuredAt       *time.Time `json:"hrv_measured_at,omitempty"`
+	CardioRecoveryBPM   float64    `json:"cardio_recovery_bpm"    validate:"gte=0,lte=300"`
+	CardioRecoveryAt    *time.Time `json:"cardio_recovery_measured_at,omitempty"`
+	VO2Max              float64    `json:"vo2_max"                validate:"gte=0,lte=100"`
+	VO2MeasuredAt       *time.Time `json:"vo2_measured_at,omitempty"`
 }
 
 // UpsertHealthSnapshotsRequest is the body for POST

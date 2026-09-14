@@ -166,15 +166,17 @@ struct WorkoutPlayerView: View {
                 Text(WorkoutDates.display(workout.scheduledDate))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(DSColors.text)
-                Text("·")
-                    .foregroundStyle(DSColors.textSecondary)
-                Text(workout.status.displayName)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(DSColors.accent)
                 Spacer()
-                Text(workout.progressLabel)
-                    .font(.subheadline)
-                    .foregroundStyle(DSColors.textSecondary)
+                // Workout status as a solid primary badge (accent
+                // fill + on-color text, mirroring the strength
+                // type pill) — the block badges stay secondary so
+                // the workout state owns the brand colour.
+                Text(workout.status.displayName)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, DSSpacing.sm)
+                    .padding(.vertical, DSSpacing.xxs + 2)
+                    .background(Capsule().fill(DSColors.accent))
+                    .foregroundStyle(DSColors.onPrimary)
             }
             // Plan description (e.g. session goal) — collapsed by
             // default, hidden when the workout has none.
@@ -183,9 +185,15 @@ struct WorkoutPlayerView: View {
             }
             if progress.total > 0 {
                 ProgressView(value: Double(progress.done), total: Double(progress.total))
-                Text("\(percent)% complete")
-                    .font(.footnote)
-                    .foregroundStyle(DSColors.textSecondary)
+                // Bottom line: completion left, block counts
+                // right-aligned against it.
+                HStack {
+                    Text("\(percent)% complete")
+                    Spacer()
+                    Text(workout.progressLabel)
+                }
+                .font(.footnote)
+                .foregroundStyle(DSColors.textSecondary)
             }
         }
         .padding(DSSpacing.md)
@@ -204,6 +212,8 @@ struct WorkoutPlayerView: View {
     private func blockCard(_ block: WorkoutBlockDetailDTO) -> some View {
         let isCollapsed = collapsedBlockIDs.contains(block.id)
         return VStack(alignment: .leading, spacing: DSSpacing.sm) {
+            // Row 1: collapse toggle (chevron + name) and the
+            // status menu.
             HStack(alignment: .top, spacing: DSSpacing.sm) {
                 Button {
                     withAnimation {
@@ -220,20 +230,34 @@ struct WorkoutPlayerView: View {
                             .foregroundStyle(DSColors.textSecondary)
                             .rotationEffect(.degrees(isCollapsed ? 0 : 90))
                             .padding(.top, 4)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(block.blockName)
-                                .font(.headline)
-                                .foregroundStyle(DSColors.text)
-            Text(blockSubtitle(for: block))
-                                .font(.subheadline)
-                                .foregroundStyle(DSColors.textSecondary)
-                        }
+                        Text(block.blockName)
+                            .font(.headline)
+                            .foregroundStyle(DSColors.text)
                     }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isCollapsed ? "Expand \(block.blockName)" : "Collapse \(block.blockName)")
                 Spacer()
                 blockStatusMenu(block)
+            }
+            // Row 2: block type left, logged counts right. Lives in
+            // the card's full-width stack (not inside the toggle
+            // button) — a Spacer inside a Button label collapses,
+            // so right-alignment only works out here.
+            HStack {
+                Text(block.blockType.displayName)
+                Spacer()
+                Text(loggedLabel(for: block))
+            }
+            .font(.subheadline)
+            .foregroundStyle(DSColors.textSecondary)
+            // Row 3: time structure under the type (timed types
+            // only) — its own line, so no separator ever dangles
+            // after it or wraps awkwardly on narrow screens.
+            if !block.timingSummary.isEmpty {
+                Text(block.timingSummary)
+                    .font(.subheadline)
+                    .foregroundStyle(DSColors.textSecondary)
             }
             if !isCollapsed {
                 Divider().background(DSColors.separator)
@@ -341,9 +365,12 @@ struct WorkoutPlayerView: View {
         .tint(DSColors.accent)
     }
 
-    private func blockSubtitle(for block: WorkoutBlockDetailDTO) -> String {
+    /// "X/Y logged" for the header's right-aligned counts slot.
+    /// The type and time structure render as their own rows, so
+    /// this carries counts only.
+    private func loggedLabel(for block: WorkoutBlockDetailDTO) -> String {
         let logged = block.items.filter { player.isItemDone(itemID: $0.id) }.count
-        return "\(block.blockType.displayName) · \(logged)/\(block.items.count) logged"
+        return "\(logged)/\(block.items.count) logged"
     }
 
     private func blockStatusMenu(_ block: WorkoutBlockDetailDTO) -> some View {

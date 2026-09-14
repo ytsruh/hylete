@@ -138,7 +138,9 @@ public final class WorkoutPlayerStore: ObservableObject {
             statuses[block.id] = block.status
         }
         // `blocks` is immutable, so rebuild the array with the
-        // refreshed statuses rather than mutating in place.
+        // refreshed statuses rather than mutating in place. The
+        // time config rides along unchanged — a status refresh
+        // must never drop it.
         let merged = current.blocks.map { block -> WorkoutBlockDetailDTO in
             guard let status = statuses[block.id] else { return block }
             return WorkoutBlockDetailDTO(
@@ -150,7 +152,11 @@ public final class WorkoutPlayerStore: ObservableObject {
                 position: block.position,
                 status: status,
                 itemCount: block.itemCount,
-                items: block.items
+                items: block.items,
+                rounds: block.rounds,
+                restSeconds: block.restSeconds,
+                timeCapSeconds: block.timeCapSeconds,
+                intervalSeconds: block.intervalSeconds
             )
         }
         workout = WorkoutWithItemsDTO(

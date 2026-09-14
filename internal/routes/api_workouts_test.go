@@ -219,7 +219,9 @@ func (mockWorkoutBlockLookup) GetByID(id string, userID string) (*models.Block, 
 			{ID: "bi-1", BlockID: "blk-1", ExerciseID: "ex-1", ExerciseName: "Squat", ExerciseType: models.ExerciseTypeStrength, Position: 0, TargetText: "3x5"},
 		}}, nil
 	case "blk-2":
-		return &models.Block{ID: "blk-2", UserID: userID, Name: "Pull", Type: models.BlockTypeCircuit}, nil
+		// Circuit with timing config so ?include=items tests can
+		// assert the player fetch carries it.
+		return &models.Block{ID: "blk-2", UserID: userID, Name: "Pull", Type: models.BlockTypeCircuit, Rounds: 4, RestSeconds: 90}, nil
 	default:
 		return nil, nil
 	}
@@ -534,6 +536,14 @@ func TestAPIWorkout_IncludeItems(t *testing.T) {
 	}
 	if withItems.Blocks[1].Items == nil || len(withItems.Blocks[1].Items) != 0 {
 		t.Errorf("block 1 items = %+v, want empty non-nil slice", withItems.Blocks[1].Items)
+	}
+	// blk-2 is a circuit: its time config must ride along so the
+	// player can show the time structure. blk-1 is standard: zeros.
+	if withItems.Blocks[1].Rounds != 4 || withItems.Blocks[1].RestSeconds != 90 {
+		t.Errorf("block 1 timing = %d rounds/%ds rest, want 4/90", withItems.Blocks[1].Rounds, withItems.Blocks[1].RestSeconds)
+	}
+	if withItems.Blocks[0].Rounds != 0 || withItems.Blocks[0].RestSeconds != 0 || withItems.Blocks[0].TimeCapSeconds != 0 || withItems.Blocks[0].IntervalSeconds != 0 {
+		t.Errorf("block 0 timing = %+v, want zeros", withItems.Blocks[1])
 	}
 
 	rec := apiDo(t, e, http.MethodGet, "/api/v1/workouts/missing?include=items", token, nil)

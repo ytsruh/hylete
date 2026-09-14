@@ -864,6 +864,25 @@ public struct UpdateGoalRequest: Encodable, Equatable {
 /// The kind of planned exercise group. Mirrors the server's
 /// `BlockType` (`standard|circuit|amrap|emom`). The raw value is
 /// the wire value so encoding a request is a direct mapping.
+/// "10 mins" / "1 min" / "1.5 mins" for an AMRAP time cap.
+/// Whole minutes render bare (plural-aware); fractional caps keep
+/// one decimal so the cap is never misrepresented by truncation.
+/// Shared by both block summary helpers below.
+private func amrapCapSummary(_ timeCapSeconds: Int) -> String {
+    let mins = Double(timeCapSeconds) / 60
+    let number: String
+    if mins == mins.rounded() {
+        number = String(Int(mins))
+    } else {
+        var text = String(format: "%.1f", mins)
+        if text.hasSuffix(".0") {
+            text = String(text.dropLast(2))
+        }
+        number = text
+    }
+    return "\(number) min\(mins == 1 ? "" : "s")"
+}
+
 public enum BlockTypeDTO: String, Codable, Equatable, CaseIterable, Hashable {
     case standard
     case circuit
@@ -979,8 +998,8 @@ public struct BlockDTO: Codable, Equatable, Identifiable, Hashable {
     }
 
     /// One-line summary of the kind-specific config for the
-    /// detail header ("4 rounds · 90s rest", "10:00 cap",
-    /// "Every 60s × 12", or "" for standard blocks).
+    /// detail header ("4 rounds · 90s rest", "10 mins",
+    /// "12 rounds × Every 60s", or "" for standard blocks).
     public var configSummary: String {
         switch type {
         case .standard:
@@ -988,9 +1007,9 @@ public struct BlockDTO: Codable, Equatable, Identifiable, Hashable {
         case .circuit:
             return "\(rounds) rounds · \(restSeconds)s rest"
         case .amrap:
-            return "\(timeCapSeconds / 60):\(String(format: "%02d", timeCapSeconds % 60)) cap"
+            return amrapCapSummary(timeCapSeconds)
         case .emom:
-            return "Every \(intervalSeconds)s × \(rounds)"
+            return "\(rounds) rounds × Every \(intervalSeconds)s"
         }
     }
 }
@@ -1328,6 +1347,14 @@ public struct WorkoutBlockDetailDTO: Codable, Equatable, Identifiable, Hashable 
     public let status: WorkoutBlockStatusDTO
     public let itemCount: Int
     public let items: [BlockItemDTO]
+    /// Time config mirrored from the catalogue block so the player
+    /// can show each type's time structure. Zero for standard
+    /// blocks, and zero when the catalogue block is gone (or the
+    /// server predates these keys).
+    public let rounds: Int
+    public let restSeconds: Int
+    public let timeCapSeconds: Int
+    public let intervalSeconds: Int
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -1339,6 +1366,10 @@ public struct WorkoutBlockDetailDTO: Codable, Equatable, Identifiable, Hashable 
         case status
         case itemCount = "item_count"
         case items
+        case rounds
+        case restSeconds = "rest_seconds"
+        case timeCapSeconds = "time_cap_seconds"
+        case intervalSeconds = "interval_seconds"
     }
 
     public init(
@@ -1350,7 +1381,11 @@ public struct WorkoutBlockDetailDTO: Codable, Equatable, Identifiable, Hashable 
         position: Int,
         status: WorkoutBlockStatusDTO,
         itemCount: Int,
-        items: [BlockItemDTO] = []
+        items: [BlockItemDTO] = [],
+        rounds: Int = 0,
+        restSeconds: Int = 0,
+        timeCapSeconds: Int = 0,
+        intervalSeconds: Int = 0
     ) {
         self.id = id
         self.blockID = blockID
@@ -1361,6 +1396,10 @@ public struct WorkoutBlockDetailDTO: Codable, Equatable, Identifiable, Hashable 
         self.status = status
         self.itemCount = itemCount
         self.items = items
+        self.rounds = rounds
+        self.restSeconds = restSeconds
+        self.timeCapSeconds = timeCapSeconds
+        self.intervalSeconds = intervalSeconds
     }
 
     public init(from decoder: Decoder) throws {
@@ -1374,6 +1413,29 @@ public struct WorkoutBlockDetailDTO: Codable, Equatable, Identifiable, Hashable 
         status = try container.decode(WorkoutBlockStatusDTO.self, forKey: .status)
         itemCount = try container.decode(Int.self, forKey: .itemCount)
         items = try container.decodeIfPresent([BlockItemDTO].self, forKey: .items) ?? []
+        rounds = try container.decodeIfPresent(Int.self, forKey: .rounds) ?? 0
+        restSeconds = try container.decodeIfPresent(Int.self, forKey: .restSeconds) ?? 0
+        timeCapSeconds = try container.decodeIfPresent(Int.self, forKey: .timeCapSeconds) ?? 0
+        intervalSeconds = try container.decodeIfPresent(Int.self, forKey: .intervalSeconds) ?? 0
+    }
+
+    /// One-line summary of the kind-specific time config for the
+    /// player header ("4 rounds · 90s rest", "10 mins",
+    /// "12 rounds × Every 60s", or "" for standard blocks).
+    /// Mirrors `BlockDTO.configSummary` — server validation
+    /// guarantees which fields apply per type, so no zero-guards
+    /// needed.
+    public var timingSummary: String {
+        switch blockType {
+        case .standard:
+            return ""
+        case .circuit:
+            return "\(rounds) rounds · \(restSeconds)s rest"
+        case .amrap:
+            return amrapCapSummary(timeCapSeconds)
+        case .emom:
+            return "\(rounds) rounds × Every \(intervalSeconds)s"
+        }
     }
 
     /// The matching row from the plain detail shape, for reuse in

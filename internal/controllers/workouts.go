@@ -284,7 +284,18 @@ func (wc *WorkoutsController) GetWorkoutWithItems(id, userID string) (*models.Wo
 			out.Blocks = append(out.Blocks, models.WorkoutBlockDetail{WorkoutBlock: wb})
 			continue
 		}
-		out.Blocks = append(out.Blocks, models.WorkoutBlockDetail{WorkoutBlock: wb, Items: b.Items})
+		// Timing config rides along from the catalogue block so
+		// the player can show each type's time structure. (Only
+		// Items were copied before, which is why EMOM/circuit/
+		// AMRAP blocks rendered with no time element.)
+		out.Blocks = append(out.Blocks, models.WorkoutBlockDetail{
+			WorkoutBlock:    wb,
+			Items:           b.Items,
+			Rounds:          b.Rounds,
+			RestSeconds:     b.RestSeconds,
+			TimeCapSeconds:  b.TimeCapSeconds,
+			IntervalSeconds: b.IntervalSeconds,
+		})
 	}
 	return out, nil
 }

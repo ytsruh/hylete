@@ -69,10 +69,16 @@ final class BlockTests: XCTestCase {
         }
         XCTAssertEqual(
             with(type: .amrap, rounds: 0, rest: 0, cap: 600, interval: 0).configSummary,
-            "10:00 cap")
+            "10 mins")
+        XCTAssertEqual(
+            with(type: .amrap, rounds: 0, rest: 0, cap: 60, interval: 0).configSummary,
+            "1 min")
+        XCTAssertEqual(
+            with(type: .amrap, rounds: 0, rest: 0, cap: 90, interval: 0).configSummary,
+            "1.5 mins")
         XCTAssertEqual(
             with(type: .emom, rounds: 12, rest: 0, cap: 0, interval: 60).configSummary,
-            "Every 60s × 12")
+            "12 rounds × Every 60s")
     }
 
     func testBlockTypeDisplayNames() {

@@ -101,9 +101,19 @@ type WorkoutSummary struct {
 // planned exercises resolved. Used by GET /api/v1/workouts/:id
 // ?include=items so the Workout Player can render every block and
 // row in one call instead of N+1 BlockStore.detail fetches.
+//
+// Rounds/RestSeconds/TimeCapSeconds/IntervalSeconds mirror the
+// catalogue block's time config so the player can show each type's
+// time structure (circuit rounds/rest, AMRAP cap, EMOM interval).
+// They stay zero when the catalogue block is gone (same tolerance
+// as the missing-block branch in GetWorkoutWithItems).
 type WorkoutBlockDetail struct {
 	WorkoutBlock
-	Items []BlockItem
+	Items           []BlockItem
+	Rounds          int
+	RestSeconds     int
+	TimeCapSeconds  int
+	IntervalSeconds int
 }
 
 // WorkoutWithItems is a workout with every block's planned items
