@@ -77,7 +77,8 @@ struct DashboardView: View {
 
     /// Shared workout store (owned by `MainTabView`, same as
     /// `BlockStore`). Feeds the calendar's planned-workout dots
-    /// and the selected-day workout section.
+    /// and the selected-day workout section — both beta-gated at
+    /// the call sites below, mirroring More → Workouts.
     @ObservedObject var workoutStore: WorkoutStore
     /// Shared block store, passed through to the workout detail
     /// view the calendar rows push to (its editor needs the block
@@ -202,15 +203,25 @@ struct DashboardView: View {
                     selection: $selectedDate,
                     isBusy: { day in
                         let startOfDay = CalendarMath.startOfDay(day)
-                        return !(entriesByDay[startOfDay] ?? []).isEmpty
-                            || !(workoutStore.workoutsByDay[startOfDay] ?? []).isEmpty
+                        // Workouts are a beta feature (see More →
+                        // Workouts): when opted out they must not
+                        // mark days busy either, or their presence
+                        // leaks through the dots.
+                        let workoutsBusy = BetaFeatureFlag.isEnabled
+                            && !(workoutStore.workoutsByDay[startOfDay] ?? []).isEmpty
+                        return !(entriesByDay[startOfDay] ?? []).isEmpty || workoutsBusy
                     }
                 ) { day in
-                    SelectedDayWorkoutList(
-                        date: day,
-                        workouts: workoutStore.workoutsByDay[day] ?? [],
-                        isLoading: workoutStore.isLoadingWeek(for: day)
-                    )
+                    // Same gate as More → Workouts: the day section
+                    // (rows and its "plan training days" empty
+                    // state) hides entirely when opted out.
+                    BetaFeature {
+                        SelectedDayWorkoutList(
+                            date: day,
+                            workouts: workoutStore.workoutsByDay[day] ?? [],
+                            isLoading: workoutStore.isLoadingWeek(for: day)
+                        )
+                    }
                     SelectedDaySetList(
                         date: day,
                         entries: entriesByDay[day] ?? [],

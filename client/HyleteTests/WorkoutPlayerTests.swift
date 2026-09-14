@@ -151,13 +151,14 @@ final class WorkoutPlayerTests: XCTestCase {
         let store = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
         await store.load()
         // Bench skipped (e.g. no equipment): the block is ready to
-        // mark done even though only Squat logged sets.
+        // mark done even though only Squat logged sets. The block
+        // itself is still pending, so blocks-based progress is 0/1.
         store.toggleSkip(itemID: "bi-2")
         XCTAssertTrue(store.isItemDone(itemID: "bi-2"))
         XCTAssertTrue(store.isBlockReady(store.workout!.blocks[0]))
-        let progress = store.overallProgress()
-        XCTAssertEqual(progress.done, 2)
-        XCTAssertEqual(progress.total, 2)
+        let progress = store.blockProgress()
+        XCTAssertEqual(progress.done, 0)
+        XCTAssertEqual(progress.total, 1)
     }
 
     func testDraftsPersistAcrossRestarts() async throws {
@@ -379,6 +380,108 @@ final class WorkoutPlayerTests: XCTestCase {
         await store.load()
         XCTAssertNil(store.errorMessage)
         XCTAssertEqual(store.notes, [:])
+    }
+
+    // MARK: - Done-block resubmission
+
+    /// Regression test for the reopened-workout bug: flipping a
+    /// completed workout back to In Progress leaves its blocks
+    /// done (only the workout status changes), and done blocks
+    /// had no submit button — newly typed sets could never post.
+    /// The server accepts links to done blocks (it validates link
+    /// ownership, never statuses), so the client just needs the
+    /// `hasValidDrafts` gate and the unchanged `logAllValid` path.
+    func testLogAllValidSubmitsToDoneBlock() async throws {
+        let posts = PostCapture()
+        stubPlayerPathsCapturingPosts(posts: posts)
+        let store = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        await store.load()
+        XCTAssertNil(store.errorMessage)
+        // Reopened session: the block reads done, the user types
+        // fresh sets into it.
+        var doneBlock = store.workout!.blocks[0]
+        doneBlock = WorkoutBlockDetailDTO(
+            id: doneBlock.id,
+            blockID: doneBlock.blockID,
+            blockName: doneBlock.blockName,
+            blockType: doneBlock.blockType,
+            position: doneBlock.position,
+            status: .done,
+            itemCount: doneBlock.itemCount,
+            items: doneBlock.items
+        )
+        store.setDrafts([validStrengthDraft(reps: 5, weight: "100")], for: "bi-1")
+
+        XCTAssertTrue(store.hasValidDrafts(in: doneBlock))
+        let ok = await store.logAllValid(in: doneBlock)
+
+        XCTAssertTrue(ok)
+        XCTAssertNil(store.errorMessage)
+        XCTAssertEqual(posts.bodies.count, 1)
+        XCTAssertEqual(posts.bodies.first?["exercise_id"] as? String, "ex-1")
+    }
+
+    func testHasValidDraftsIgnoresEmptyAndSkipped() async throws {
+        stubPlayerPaths()
+        let store = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        await store.load()
+        let block = store.workout!.blocks[0]
+        // Starter drafts are empty: nothing submittable.
+        XCTAssertFalse(store.hasValidDrafts(in: block))
+        // A skipped item's valid rows don't count either.
+        store.setDrafts([validStrengthDraft(reps: 5, weight: "100")], for: "bi-1")
+        store.setDrafts([validStrengthDraft(reps: 8, weight: "60")], for: "bi-2")
+        store.toggleSkip(itemID: "bi-1")
+        store.toggleSkip(itemID: "bi-2")
+        XCTAssertFalse(store.hasValidDrafts(in: block))
+        store.toggleSkip(itemID: "bi-1")
+        XCTAssertTrue(store.hasValidDrafts(in: block))
+    }
+
+    // MARK: - Blocks-based progress
+
+    private func detailBlock(status: WorkoutBlockStatusDTO) -> WorkoutBlockDetailDTO {
+        WorkoutBlockDetailDTO(
+            id: "wb-\(status.rawValue)",
+            blockID: "blk-1",
+            blockName: "Push",
+            blockType: .standard,
+            position: 0,
+            status: status,
+            itemCount: 0,
+            items: []
+        )
+    }
+
+    func testBlockProgressCountsDoneAndSkipped() {
+        // Pending blocks don't move the number; done and skipped
+        // both count as finished.
+        let blocks: [WorkoutBlockDetailDTO] = [
+            detailBlock(status: .pending),
+            detailBlock(status: .done),
+            detailBlock(status: .skipped),
+        ]
+        XCTAssertEqual(WorkoutPlayerStore.completedBlockCount(in: blocks), 2)
+        XCTAssertEqual(WorkoutPlayerStore.completedBlockCount(in: []), 0)
+    }
+
+    func testBlockProgressFromLoadIsZeroOfOne() async throws {
+        stubPlayerPaths()
+        let store = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        await store.load()
+        // Single pending block: 0/1, i.e. "0% complete".
+        // Item-level activity (logged resume sets, skips) does not
+        // move the headline number — only block check-offs do.
+        store.toggleSkip(itemID: "bi-2")
+        let progress = store.blockProgress()
+        XCTAssertEqual(progress.done, 0)
+        XCTAssertEqual(progress.total, 1)
+    }
+
+    func testBlockProgressWithNoWorkoutIsZero() {
+        let store = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        XCTAssertEqual(store.blockProgress().done, 0)
+        XCTAssertEqual(store.blockProgress().total, 0)
     }
 
     func testBlockDescriptionDecodes() throws {

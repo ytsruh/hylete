@@ -292,6 +292,18 @@ public final class WorkoutPlayerStore: ObservableObject {
         block.items.contains { loggingItemIDs.contains($0.id) }
     }
 
+    /// `true` when any non-skipped item holds a valid unsubmitted
+    /// draft. Done blocks keep their editors (extra sets can be
+    /// logged after a reopen), so this re-exposes a submit button
+    /// there — without it, sets typed into a done block could
+    /// never be posted.
+    public func hasValidDrafts(in block: WorkoutBlockDetailDTO) -> Bool {
+        block.items.contains { item in
+            !skippedItemIDs.contains(item.id)
+                && (drafts[item.id] ?? []).contains { $0.isValid(isCardioMode: item.isCardio) }
+        }
+    }
+
     /// `true` while the item's log request is in flight.
     public func isLogging(itemID: String) -> Bool {
         loggingItemIDs.contains(itemID)
@@ -325,13 +337,23 @@ public final class WorkoutPlayerStore: ObservableObject {
         return block.items.allSatisfy { isItemDone(itemID: $0.id) }
     }
 
-    /// Done/total planned items across the workout, for the header
-    /// progress bar. Skipped counts as done.
-    public func overallProgress() -> (done: Int, total: Int) {
+    /// Done/total blocks across the workout, for the header
+    /// progress bar and "% complete" label. Done and skipped both
+    /// count — a skip is a finished decision, matching how skips
+    /// count toward readiness everywhere else. Block statuses are
+    /// the check-off source of truth, so they (not per-item logged
+    /// counts) drive the headline number.
+    public func blockProgress() -> (done: Int, total: Int) {
         guard let workout else { return (0, 0) }
-        let items = workout.blocks.flatMap(\.items)
-        let done = items.filter { isItemDone(itemID: $0.id) }.count
-        return (done, items.count)
+        return (Self.completedBlockCount(in: workout.blocks), workout.blocks.count)
+    }
+
+    /// Blocks finished by check-off: done or skipped. A skip is a
+    /// finished decision, matching how skips count toward
+    /// readiness everywhere else. Static so the math is directly
+    /// unit-testable.
+    public static func completedBlockCount(in blocks: [WorkoutBlockDetailDTO]) -> Int {
+        blocks.filter { $0.status == .done || $0.status == .skipped }.count
     }
 
     // MARK: - Resume matching

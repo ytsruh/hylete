@@ -12,15 +12,22 @@ import SwiftUI
 /// `workout_id`/`block_id`/`workout_block_id`, creating normal
 /// exercise entries: history, charts, and exports all include
 /// them), then marks the block done. A failed submit aborts
-/// before the status write. Half-typed rows stay on screen and
-/// survive background/kill via the store's on-device snapshot.
+/// before the status write. Done blocks keep the button (as "Log
+/// additional sets") while they hold valid drafts, so sets typed
+/// after reopening a finished workout can still be posted.
+/// Half-typed rows stay on screen and survive background/kill via
+/// the store's on-device snapshot.
 ///
 /// Progress is hybrid: per-item logged counts plus local skips
 /// (zero sets, e.g. no equipment or injury) drive a "ready to mark
 /// done" hint, but the block pending/done/skipped check-off stays
 /// manual — the source of truth, written through `WorkoutStore`.
-/// Finish flips the workout to completed (partial completion is
-/// allowed: pending blocks may remain).
+/// The header's "% complete" is blocks-based (done or skipped over
+/// total blocks) for the same reason. Done/skipped blocks
+/// auto-collapse so the screen stays focused on remaining work;
+/// the chevron always overrides for the session. Finish flips the
+/// workout to completed (partial completion is allowed: pending
+/// blocks may remain).
 ///
 /// The screen idle timer is disabled while the player is open
 /// (long rests can outlast the user's autolock) and restored on
@@ -83,6 +90,14 @@ struct WorkoutPlayerView: View {
                     guard !didRequestLoad else { return }
                     didRequestLoad = true
                     await player.load()
+                    // Fold finished work away: done/skipped blocks
+                    // start collapsed (pending blocks stay open).
+                    // The chevron still overrides per block.
+                    if let workout = player.workout {
+                        collapsedBlockIDs = Set(workout.blocks
+                            .filter { $0.status == .done || $0.status == .skipped }
+                            .map(\.id))
+                    }
                 }
                 .onDisappear {
                     TimerWakeLock.release()
@@ -144,7 +159,8 @@ struct WorkoutPlayerView: View {
     // MARK: - Header
 
     private func headerCard(_ workout: WorkoutWithItemsDTO) -> some View {
-        let progress = player.overallProgress()
+        let progress = player.blockProgress()
+        let percent = progress.total > 0 ? progress.done * 100 / progress.total : 0
         return VStack(alignment: .leading, spacing: DSSpacing.xs) {
             HStack {
                 Text(WorkoutDates.display(workout.scheduledDate))
@@ -160,9 +176,14 @@ struct WorkoutPlayerView: View {
                     .font(.subheadline)
                     .foregroundStyle(DSColors.textSecondary)
             }
+            // Plan description (e.g. session goal) — collapsed by
+            // default, hidden when the workout has none.
+            if !workout.description.isEmpty {
+                descriptionDisclosure(workout.description)
+            }
             if progress.total > 0 {
                 ProgressView(value: Double(progress.done), total: Double(progress.total))
-                Text("\(progress.done) of \(progress.total) exercises logged")
+                Text("\(percent)% complete")
                     .font(.footnote)
                     .foregroundStyle(DSColors.textSecondary)
             }
@@ -203,15 +224,7 @@ struct WorkoutPlayerView: View {
                             Text(block.blockName)
                                 .font(.headline)
                                 .foregroundStyle(DSColors.text)
-                            // Plan description from the block
-                            // catalogue (e.g. coaching cues) —
-                            // hidden when the block has none.
-                            if !block.blockDescription.isEmpty {
-                                Text(block.blockDescription)
-                                    .font(.subheadline)
-                                    .foregroundStyle(DSColors.textSecondary)
-                            }
-                            Text(blockSubtitle(for: block))
+            Text(blockSubtitle(for: block))
                                 .font(.subheadline)
                                 .foregroundStyle(DSColors.textSecondary)
                         }
@@ -222,13 +235,14 @@ struct WorkoutPlayerView: View {
                 Spacer()
                 blockStatusMenu(block)
             }
-            if player.isBlockReady(block) && block.status == .pending {
-                Text("All exercises logged or skipped — ready to mark done.")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(DSColors.accent)
-            }
             if !isCollapsed {
                 Divider().background(DSColors.separator)
+                // Plan description from the block catalogue (e.g.
+                // coaching cues) — same collapsible treatment as
+                // the workout description, hidden when empty.
+                if !block.blockDescription.isEmpty {
+                    descriptionDisclosure(block.blockDescription)
+                }
                 if block.items.isEmpty {
                     Text("This block's exercises are unavailable — you can still mark the block skipped.")
                         .font(.footnote)
@@ -245,21 +259,31 @@ struct WorkoutPlayerView: View {
             // menu alone wasn't discoverable, and a separate Log
             // button proved duplicative. Tapping first autosubmits
             // every item's valid rows, then performs the same
-            // status-only Done write as the menu's Done row.
-            // Manual check-off stays the source of truth.
-            if block.status != .done {
+            // status-only Done write as the menu's Done row (a
+            // no-op when already done). Manual check-off stays the
+            // source of truth.
+            //
+            // Done blocks keep the button while they hold valid
+            // unsubmitted drafts: reopening a finished workout
+            // leaves its blocks done (only the workout status
+            // flips), so without this, sets typed into a done
+            // block could never be posted. Compact solid-primary
+            // chrome — prominent, but one size below the
+            // full-size "Finish workout" button.
+            if block.status != .done || player.hasValidDrafts(in: block) {
                 Button {
                     Task { await markBlockDone(block) }
                 } label: {
                     if markingBlockIDs.contains(block.id) || player.isLoggingAny(in: block) {
                         ProgressView()
+                            .tint(.white)
                             .frame(maxWidth: .infinity)
                     } else {
-                        Text("Mark as Done")
+                        Text(block.status == .done ? "Log additional sets" : "Mark as Done")
                             .frame(maxWidth: .infinity)
                     }
                 }
-                .buttonStyle(.dsSecondary)
+                .buttonStyle(.dsPrimaryCompact)
                 .disabled(markingBlockIDs.contains(block.id) || player.isLoggingAny(in: block))
             }
         }
@@ -290,6 +314,31 @@ struct WorkoutPlayerView: View {
             status: .done
         )
         await player.refreshBlockStatuses(from: workoutStore)
+        // Fold the finished block away on success (a failed
+        // submit or status write above leaves it open).
+        if workoutStore.errorMessage == nil {
+            withAnimation {
+                collapsedBlockIDs.insert(block.id)
+            }
+        }
+    }
+
+    /// Collapsed-by-default "Description" disclosure, shared by
+    /// the workout header and the block bodies (same label,
+    /// styling, and behaviour in both places). The content text
+    /// is pinned leading — without the explicit frame it drifts
+    /// to the centre of the card width.
+    private func descriptionDisclosure(_ text: String) -> some View {
+        DisclosureGroup("Description") {
+            Text(text)
+                .font(.body)
+                .foregroundStyle(DSColors.text)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.leading)
+        }
+        .font(.footnote.weight(.semibold))
+        .foregroundStyle(DSColors.textSecondary)
+        .tint(DSColors.accent)
     }
 
     private func blockSubtitle(for block: WorkoutBlockDetailDTO) -> String {
@@ -308,6 +357,18 @@ struct WorkoutPlayerView: View {
                             status: status
                         )
                         await player.refreshBlockStatuses(from: workoutStore)
+                        // Keep collapse in sync with check-offs:
+                        // finished blocks fold away, reopened ones
+                        // unfold. The chevron still overrides after.
+                        if workoutStore.errorMessage == nil {
+                            withAnimation {
+                                if status == .done || status == .skipped {
+                                    collapsedBlockIDs.insert(block.id)
+                                } else {
+                                    collapsedBlockIDs.remove(block.id)
+                                }
+                            }
+                        }
                     }
                 } label: {
                     Label(
@@ -317,12 +378,15 @@ struct WorkoutPlayerView: View {
                 }
             }
         } label: {
+            // Secondary badge chrome (inverted fill + on-color
+            // text, mirroring the cardio type pill) — the status
+            // reads from the label, not from brand colour.
             Text(block.status.displayName)
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, DSSpacing.sm)
                 .padding(.vertical, DSSpacing.xxs + 2)
-                .background(Capsule().fill(DSColors.accent.opacity(0.15)))
-                .foregroundStyle(DSColors.accent)
+                .background(Capsule().fill(DSColors.secondary))
+                .foregroundStyle(DSColors.onSecondary)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Mark \(block.blockName) \(block.status.displayName)")
@@ -333,20 +397,19 @@ struct WorkoutPlayerView: View {
     private func itemView(_ item: BlockItemDTO) -> some View {
         let skipped = player.skippedItemIDs.contains(item.id)
         let logged = player.loggedCount(itemID: item.id)
+        // No type badge: strength vs cardio is already evident
+        // from the editors below (set rows vs session row), and
+        // the block subtitle carries the block type.
         return VStack(alignment: .leading, spacing: DSSpacing.xs) {
-            HStack(spacing: DSSpacing.xs) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.exerciseName)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(DSColors.text)
-                    if !item.targetText.isEmpty {
-                        Text(item.targetText)
-                            .font(.subheadline)
-                            .foregroundStyle(DSColors.textSecondary)
-                    }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.exerciseName)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(DSColors.text)
+                if !item.targetText.isEmpty {
+                    Text(item.targetText)
+                        .font(.subheadline)
+                        .foregroundStyle(DSColors.textSecondary)
                 }
-                Spacer()
-                ExerciseTypeChip(type: item.exerciseType)
             }
             HStack(spacing: DSSpacing.xs) {
                 if logged > 0 {
@@ -369,15 +432,18 @@ struct WorkoutPlayerView: View {
             }
             if !skipped {
                 editorRows(item)
+                // Collapsible notes ride along with the item's
+                // next log call (Mark as Done autosubmits).
+                // Hidden while skipped — a skipped exercise logs
+                // nothing, so there is nothing to attach notes
+                // to. The text is kept in the store, so
+                // unskipping restores it.
+                notesDisclosure(item)
             } else {
                 Text("No sets will be logged for this exercise.")
                     .font(.footnote)
                     .foregroundStyle(DSColors.textSecondary)
             }
-            // Collapsible notes ride along with the item's next
-            // log call (Mark as Done autosubmits). Shown for
-            // skipped items too — unskipping keeps the text.
-            notesDisclosure(item)
         }
         .padding(.vertical, DSSpacing.xs)
     }

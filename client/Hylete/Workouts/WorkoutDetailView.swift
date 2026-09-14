@@ -174,20 +174,25 @@ struct WorkoutDetailView: View {
             // workout flips to in_progress on the first logged set.
             // Hidden once the workout is completed or skipped (the
             // status picker above reopens it when more logging is
-            // needed). Same row treatment as the Duplicate/Delete
-            // section below (VStack + hidden separator, default
-            // insets and row background) so the primary button
-            // renders with the identical width and corner radius.
+            // needed). Deliberately chromeless — no card
+            // background, tight insets — so the button sits close
+            // to the sections around it instead of floating in its
+            // own card like Duplicate/Delete below.
             if workout.status == .planned || workout.status == .inProgress {
                 Section {
-                    VStack(spacing: DSSpacing.xs) {
-                        Button {
-                            playerRequest = PlayerRequest(workoutID: workout.id)
-                        } label: {
-                            Text(workout.status == .inProgress ? "Resume workout" : "Start workout")
-                        }
-                        .buttonStyle(.dsPrimary)
+                    Button {
+                        playerRequest = PlayerRequest(workoutID: workout.id)
+                    } label: {
+                        Text(workout.status == .inProgress ? "Resume workout" : "Start workout")
                     }
+                    .buttonStyle(.dsPrimary)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(
+                        top: DSSpacing.xxs,
+                        leading: DSSpacing.md,
+                        bottom: DSSpacing.xxs,
+                        trailing: DSSpacing.md
+                    ))
                     .listRowSeparator(.hidden)
                 }
             }
@@ -222,14 +227,18 @@ struct WorkoutDetailView: View {
                                 }
                             }
                         } label: {
+                            // Secondary badge chrome (inverted fill +
+                            // on-color text, mirroring the player and
+                            // the cardio type pill) — the status
+                            // reads from the label, not from colour.
                             Text(block.status.displayName)
                                 .font(.caption.weight(.semibold))
                                 .padding(.horizontal, DSSpacing.sm)
                                 .padding(.vertical, DSSpacing.xxs + 2)
                                 .background(
-                                    Capsule().fill(statusColor(for: block.status).opacity(0.15))
+                                    Capsule().fill(DSColors.secondary)
                                 )
-                                .foregroundStyle(statusColor(for: block.status))
+                                .foregroundStyle(DSColors.onSecondary)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Mark \(block.blockName) \(block.status.displayName)")
@@ -314,13 +323,6 @@ struct WorkoutDetailView: View {
         }
     }
 
-    private func statusColor(for status: WorkoutBlockStatusDTO) -> Color {
-        switch status {
-        case .pending: return DSColors.textSecondary
-        case .done: return DSColors.accent
-        case .skipped: return DSColors.destructive
-        }
-    }
 }
 
 #Preview {
