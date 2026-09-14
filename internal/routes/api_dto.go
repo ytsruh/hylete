@@ -733,6 +733,15 @@ type UpdateWorkoutBlockStatusRequest struct {
 	Status string `json:"status" validate:"required,oneof=pending done skipped"`
 }
 
+// UpdateWorkoutStatusRequest is the body for PATCH
+// /api/v1/workouts/:id/status. Status-only by design: unlike PUT,
+// it never replaces blocks, so block check-offs survive explicit
+// status changes from the player Finish button and the detail
+// status picker.
+type UpdateWorkoutStatusRequest struct {
+	Status string `json:"status" validate:"required,oneof=planned in_progress completed skipped"`
+}
+
 // DuplicateWorkoutRequest is the body for POST
 // /api/v1/workouts/:id/duplicate.
 type DuplicateWorkoutRequest struct {

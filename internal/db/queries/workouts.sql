@@ -105,6 +105,12 @@ WHERE id = ? AND workout_id = ?;
 -- prior scoped GetByID.
 UPDATE workouts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
 
+-- name: UpdateWorkoutStatusScoped :exec
+-- Scoped status-only update for explicit status changes (player
+-- Finish button, detail status picker). Touches status alone so
+-- block check-offs survive. Scoped to the user directly.
+UPDATE workouts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?;
+
 -- name: DeleteWorkoutBlocks :exec
 -- Full block replacement on update: delete-all then re-insert in a
 -- transaction (the repository owns the tx). Also keeps deletes

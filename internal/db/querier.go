@@ -237,6 +237,10 @@ type Querier interface {
 	// workout ID alone is intentional; callers gate ownership via a
 	// prior scoped GetByID.
 	UpdateWorkoutStatus(ctx context.Context, arg UpdateWorkoutStatusParams) error
+	// Scoped status-only update for explicit status changes (player
+	// Finish button, detail status picker). Touches status alone so
+	// block check-offs survive. Scoped to the user directly.
+	UpdateWorkoutStatusScoped(ctx context.Context, arg UpdateWorkoutStatusScopedParams) error
 	UpsertHealthSnapshot(ctx context.Context, arg UpsertHealthSnapshotParams) (HealthSnapshot, error)
 }
 

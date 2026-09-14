@@ -253,6 +253,9 @@ type WorkoutRepo interface {
 	// MarkCompletedIfBlocksDone sets the workout to completed when
 	// every block is done or skipped. No-op otherwise.
 	MarkCompletedIfBlocksDone(workoutID, userID string) error
+	// SetWorkoutStatus overwrites only the workout status, leaving
+	// blocks untouched. Scoped to the user.
+	SetWorkoutStatus(workoutID, userID string, status WorkoutStatus) error
 }
 
 // Compile-time check to ensure WorkoutRepository implements WorkoutRepo.

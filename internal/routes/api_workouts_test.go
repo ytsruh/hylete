@@ -179,6 +179,15 @@ func (m *mockWorkoutRepository) MarkInProgressIfPlanned(workoutID, userID string
 	return nil
 }
 
+func (m *mockWorkoutRepository) SetWorkoutStatus(workoutID, userID string, status models.WorkoutStatus) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if w, ok := m.workouts[workoutID]; ok && w.UserID == userID {
+		w.Status = status
+	}
+	return nil
+}
+
 func (m *mockWorkoutRepository) MarkCompletedIfBlocksDone(workoutID, userID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -593,6 +602,48 @@ func TestAPIWorkout_PlayerLogging(t *testing.T) {
 	rec = apiDo(t, e, http.MethodGet, "/api/v1/workouts/"+wid+"/exercise-entries", otherToken, nil)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("cross-user status = %d, want 404", rec.Code)
+	}
+}
+
+// TestAPIWorkout_StatusPatch is the HTTP-level regression test for the
+// "Completed but 0/2 blocks" bug: PATCH status flips the workout while
+// done counts survive (1/2 here, not 0/2). Also covers bad status
+// (400) and missing workout (404).
+func TestAPIWorkout_StatusPatch(t *testing.T) {
+	h, _, mockUser, _, e := setupWorkoutsHandler(t)
+	token, _ := loginUser(t, h, mockUser, "sp@example.com", "SP")
+
+	created := decodeAPI[WorkoutDTO](t, apiDo(t, e, http.MethodPost, "/api/v1/workouts", token, validCreateWorkoutRequest()), http.StatusCreated)
+
+	updated := decodeAPI[WorkoutDTO](t, apiDo(t, e, http.MethodPatch, "/api/v1/workouts/"+created.ID+"/blocks/"+created.Blocks[0].ID, token,
+		UpdateWorkoutBlockStatusRequest{Status: "done"}), http.StatusOK)
+	if updated.Blocks[0].Status != "done" {
+		t.Fatalf("block status = %q, want done", updated.Blocks[0].Status)
+	}
+
+	completed := decodeAPI[WorkoutDTO](t, apiDo(t, e, http.MethodPatch, "/api/v1/workouts/"+created.ID+"/status", token,
+		UpdateWorkoutStatusRequest{Status: "completed"}), http.StatusOK)
+	if completed.Status != "completed" {
+		t.Errorf("status = %q, want completed", completed.Status)
+	}
+	if len(completed.Blocks) != 2 || completed.Blocks[0].Status != "done" || completed.Blocks[1].Status != "pending" {
+		t.Errorf("blocks = %+v, want done/pending preserved", completed.Blocks)
+	}
+
+	summaries := decodeAPI[workoutsResponse](t, apiDo(t, e, http.MethodGet, "/api/v1/workouts", token, nil), http.StatusOK)
+	if len(summaries.Workouts) != 1 || summaries.Workouts[0].DoneCount != 1 {
+		t.Errorf("summaries = %+v, want 1 workout with done_count 1", summaries.Workouts)
+	}
+
+	rec := apiDo(t, e, http.MethodPatch, "/api/v1/workouts/"+created.ID+"/status", token,
+		UpdateWorkoutStatusRequest{Status: "someday"})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("bad status code = %d, want 400", rec.Code)
+	}
+	rec = apiDo(t, e, http.MethodPatch, "/api/v1/workouts/missing/status", token,
+		UpdateWorkoutStatusRequest{Status: "completed"})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("missing status = %d, want 404", rec.Code)
 	}
 }
 

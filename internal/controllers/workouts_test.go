@@ -167,6 +167,15 @@ func (f *fakeWorkoutRepo) MarkInProgressIfPlanned(workoutID, userID string) erro
 	return nil
 }
 
+func (f *fakeWorkoutRepo) SetWorkoutStatus(workoutID, userID string, status models.WorkoutStatus) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if w, ok := f.workouts[workoutID]; ok && w.UserID == userID {
+		w.Status = status
+	}
+	return nil
+}
+
 func (f *fakeWorkoutRepo) MarkCompletedIfBlocksDone(workoutID, userID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -394,6 +403,45 @@ func TestGetWorkoutWithItems(t *testing.T) {
 	}
 	if len(got.Blocks) != 1 || len(got.Blocks[0].Items) != 0 {
 		t.Errorf("blocks = %+v, want 1 row with 0 items", got.Blocks)
+	}
+}
+
+// TestSetWorkoutStatus_PreservesBlocks is the regression test for the
+// "Completed but 0/2 blocks" bug: a status-only change must leave the
+// plan (blocks and their check-offs) untouched, unlike the full
+// replacement UpdateWorkout which resets every block to pending.
+func TestSetWorkoutStatus_PreservesBlocks(t *testing.T) {
+	ctrl, _ := setupWorkoutsController()
+	in := validWorkoutInput()
+	in.Blocks = []WorkoutBlockInput{{BlockID: "blk-1"}, {BlockID: "blk-2"}}
+	w, err := ctrl.CreateWorkout("u1", in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ctrl.SetWorkoutBlockStatus(w.ID, w.Blocks[0].ID, "u1", models.WorkoutBlockDone); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := ctrl.SetWorkoutStatus(w.ID, "u1", models.WorkoutStatusCompleted)
+	if err != nil {
+		t.Fatalf("SetWorkoutStatus failed: %v", err)
+	}
+	if updated.Status != models.WorkoutStatusCompleted {
+		t.Errorf("status = %q, want completed", updated.Status)
+	}
+	if len(updated.Blocks) != 2 {
+		t.Fatalf("blocks = %d, want 2 (plan must survive)", len(updated.Blocks))
+	}
+	if updated.Blocks[0].Status != models.WorkoutBlockDone || updated.Blocks[1].Status != models.WorkoutBlockPending {
+		t.Errorf("block statuses = %q/%q, want done/pending", updated.Blocks[0].Status, updated.Blocks[1].Status)
+	}
+	if _, err := ctrl.SetWorkoutStatus(w.ID, "u1", "someday"); !errors.Is(err, ErrWorkoutStatusInvalid) {
+		t.Errorf("err = %v, want ErrWorkoutStatusInvalid", err)
+	}
+	if _, err := ctrl.SetWorkoutStatus("missing", "u1", models.WorkoutStatusCompleted); !errors.Is(err, ErrWorkoutNotFound) {
+		t.Errorf("err = %v, want ErrWorkoutNotFound", err)
+	}
+	if _, err := ctrl.SetWorkoutStatus(w.ID, "u2", models.WorkoutStatusCompleted); !errors.Is(err, ErrWorkoutNotFound) {
+		t.Errorf("wrong-user err = %v, want ErrWorkoutNotFound", err)
 	}
 }
 

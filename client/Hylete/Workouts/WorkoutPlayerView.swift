@@ -30,6 +30,11 @@ struct WorkoutPlayerView: View {
     @State private var didRequestLoad: Bool = false
     @State private var showingFinishConfirm: Bool = false
     @State private var isFinishing: Bool = false
+    /// Collapsed block ids (tap the chevron to fold long blocks).
+    @State private var collapsedBlockIDs: Set<String> = []
+    /// Block ids with a status write in flight (disables the Done
+    /// button and shows a spinner so double-taps can't race).
+    @State private var markingBlockIDs: Set<String> = []
 
     init(workoutID: String, workoutStore: WorkoutStore, player: WorkoutPlayerStore) {
         self.workoutID = workoutID
@@ -52,11 +57,11 @@ struct WorkoutPlayerView: View {
                             .disabled(isFinishing || player.workout == nil)
                     }
                 }
-                .confirmationDialog(
-                    "Finish this workout?",
-                    isPresented: $showingFinishConfirm,
-                    titleVisibility: .visible
-                ) {
+                // Centered confirmation, matching the Delete
+                // workout/block pattern elsewhere in the app
+                // (a confirmationDialog would dock to the bottom
+                // of the screen instead).
+                .alert("Finish this workout?", isPresented: $showingFinishConfirm) {
                     Button("Finish workout") { Task { await finish() } }
                     Button("Keep going", role: .cancel) {}
                 } message: {
@@ -161,16 +166,36 @@ struct WorkoutPlayerView: View {
     // MARK: - Blocks
 
     private func blockCard(_ block: WorkoutBlockDetailDTO) -> some View {
-        VStack(alignment: .leading, spacing: DSSpacing.sm) {
+        let isCollapsed = collapsedBlockIDs.contains(block.id)
+        return VStack(alignment: .leading, spacing: DSSpacing.sm) {
             HStack(alignment: .top, spacing: DSSpacing.sm) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(block.blockName)
-                        .font(.headline)
-                        .foregroundStyle(DSColors.text)
-                    Text(blockSubtitle(for: block))
-                        .font(.subheadline)
-                        .foregroundStyle(DSColors.textSecondary)
+                Button {
+                    withAnimation {
+                        if isCollapsed {
+                            collapsedBlockIDs.remove(block.id)
+                        } else {
+                            collapsedBlockIDs.insert(block.id)
+                        }
+                    }
+                } label: {
+                    HStack(alignment: .top, spacing: DSSpacing.xs) {
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(DSColors.textSecondary)
+                            .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                            .padding(.top, 4)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(block.blockName)
+                                .font(.headline)
+                                .foregroundStyle(DSColors.text)
+                            Text(blockSubtitle(for: block))
+                                .font(.subheadline)
+                                .foregroundStyle(DSColors.textSecondary)
+                        }
+                    }
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isCollapsed ? "Expand \(block.blockName)" : "Collapse \(block.blockName)")
                 Spacer()
                 blockStatusMenu(block)
             }
@@ -179,17 +204,38 @@ struct WorkoutPlayerView: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(DSColors.accent)
             }
-            Divider().background(DSColors.separator)
-            if block.items.isEmpty {
-                Text("This block's exercises are unavailable — you can still mark the block skipped.")
-                    .font(.footnote)
-                    .foregroundStyle(DSColors.textSecondary)
-            }
-            ForEach(block.items) { item in
-                itemView(item, in: block)
-                if item.id != block.items.last?.id {
-                    Divider().background(DSColors.separator)
+            if !isCollapsed {
+                Divider().background(DSColors.separator)
+                if block.items.isEmpty {
+                    Text("This block's exercises are unavailable — you can still mark the block skipped.")
+                        .font(.footnote)
+                        .foregroundStyle(DSColors.textSecondary)
                 }
+                ForEach(block.items) { item in
+                    itemView(item, in: block)
+                    if item.id != block.items.last?.id {
+                        Divider().background(DSColors.separator)
+                    }
+                }
+            }
+            // Explicit Done affordance — the status chip menu
+            // alone wasn't discoverable. Manual check-off stays
+            // the source of truth; this is the same write as the
+            // menu's Done row.
+            if block.status != .done {
+                Button {
+                    Task { await markBlockDone(block) }
+                } label: {
+                    if markingBlockIDs.contains(block.id) {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Mark as Done")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.dsSecondary)
+                .disabled(markingBlockIDs.contains(block.id))
             }
         }
         .padding(DSSpacing.md)
@@ -201,6 +247,20 @@ struct WorkoutPlayerView: View {
             RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous)
                 .stroke(DSColors.separator, lineWidth: 0.5)
         )
+    }
+
+    /// Marks one block done via the shared store, then refreshes
+    /// the player's local statuses so the header and hints catch
+    /// up without refetching items.
+    private func markBlockDone(_ block: WorkoutBlockDetailDTO) async {
+        markingBlockIDs.insert(block.id)
+        defer { markingBlockIDs.remove(block.id) }
+        await workoutStore.setBlockStatus(
+            workoutID: workoutID,
+            workoutBlockID: block.id,
+            status: .done
+        )
+        await player.refreshBlockStatuses(from: workoutStore)
     }
 
     private func blockSubtitle(for block: WorkoutBlockDetailDTO) -> String {
@@ -344,11 +404,16 @@ struct WorkoutPlayerView: View {
                         .accessibilityLabel("Remove set row")
                     }
                 }
+                // Same affordance as `NewSetView.setsSection`: a
+                // Label with the plus.circle icon and no custom
+                // font, so the row reads identically in both
+                // places. The plain style + accent keeps it
+                // legible on the card surface (a Form row gets
+                // that tint for free).
                 Button {
                     player.addDraftRow(itemID: item.id)
                 } label: {
                     Label("Add set", systemImage: "plus.circle")
-                        .font(.footnote)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(DSColors.accent)
@@ -387,25 +452,15 @@ struct WorkoutPlayerView: View {
         authStore.currentUser?.distanceUnit ?? "km"
     }
 
-    /// Marks the workout completed (status-only update, plan
-    /// untouched), clears the on-device drafts, and dismisses.
-    /// Partial completion is allowed — pending blocks stay pending.
+    /// Marks the workout completed via the status-only endpoint
+    /// (plan and block check-offs untouched), clears the on-device
+    /// drafts, and dismisses. Partial completion is allowed —
+    /// pending blocks stay pending.
     private func finish() async {
         guard !isFinishing else { return }
         isFinishing = true
         defer { isFinishing = false }
-        await workoutStore.detail(id: workoutID, refresh: true)
-        guard let current = workoutStore.details[workoutID] else { return }
-        await workoutStore.update(
-            id: workoutID,
-            request: UpdateWorkoutRequest(
-                name: current.name,
-                description: current.description,
-                scheduledDate: current.scheduledDate,
-                status: .completed,
-                blocks: current.blocks.map { WorkoutBlockRequest(blockID: $0.blockID) }
-            )
-        )
+        await workoutStore.setStatus(id: workoutID, status: .completed)
         if workoutStore.errorMessage == nil {
             player.clearSnapshot()
             dismiss()

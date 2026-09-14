@@ -180,6 +180,36 @@ final class WorkoutPlayerTests: XCTestCase {
         XCTAssertTrue(second.skippedItemIDs.contains("bi-1"))
     }
 
+    /// Regression test for the "unexpected response" player bug:
+    /// concurrent decodes used to race on one shared date
+    /// formatter's mutable options and intermittently fail. Hammer
+    /// both player payloads from parallel tasks — every decode
+    /// must succeed. Run with Thread Sanitizer to prove the race
+    /// is gone (it flagged the old shared-mutable-formatter code).
+    func testConcurrentDecodesAlwaysSucceed() async throws {
+        let workoutData = Data(withItemsBody.utf8)
+        let resumeData = Data(resumeBody.utf8)
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for _ in 0..<50 {
+                group.addTask {
+                    let workout = try APIClient.jsonDecoder.decode(
+                        WorkoutWithItemsDTO.self,
+                        from: workoutData
+                    )
+                    XCTAssertEqual(workout.blocks.count, 1)
+                }
+                group.addTask {
+                    let entries = try APIClient.jsonDecoder.decode(
+                        [ExerciseEntryDTO].self,
+                        from: resumeData
+                    )
+                    XCTAssertEqual(entries.count, 1)
+                }
+            }
+            try await group.waitForAll()
+        }
+    }
+
     func testSetInputMapping() {
         // Strength drafts map reps/weight/rest with the linkage.
         var strength = SetDraft(distanceUnit: "km")

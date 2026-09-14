@@ -438,6 +438,19 @@ func (r *WorkoutRepository) MarkCompletedIfBlocksDone(workoutID, userID string) 
 	})
 }
 
+// SetWorkoutStatus overwrites only the workout status (bumps
+// updated_at). Unlike Update, it never touches the blocks, so block
+// check-offs survive explicit status changes from the player Finish
+// button and the detail status picker. Scoped to the user.
+func (r *WorkoutRepository) SetWorkoutStatus(workoutID, userID string, status WorkoutStatus) error {
+	ctx := context.Background()
+	return r.queries.UpdateWorkoutStatusScoped(ctx, db.UpdateWorkoutStatusScopedParams{
+		Status: string(status),
+		ID:     workoutID,
+		UserID: userID,
+	})
+}
+
 // MarkInProgressIfPlanned flips a planned workout to in_progress on
 // the first linked exercise entry. No-op for any other status.
 // Backs the "Start is UI state until data is submitted" rule.

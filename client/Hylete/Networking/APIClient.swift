@@ -21,11 +21,22 @@ public final class APIClient: @unchecked Sendable {
     /// fractional seconds (matching Go's `time.Time` JSON
     /// output) with a no-fractional-seconds fallback for
     /// older server versions.
+    ///
+    /// Each formatter below is configured once and never
+    /// mutated afterwards, and every use goes through
+    /// `dateFormattingLock`. A single shared formatter whose
+    /// `formatOptions` were rewritten on every parse used to
+    /// live here instead — concurrent decodes (the player and
+    /// dashboard both fetch two resources with `async let`)
+    /// raced on those options and intermittently failed date
+    /// parsing, surfacing as "unexpected response" errors.
+    /// (`DateFormatter` is not thread-safe even for reads, so
+    /// the lock guards immutable instances too.)
     public static let jsonEncoder: JSONEncoder = {
         let enc = JSONEncoder()
         enc.dateEncodingStrategy = .custom { date, encoder in
             var container = encoder.singleValueContainer()
-            try container.encode(APIClient.dateFormatter.string(from: date))
+            try container.encode(APIClient.formatDate(date))
         }
         return enc
     }()
@@ -37,11 +48,8 @@ public final class APIClient: @unchecked Sendable {
             let str = try container.decode(String.self)
             // Try the two on-the-wire variants we expect from
             // the server, in order of specificity.
-            for options in APIClient.dateFormatOptions {
-                APIClient.dateFormatter.formatOptions = options
-                if let date = APIClient.dateFormatter.date(from: str) {
-                    return date
-                }
+            if let date = APIClient.parseDate(str) {
+                return date
             }
             throw DecodingError.dataCorruptedError(
                 in: container,
@@ -51,13 +59,43 @@ public final class APIClient: @unchecked Sendable {
         return dec
     }()
 
-    private static let dateFormatOptions: [ISO8601DateFormatter.Options] = [
-        [.withInternetDateTime, .withFractionalSeconds],
-        [.withInternetDateTime],
-    ]
+    /// Serializes all shared-formatter use. Uncontended lock
+    /// overhead is negligible next to JSON parsing itself.
+    private static let dateFormattingLock = NSLock()
 
-    private static let dateFormatter: ISO8601DateFormatter = {
+    /// Formats a date for request bodies (fractional-seconds
+    /// RFC 3339, matching Go's `time.Time` output).
+    private static func formatDate(_ date: Date) -> String {
+        dateFormattingLock.lock()
+        defer { dateFormattingLock.unlock() }
+        return fractionalDateFormatter.string(from: date)
+    }
+
+    /// Parses a server date string, trying fractional seconds
+    /// first with a plain RFC 3339 fallback.
+    private static func parseDate(_ str: String) -> Date? {
+        dateFormattingLock.lock()
+        defer { dateFormattingLock.unlock() }
+        if let date = fractionalDateFormatter.date(from: str) {
+            return date
+        }
+        return plainDateFormatter.date(from: str)
+    }
+
+    /// RFC 3339 with fractional seconds. Pinned for the
+    /// encoder so request bodies no longer depend on decode
+    /// history.
+    private static let fractionalDateFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    /// RFC 3339 without fractional seconds (fallback for
+    /// older server versions).
+    private static let plainDateFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
         return f
     }()
 
@@ -335,6 +373,14 @@ public final class APIClient: @unchecked Sendable {
     /// array order.
     public func updateWorkout(id: String, request: UpdateWorkoutRequest) async throws -> WorkoutDTO {
         try await send("PUT", "workouts/\(id)", body: request)
+    }
+
+    /// Changes only a workout's status (plan, blocks, and their
+    /// check-offs untouched). Use for the player Finish button and
+    /// the detail status picker — both must preserve block
+    /// progress, which the full-replacement `PUT` resets.
+    public func setWorkoutStatus(id: String, status: WorkoutStatusDTO) async throws -> WorkoutDTO {
+        try await send("PATCH", "workouts/\(id)/status", body: UpdateWorkoutStatusRequest(status: status))
     }
 
     public func deleteWorkout(id: String) async throws {

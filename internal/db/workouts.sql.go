@@ -570,3 +570,21 @@ func (q *Queries) UpdateWorkoutStatus(ctx context.Context, arg UpdateWorkoutStat
 	_, err := q.db.ExecContext(ctx, updateWorkoutStatus, arg.Status, arg.ID)
 	return err
 }
+
+const updateWorkoutStatusScoped = `-- name: UpdateWorkoutStatusScoped :exec
+UPDATE workouts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?
+`
+
+type UpdateWorkoutStatusScopedParams struct {
+	Status string
+	ID     string
+	UserID string
+}
+
+// Scoped status-only update for explicit status changes (player
+// Finish button, detail status picker). Touches status alone so
+// block check-offs survive. Scoped to the user directly.
+func (q *Queries) UpdateWorkoutStatusScoped(ctx context.Context, arg UpdateWorkoutStatusScopedParams) error {
+	_, err := q.db.ExecContext(ctx, updateWorkoutStatusScoped, arg.Status, arg.ID, arg.UserID)
+	return err
+}

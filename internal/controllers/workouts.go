@@ -184,6 +184,30 @@ func (wc *WorkoutsController) UpdateWorkout(id, userID string, in UpdateWorkoutI
 	return existing, nil
 }
 
+// SetWorkoutStatus changes only the workout status, leaving the plan
+// (name, date, blocks and their check-offs) untouched. This is the
+// path for the player Finish button and the detail status picker —
+// both must never reset block progress, which is what the full
+// replacement UpdateWorkout does by design. Returns ErrWorkoutNotFound
+// when missing or owned by another user, ErrWorkoutStatusInvalid for
+// unknown statuses.
+func (wc *WorkoutsController) SetWorkoutStatus(workoutID, userID string, status models.WorkoutStatus) (*models.Workout, error) {
+	if !status.IsValid() {
+		return nil, ErrWorkoutStatusInvalid
+	}
+	existing, err := wc.repo.GetByID(workoutID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, ErrWorkoutNotFound
+	}
+	if err := wc.repo.SetWorkoutStatus(workoutID, userID, status); err != nil {
+		return nil, err
+	}
+	return wc.repo.GetByID(workoutID, userID)
+}
+
 // DeleteWorkout hard-deletes a workout scoped to the user. Returns
 // ErrWorkoutNotFound when missing.
 func (wc *WorkoutsController) DeleteWorkout(id, userID string) error {

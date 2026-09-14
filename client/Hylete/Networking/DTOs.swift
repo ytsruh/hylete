@@ -1614,6 +1614,18 @@ public struct UpdateWorkoutBlockStatusRequest: Encodable, Equatable {
     }
 }
 
+/// JSON body for `PATCH /api/v1/workouts/:id/status`.
+/// Status-only by design: unlike `PUT`, it never replaces blocks,
+/// so block check-offs survive explicit status changes from the
+/// player Finish button and the detail status picker.
+public struct UpdateWorkoutStatusRequest: Encodable, Equatable {
+    public let status: WorkoutStatusDTO
+
+    public init(status: WorkoutStatusDTO) {
+        self.status = status
+    }
+}
+
 // MARK: Feedback
 
 /// JSON body for `POST /api/v1/feedback`. Mirrors the

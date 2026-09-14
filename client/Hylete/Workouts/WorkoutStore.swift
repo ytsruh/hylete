@@ -214,6 +214,27 @@ public final class WorkoutStore: ObservableObject {
         }
     }
 
+    /// Changes only a workout's status (plan and block check-offs
+    /// untouched). Backs the player Finish button and the detail
+    /// status picker — both must preserve block progress, which
+    /// the full-replacement `update` resets. Refreshes the cached
+    /// detail, the summary row, and the calendar cache.
+    public func setStatus(id: String, status: WorkoutStatusDTO) async {
+        errorMessage = nil
+        do {
+            let updated = try await api.setWorkoutStatus(id: id, status: status)
+            details[id] = updated
+            if let index = summaries.firstIndex(where: { $0.id == id }) {
+                summaries[index] = summary(of: updated)
+            }
+            invalidateCalendarCache()
+        } catch let error as APIError {
+            errorMessage = error.errorDescription
+        } catch {
+            errorMessage = "Could not update the workout."
+        }
+    }
+
     /// Hard-deletes a workout. Optimistic remove; rolls back by
     /// re-inserting the summary on failure.
     public func delete(id: String) async {

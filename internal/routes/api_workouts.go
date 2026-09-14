@@ -251,6 +251,38 @@ func (h *Handler) APIUpdateWorkoutBlockStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, WorkoutFromModel(*updated))
 }
 
+// APIUpdateWorkoutStatus handles PATCH /api/v1/workouts/:id/status.
+// Changes only the workout status (plan, blocks and their check-offs
+// untouched) and returns the refreshed workout. Backs the player
+// Finish button and the detail status picker — both must preserve
+// block progress, which the full-replacement PUT intentionally
+// resets. Returns 404 when missing or owned by another user.
+func (h *Handler) APIUpdateWorkoutStatus(c echo.Context) error {
+	var in UpdateWorkoutStatusRequest
+	if err := c.Bind(&in); err != nil {
+		return c.JSON(http.StatusBadRequest, APIError{Error: "invalid request body"})
+	}
+	if err := h.validator.ValidateStruct(&in); err != nil {
+		return c.JSON(http.StatusBadRequest, APIError{Error: friendlyValidationError(err)})
+	}
+
+	claims := GetClaims(c)
+	updated, err := h.workoutsCtrl.SetWorkoutStatus(
+		c.Param("id"), claims.UserID,
+		models.WorkoutStatus(in.Status),
+	)
+	if err != nil {
+		if errors.Is(err, controllers.ErrWorkoutNotFound) {
+			return c.JSON(http.StatusNotFound, APIError{Error: "workout not found"})
+		}
+		if msg, ok := workoutValidationError(err); ok {
+			return c.JSON(http.StatusBadRequest, APIError{Error: msg})
+		}
+		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to update workout status"})
+	}
+	return c.JSON(http.StatusOK, WorkoutFromModel(*updated))
+}
+
 // APIDuplicateWorkout handles POST
 // /api/v1/workouts/:id/duplicate. Copies the workout onto a new
 // scheduled date (exact name) with block statuses reset to pending.
