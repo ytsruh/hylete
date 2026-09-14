@@ -16,7 +16,10 @@ import SwiftUI
 /// additional sets") while they hold valid drafts, so sets typed
 /// after reopening a finished workout can still be posted.
 /// Half-typed rows stay on screen and survive background/kill via
-/// the store's on-device snapshot.
+/// the store's on-device snapshot. The tappable "X logged" row
+/// opens the exercise's sets for this workout (history sheet with
+/// edit + delete); the store retains the full entries, not just
+/// counts.
 ///
 /// Progress is hybrid: per-item logged counts plus local skips
 /// (zero sets, e.g. no equipment or injury) drive a "ready to mark
@@ -34,6 +37,7 @@ import SwiftUI
 /// dismiss.
 struct WorkoutPlayerView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var authStore: AuthStore
 
     @ObservedObject var workoutStore: WorkoutStore
@@ -49,6 +53,10 @@ struct WorkoutPlayerView: View {
     /// Block ids with a status write in flight (disables the Done
     /// button and shows a spinner so double-taps can't race).
     @State private var markingBlockIDs: Set<String> = []
+    /// Planned item whose logged-sets history sheet is open.
+    /// `BlockItemDTO` is `Identifiable`, so the sheet binds by
+    /// item and always reads live buckets from the store.
+    @State private var historyItem: BlockItemDTO?
 
     init(workoutID: String, workoutStore: WorkoutStore, player: WorkoutPlayerStore) {
         self.workoutID = workoutID
@@ -80,6 +88,11 @@ struct WorkoutPlayerView: View {
                     Button("Keep going", role: .cancel) {}
                 } message: {
                     Text("The workout is marked completed. Pending blocks may remain — partial completion is allowed.")
+                }
+                .sheet(item: $historyItem) { item in
+                    WorkoutLoggedSetsSheet(player: player, item: item)
+                        .environmentObject(env)
+                        .environmentObject(authStore)
                 }
                 .task {
                     // Long rests between sets can outlast the
@@ -428,26 +441,19 @@ struct WorkoutPlayerView: View {
         // from the editors below (set rows vs session row), and
         // the block subtitle carries the block type.
         return VStack(alignment: .leading, spacing: DSSpacing.xs) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.exerciseName)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(DSColors.text)
-                if !item.targetText.isEmpty {
-                    Text(item.targetText)
-                        .font(.subheadline)
-                        .foregroundStyle(DSColors.textSecondary)
-                }
-            }
-            HStack(spacing: DSSpacing.xs) {
-                if logged > 0 {
-                    Text(logged == 1 ? "1 logged" : "\(logged) logged")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(DSColors.accent)
-                }
-                if skipped {
-                    Text("Skipped")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(DSColors.textSecondary)
+            // Title row with Skip docked to it — the toggle reads
+            // as part of the exercise header rather than floating
+            // a row below the counts.
+            HStack(alignment: .top, spacing: DSSpacing.xs) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.exerciseName)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(DSColors.text)
+                    if !item.targetText.isEmpty {
+                        Text(item.targetText)
+                            .font(.subheadline)
+                            .foregroundStyle(DSColors.textSecondary)
+                    }
                 }
                 Spacer()
                 Button(skipped ? "Unskip" : "Skip") {
@@ -456,6 +462,26 @@ struct WorkoutPlayerView: View {
                 .font(.footnote)
                 .foregroundStyle(DSColors.textSecondary)
                 .disabled(player.isLogging(itemID: item.id))
+            }
+            // The logged count opens this exercise's sets for
+            // the workout (history sheet with edit + delete).
+            // Accent + chevron mark it tappable. Rendered only
+            // when something is logged, so the row takes no
+            // space otherwise.
+            if logged > 0 {
+                Button {
+                    historyItem = item
+                } label: {
+                    HStack(spacing: 2) {
+                        Text(logged == 1 ? "1 logged" : "\(logged) logged")
+                        Image(systemName: "chevron.right")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DSColors.accent)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show logged sets for \(item.exerciseName)")
+                .accessibilityHint("Opens the set history for this workout")
             }
             if !skipped {
                 editorRows(item)
@@ -467,7 +493,7 @@ struct WorkoutPlayerView: View {
                 // unskipping restores it.
                 notesDisclosure(item)
             } else {
-                Text("No sets will be logged for this exercise.")
+                Text("Skipped — no sets will be logged for this exercise.")
                     .font(.footnote)
                     .foregroundStyle(DSColors.textSecondary)
             }
@@ -604,6 +630,113 @@ struct WorkoutPlayerView: View {
     }
 }
 
+/// One planned exercise's logged sets for this workout, newest
+/// first, with swipe-to-edit and delete. Opened from the
+/// player's tappable "X logged" row. Entries come from the
+/// player store's retained buckets (resume fetch + everything
+/// logged this session), so no extra fetch is needed and newly
+/// logged sets appear immediately.
+///
+/// Editing reuses `EditSetView` (it performs the PUT; the save
+/// callback splices the server-confirmed row into the bucket).
+/// Deletes are pessimistic — the row leaves only on a confirmed
+/// API delete, so counts can never desync. Read-only callers
+/// (the detail view) render `HistorySetRow`s directly instead.
+private struct WorkoutLoggedSetsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var env: AppEnvironment
+    @EnvironmentObject private var authStore: AuthStore
+
+    @ObservedObject var player: WorkoutPlayerStore
+    let item: BlockItemDTO
+
+    @State private var editingEntry: ExerciseEntryDTO?
+    @State private var entryPendingDelete: ExerciseEntryDTO?
+    @State private var showingDeleteConfirm: Bool = false
+
+    private var entries: [ExerciseEntryDTO] {
+        player.loggedEntries(itemID: item.id)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(entries) { entry in
+                    HistorySetRow(
+                        entry: entry,
+                        weightUnit: weightUnit,
+                        distanceUnit: distanceUnit,
+                        showsNotes: true
+                    )
+                    .opacity(player.isDeleting(entryID: entry.id) ? 0.5 : 1)
+                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                        Button {
+                            editingEntry = entry
+                        } label: {
+                            Label("Edit", systemImage: Icons.edit)
+                                .labelStyle(.iconOnly)
+                        }
+                        .tint(Color(.systemGray2))
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            entryPendingDelete = entry
+                            showingDeleteConfirm = true
+                        } label: {
+                            Label("Delete", systemImage: Icons.trash)
+                                .labelStyle(.iconOnly)
+                        }
+                    }
+                }
+            }
+            .navigationTitle(item.exerciseName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .sheet(item: $editingEntry) { entry in
+                EditSetView(exerciseEntry: entry) { updated in
+                    player.updateLoggedEntry(updated)
+                }
+                .environmentObject(env)
+                .environmentObject(authStore)
+            }
+            .alert(
+                item.isCardio ? "Delete this session?" : "Delete this set?",
+                isPresented: $showingDeleteConfirm,
+                presenting: entryPendingDelete
+            ) { entry in
+                Button("Delete", role: .destructive) {
+                    Task { await player.deleteLoggedEntry(entry) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text(item.isCardio
+                    ? "This will permanently remove the session from this workout's history."
+                    : "This will permanently remove the set from this workout's history.")
+            }
+            // The last set deleted empties the sheet's reason to
+            // exist — close it so the player (whose "X logged"
+            // row is now gone) is what the user sees.
+            .onChange(of: entries) { _, newEntries in
+                if newEntries.isEmpty {
+                    dismiss()
+                }
+            }
+        }
+    }
+
+    private var weightUnit: String {
+        authStore.currentUser?.weightUnit ?? "kg"
+    }
+
+    private var distanceUnit: String {
+        authStore.currentUser?.distanceUnit ?? "km"
+    }
+}
+
 #Preview {
     WorkoutPlayerView(
         workoutID: "preview",
@@ -619,6 +752,7 @@ struct WorkoutPlayerView: View {
             )
         )
     )
+    .environmentObject(AppEnvironment.live(baseURL: URL(string: "http://localhost:8080/api/v1")!))
     .environmentObject(AuthStore(api: APIClient(
         baseURL: URL(string: "http://localhost:8080/api/v1")!,
         tokenProvider: { nil }

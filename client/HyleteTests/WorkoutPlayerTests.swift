@@ -438,6 +438,128 @@ final class WorkoutPlayerTests: XCTestCase {
         XCTAssertTrue(store.hasValidDrafts(in: block))
     }
 
+    // MARK: - Entry history (sheet data)
+
+    private func entryJSON(id: String, createdAt: String) -> String {
+        """
+        {"id":"\(id)","exercise_id":"ex-1","exercise_name":"Squat","exercise_type":"strength","reps":5,"weight":100.0,"notes":"felt good","rest_time":90,"duration_seconds":0,"distance_meters":0.0,"avg_heart_rate":0,"calories_burned":0.0,"workout_id":"wo-1","block_id":"blk-1","workout_block_id":"wb-1","created_at":"\(createdAt)"}
+        """
+    }
+
+    private func stubEntries(_ entriesBody: String, deleteStatus: Int = 200) {
+        StubURLProtocol.handler = { [withItemsBody] request in
+            if request.httpMethod == "DELETE" {
+                if deleteStatus == 200 {
+                    return self.respond(body: "{}")
+                }
+                return self.respond(status: deleteStatus, body: #"{"error":"boom"}"#)
+            }
+            if request.url?.absoluteString.contains("exercise-entries") == true {
+                return self.respond(body: entriesBody)
+            }
+            return self.respond(body: withItemsBody)
+        }
+    }
+
+    func testLoadRetainsEntriesNewestFirst() async throws {
+        stubEntries("[\(entryJSON(id: "e-old", createdAt: "2026-09-14T11:00:00.000000+01:00")),\(entryJSON(id: "e-new", createdAt: "2026-09-14T12:00:00.000000+01:00"))]")
+        let store = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        await store.load()
+        XCTAssertNil(store.errorMessage)
+        // Buckets (not just counts) survive load, newest first —
+        // this is what the history sheet renders.
+        XCTAssertEqual(store.loggedEntries(itemID: "bi-1").map(\.id), ["e-new", "e-old"])
+        XCTAssertEqual(store.loggedCount(itemID: "bi-1"), 2)
+        XCTAssertEqual(store.loggedEntries(itemID: "bi-1").first?.notes, "felt good")
+        XCTAssertTrue(store.loggedEntries(itemID: "bi-2").isEmpty)
+    }
+
+    func testUpdateLoggedEntrySplices() async throws {
+        stubPlayerPaths()
+        let store = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        await store.load()
+        let original = try XCTUnwrap(store.loggedEntries(itemID: "bi-1").first)
+        let updated = ExerciseEntryDTO(
+            id: original.id, exerciseID: original.exerciseID,
+            exerciseName: original.exerciseName, exerciseType: original.exerciseType,
+            reps: 99, weight: original.weight, notes: "edited",
+            restTime: original.restTime, durationSeconds: original.durationSeconds,
+            distanceMeters: original.distanceMeters, avgHeartRate: original.avgHeartRate,
+            caloriesBurned: original.caloriesBurned, workoutID: original.workoutID,
+            blockID: original.blockID, workoutBlockID: original.workoutBlockID,
+            createdAt: original.createdAt
+        )
+        store.updateLoggedEntry(updated)
+
+        // One row stays one row: values change, counts don't.
+        XCTAssertEqual(store.loggedEntries(itemID: "bi-1").count, 1)
+        XCTAssertEqual(store.loggedEntries(itemID: "bi-1").first?.reps, 99)
+        XCTAssertEqual(store.loggedEntries(itemID: "bi-1").first?.notes, "edited")
+        XCTAssertEqual(store.loggedCount(itemID: "bi-1"), 1)
+    }
+
+    func testDeleteLoggedEntryRemoves() async throws {
+        stubEntries("[\(entryJSON(id: "e1", createdAt: "2026-09-14T12:00:00.000000+01:00"))]")
+        let store = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        await store.load()
+        let entry = try XCTUnwrap(store.loggedEntries(itemID: "bi-1").first)
+
+        let ok = await store.deleteLoggedEntry(entry)
+
+        XCTAssertTrue(ok)
+        XCTAssertNil(store.errorMessage)
+        XCTAssertTrue(store.loggedEntries(itemID: "bi-1").isEmpty)
+        XCTAssertEqual(store.loggedCount(itemID: "bi-1"), 0)
+    }
+
+    func testDeleteLoggedEntryFailureKeepsRow() async throws {
+        stubEntries("[\(entryJSON(id: "e1", createdAt: "2026-09-14T12:00:00.000000+01:00"))]", deleteStatus: 500)
+        let store = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        await store.load()
+        let entry = try XCTUnwrap(store.loggedEntries(itemID: "bi-1").first)
+
+        let ok = await store.deleteLoggedEntry(entry)
+
+        XCTAssertFalse(ok)
+        XCTAssertNotNil(store.errorMessage)
+        XCTAssertEqual(store.loggedEntries(itemID: "bi-1").count, 1)
+        XCTAssertEqual(store.loggedCount(itemID: "bi-1"), 1)
+    }
+
+    func testGroupedEntriesByBlock() {
+        let push = WorkoutBlockDTO(
+            id: "wb-1", blockID: "blk-1", blockName: "Push",
+            blockType: .standard, position: 0, status: .pending, itemCount: 1
+        )
+        let pull = WorkoutBlockDTO(
+            id: "wb-2", blockID: "blk-2", blockName: "Pull",
+            blockType: .standard, position: 1, status: .pending, itemCount: 1
+        )
+        func entry(id: String, blockID: String?, at epoch: TimeInterval) -> ExerciseEntryDTO {
+            ExerciseEntryDTO(
+                id: id, exerciseID: "ex-1", exerciseName: "Squat",
+                reps: 5, weight: 100, notes: "", restTime: 0,
+                blockID: blockID, createdAt: Date(timeIntervalSince1970: epoch)
+            )
+        }
+        let groups = WorkoutDetailView.groupedEntries(
+            blocks: [push, pull],
+            entries: [
+                entry(id: "old", blockID: "blk-1", at: 1000),
+                entry(id: "new", blockID: "blk-1", at: 2000),
+                entry(id: "pull-1", blockID: "blk-2", at: 1500),
+                entry(id: "orphan", blockID: "blk-gone", at: 3000),
+                entry(id: "unlinked", blockID: nil, at: 500),
+            ]
+        )
+        // Position order, buckets newest-first, orphans (deleted
+        // block or no link) in a trailing Other group.
+        XCTAssertEqual(groups.map(\.name), ["Push", "Pull", "Other"])
+        XCTAssertEqual(groups[0].entries.map(\.id), ["new", "old"])
+        XCTAssertEqual(groups[1].entries.map(\.id), ["pull-1"])
+        XCTAssertEqual(groups[2].entries.map(\.id), ["orphan", "unlinked"])
+    }
+
     // MARK: - Blocks-based progress
 
     private func detailBlock(status: WorkoutBlockStatusDTO) -> WorkoutBlockDetailDTO {

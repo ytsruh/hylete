@@ -46,9 +46,12 @@ public final class WorkoutPlayerStore: ObservableObject {
     /// Persisted in the on-device snapshot like drafts.
     @Published public var notes: [String: String] = [:]
 
-    /// Server-confirmed logged-set counts per item id. Seeded from
-    /// the resume endpoint on load, incremented on every 201.
-    @Published public private(set) var loggedCounts: [String: Int] = [:]
+    /// Server-confirmed logged sets per item id, newest first.
+    /// Seeded from the resume endpoint on load, prepended to on
+    /// every 201, spliced on edit and shrunk on delete. Backs both
+    /// the "X logged" counts and the per-exercise history sheet —
+    /// one source of truth so the two can never disagree.
+    @Published public private(set) var loggedEntriesByItem: [String: [ExerciseEntryDTO]] = [:]
 
     /// Most-recent load/log error, if any. Cleared at the start of
     /// every operation.
@@ -105,7 +108,7 @@ public final class WorkoutPlayerStore: ObservableObject {
             async let entriesTask = api.listWorkoutExerciseEntries(workoutID: workoutID)
             let (fetched, entries) = try await (workoutTask, entriesTask)
             workout = fetched
-            loggedCounts = Self.countsByItem(in: fetched, entries: entries)
+            loggedEntriesByItem = Self.entriesByItem(in: fetched, entries: entries)
             ensureDrafts(for: fetched)
         } catch let error as APIError {
             errorMessage = error.errorDescription
@@ -257,7 +260,8 @@ public final class WorkoutPlayerStore: ObservableObject {
                     sets: valid.map { $0.setInput(workoutID: workoutID, blockID: block.blockID, workoutBlockID: block.id) }
                 )
             )
-            loggedCounts[item.id, default: 0] += created.count
+            // Newest-first: freshly logged sets top the history.
+            loggedEntriesByItem[item.id] = created + (loggedEntriesByItem[item.id] ?? [])
             // Keep only the rows that still need attention.
             let remaining = rows.filter { !$0.isValid(isCardioMode: isCardio) }
             drafts[item.id] = remaining.isEmpty ? [SetDraft(distanceUnit: distanceUnit)] : remaining
@@ -315,6 +319,54 @@ public final class WorkoutPlayerStore: ObservableObject {
         loggingItemIDs.contains(itemID)
     }
 
+    /// Splices a server-confirmed edited entry back into its
+    /// bucket, matched by entry id. Called with the `EditSetView`
+    /// save callback's value (the view performs the PUT itself).
+    /// One row stays one row, so counts and readiness need no
+    /// adjustment.
+    public func updateLoggedEntry(_ updated: ExerciseEntryDTO) {
+        for (itemID, bucket) in loggedEntriesByItem {
+            guard bucket.contains(where: { $0.id == updated.id }) else { continue }
+            loggedEntriesByItem[itemID] = bucket.map { $0.id == updated.id ? updated : $0 }
+            return
+        }
+    }
+
+    /// IDs of entries with a delete request in flight (drives row
+    /// spinners in the history sheet).
+    @Published public private(set) var deletingEntryIDs: Set<String> = []
+
+    /// Deletes a logged set via the API, removing it from its
+    /// bucket on success. Pessimistic by design: unlike the
+    /// history screen there is no page reload to roll back to,
+    /// so the row only leaves on a confirmed delete. Returns
+    /// `true` on success. Deleting an item's last set flips its
+    /// done-ness (hints update automatically) but never
+    /// auto-reopens a done block — check-offs stay manual.
+    public func deleteLoggedEntry(_ entry: ExerciseEntryDTO) async -> Bool {
+        errorMessage = nil
+        deletingEntryIDs.insert(entry.id)
+        defer { deletingEntryIDs.remove(entry.id) }
+        do {
+            try await api.deleteExerciseEntry(id: entry.id)
+            for (itemID, bucket) in loggedEntriesByItem {
+                loggedEntriesByItem[itemID] = bucket.filter { $0.id != entry.id }
+            }
+            return true
+        } catch let error as APIError {
+            errorMessage = error.errorDescription
+            return false
+        } catch {
+            errorMessage = "Could not delete the set."
+            return false
+        }
+    }
+
+    /// `true` while the entry's delete request is in flight.
+    public func isDeleting(entryID: String) -> Bool {
+        deletingEntryIDs.contains(entryID)
+    }
+
     /// Drops the on-device snapshot (called on Finish or discard).
     /// Server-confirmed sets are unaffected — they are real
     /// exercise entries, not drafts.
@@ -324,9 +376,15 @@ public final class WorkoutPlayerStore: ObservableObject {
 
     // MARK: - Progress (hybrid)
 
+    /// Server-confirmed logged sets for one item, newest first.
+    /// Empty when nothing is logged yet.
+    public func loggedEntries(itemID: String) -> [ExerciseEntryDTO] {
+        loggedEntriesByItem[itemID] ?? []
+    }
+
     /// Server-confirmed logged count for one item.
     public func loggedCount(itemID: String) -> Int {
-        loggedCounts[itemID, default: 0]
+        loggedEntriesByItem[itemID]?.count ?? 0
     }
 
     /// An item is done when skipped or when at least one set was
@@ -369,19 +427,22 @@ public final class WorkoutPlayerStore: ObservableObject {
     /// `blockID` and its `exerciseID` the item's exercise. The
     /// fragile `workoutBlockID` join pointer is deliberately
     /// ignored — workout edits regenerate join ids while
-    /// `blockID` survives.
-    public static func countsByItem(
+    /// `blockID` survives. Buckets come out newest-first, ready
+    /// for the history sheet.
+    public static func entriesByItem(
         in workout: WorkoutWithItemsDTO,
         entries: [ExerciseEntryDTO]
-    ) -> [String: Int] {
-        var out: [String: Int] = [:]
+    ) -> [String: [ExerciseEntryDTO]] {
+        var out: [String: [ExerciseEntryDTO]] = [:]
         for block in workout.blocks {
             for item in block.items {
-                let n = entries.filter {
-                    $0.blockID == block.blockID && $0.exerciseID == item.exerciseID
-                }.count
-                if n > 0 {
-                    out[item.id] = n
+                let bucket = entries
+                    .filter {
+                        $0.blockID == block.blockID && $0.exerciseID == item.exerciseID
+                    }
+                    .sorted { $0.createdAt > $1.createdAt }
+                if !bucket.isEmpty {
+                    out[item.id] = bucket
                 }
             }
         }
