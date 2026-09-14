@@ -4,8 +4,8 @@ import SwiftUI
 /// View-model for the Workout Player (Beta). Owns one in-progress
 /// workout session: the planned blocks/items (from
 /// `GET /api/v1/workouts/:id?include=items`), the user's per-exercise
-/// drafts, which items were skipped, and how many sets were
-/// server-confirmed per item.
+/// drafts and notes, which items were skipped, and how many sets
+/// were server-confirmed per item.
 ///
 /// Drafts are local-only and persisted on-device (keyed by workout
 /// id) so backgrounding or killing the app mid-workout loses nothing
@@ -38,6 +38,13 @@ public final class WorkoutPlayerStore: ObservableObject {
     /// Item ids the user marked skipped (zero sets expected).
     /// Local-only: the server only tracks per-block status.
     @Published public var skippedItemIDs: Set<String> = []
+
+    /// Free-text notes per planned item, keyed by
+    /// `BlockItemDTO.id`. Sent with the item's next log call
+    /// (notes are per log call server-side, shared across the
+    /// sets in that call — same semantics as `NewSetView`).
+    /// Persisted in the on-device snapshot like drafts.
+    @Published public var notes: [String: String] = [:]
 
     /// Server-confirmed logged-set counts per item id. Seeded from
     /// the resume endpoint on load, incremented on every 201.
@@ -195,6 +202,19 @@ public final class WorkoutPlayerStore: ObservableObject {
         persist()
     }
 
+    /// Replaces one item's notes. Trims whitespace and caps at 500
+    /// characters to match the server's `notes` validation, then
+    /// persists to the on-device snapshot.
+    public func setNotes(_ text: String, for itemID: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            notes.removeValue(forKey: itemID)
+        } else {
+            notes[itemID] = String(trimmed.prefix(500))
+        }
+        persist()
+    }
+
     /// Marks an item skipped (zero sets expected, e.g. no equipment
     /// or injury) or un-skips it. Skipped items still count toward
     /// block completion; any already-logged sets underneath stay.
@@ -226,7 +246,7 @@ public final class WorkoutPlayerStore: ObservableObject {
             let created = try await api.createExerciseEntries(
                 CreateExerciseEntriesRequest(
                     exerciseID: item.exerciseID,
-                    notes: "",
+                    notes: notes[item.id] ?? "",
                     createdAt: nil,
                     sets: valid.map { $0.setInput(workoutID: workoutID, blockID: block.blockID, workoutBlockID: block.id) }
                 )
@@ -242,6 +262,34 @@ public final class WorkoutPlayerStore: ObservableObject {
         } catch {
             errorMessage = "Could not save your sets."
         }
+    }
+
+    /// POSTs every non-skipped item's valid drafts in the block,
+    /// reusing `log(item:in:)` per item. Backs "Mark as Done"'s
+    /// autosubmit: the Done handler calls this first and only
+    /// marks the block done on `true`.
+    ///
+    /// Returns `false` on the first failure — `errorMessage` is
+    /// already set by the failing `log` call and the remaining
+    /// items are left untouched so the user can fix and retry.
+    /// Items with no valid drafts (empty rows or skipped items)
+    /// are passed over, and `true` is returned when there was
+    /// nothing to submit, preserving the skip-only Done path.
+    public func logAllValid(in block: WorkoutBlockDetailDTO) async -> Bool {
+        for item in block.items where !skippedItemIDs.contains(item.id) {
+            let rows = drafts[item.id] ?? []
+            guard rows.contains(where: { $0.isValid(isCardioMode: item.isCardio) }) else { continue }
+            await log(item: item, in: block)
+            if errorMessage != nil { return false }
+        }
+        return true
+    }
+
+    /// `true` while any of the block's items has a log request in
+    /// flight. Keeps "Mark as Done" disabled through the whole
+    /// autosubmit so a tap can't race the final submit.
+    public func isLoggingAny(in block: WorkoutBlockDetailDTO) -> Bool {
+        block.items.contains { loggingItemIDs.contains($0.id) }
     }
 
     /// `true` while the item's log request is in flight.
@@ -318,15 +366,18 @@ public final class WorkoutPlayerStore: ObservableObject {
         "hylete.workout-player.\(workoutID)"
     }
 
-    /// On-device snapshot: half-typed rows plus skips. `SetDraft`
-    /// is `Codable`, so the whole map round-trips as JSON.
+    /// On-device snapshot: half-typed rows, skips, and notes.
+    /// `SetDraft` is `Codable`, so the whole map round-trips as
+    /// JSON. `notes` defaults to empty so snapshots written
+    /// before notes existed still decode.
     private struct Snapshot: Codable {
         var drafts: [String: [SetDraft]]
         var skipped: [String]
+        var notes: [String: String] = [:]
     }
 
     private func persist() {
-        let snapshot = Snapshot(drafts: drafts, skipped: Array(skippedItemIDs))
+        let snapshot = Snapshot(drafts: drafts, skipped: Array(skippedItemIDs), notes: notes)
         if let data = try? APIClient.jsonEncoder.encode(snapshot) {
             defaults.set(data, forKey: Self.snapshotKey(for: workoutID))
         }
@@ -338,6 +389,7 @@ public final class WorkoutPlayerStore: ObservableObject {
         else { return }
         drafts = snapshot.drafts
         skippedItemIDs = Set(snapshot.skipped)
+        notes = snapshot.notes
     }
 
     private func ensureDrafts(for workout: WorkoutWithItemsDTO) {

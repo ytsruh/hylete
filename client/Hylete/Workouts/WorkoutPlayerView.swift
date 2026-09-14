@@ -5,12 +5,15 @@ import SwiftUI
 /// exercise in order, logging sets as they go.
 ///
 /// Each planned exercise gets type-appropriate editors (reusing
-/// `SetRowEditor`): strength items log repeatable set rows,
-/// cardio items log a single session row. Only valid rows POST —
-/// each POST carries `workout_id`/`block_id`/`workout_block_id`,
-/// creating normal exercise entries (history, charts, and exports
-/// all include them). Half-typed rows stay on screen and survive
-/// background/kill via the store's on-device snapshot.
+/// `SetRowEditor`): strength items get repeatable set rows,
+/// cardio items a single session row, each with collapsible
+/// notes. There is one call to action per block — "Mark as Done"
+/// first POSTs every item's valid rows (each POST carries
+/// `workout_id`/`block_id`/`workout_block_id`, creating normal
+/// exercise entries: history, charts, and exports all include
+/// them), then marks the block done. A failed submit aborts
+/// before the status write. Half-typed rows stay on screen and
+/// survive background/kill via the store's on-device snapshot.
 ///
 /// Progress is hybrid: per-item logged counts plus local skips
 /// (zero sets, e.g. no equipment or injury) drive a "ready to mark
@@ -18,6 +21,10 @@ import SwiftUI
 /// manual — the source of truth, written through `WorkoutStore`.
 /// Finish flips the workout to completed (partial completion is
 /// allowed: pending blocks may remain).
+///
+/// The screen idle timer is disabled while the player is open
+/// (long rests can outlast the user's autolock) and restored on
+/// dismiss.
 struct WorkoutPlayerView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var authStore: AuthStore
@@ -68,9 +75,17 @@ struct WorkoutPlayerView: View {
                     Text("The workout is marked completed. Pending blocks may remain — partial completion is allowed.")
                 }
                 .task {
+                    // Long rests between sets can outlast the
+                    // user's autolock — keep the screen awake while
+                    // the player is open. Released on disappear so
+                    // Finish/Close can never leak it on.
+                    TimerWakeLock.acquire()
                     guard !didRequestLoad else { return }
                     didRequestLoad = true
                     await player.load()
+                }
+                .onDisappear {
+                    TimerWakeLock.release()
                 }
         }
     }
@@ -188,6 +203,14 @@ struct WorkoutPlayerView: View {
                             Text(block.blockName)
                                 .font(.headline)
                                 .foregroundStyle(DSColors.text)
+                            // Plan description from the block
+                            // catalogue (e.g. coaching cues) —
+                            // hidden when the block has none.
+                            if !block.blockDescription.isEmpty {
+                                Text(block.blockDescription)
+                                    .font(.subheadline)
+                                    .foregroundStyle(DSColors.textSecondary)
+                            }
                             Text(blockSubtitle(for: block))
                                 .font(.subheadline)
                                 .foregroundStyle(DSColors.textSecondary)
@@ -212,21 +235,23 @@ struct WorkoutPlayerView: View {
                         .foregroundStyle(DSColors.textSecondary)
                 }
                 ForEach(block.items) { item in
-                    itemView(item, in: block)
+                    itemView(item)
                     if item.id != block.items.last?.id {
                         Divider().background(DSColors.separator)
                     }
                 }
             }
-            // Explicit Done affordance — the status chip menu
-            // alone wasn't discoverable. Manual check-off stays
-            // the source of truth; this is the same write as the
-            // menu's Done row.
+            // The block's single call to action — the status chip
+            // menu alone wasn't discoverable, and a separate Log
+            // button proved duplicative. Tapping first autosubmits
+            // every item's valid rows, then performs the same
+            // status-only Done write as the menu's Done row.
+            // Manual check-off stays the source of truth.
             if block.status != .done {
                 Button {
                     Task { await markBlockDone(block) }
                 } label: {
-                    if markingBlockIDs.contains(block.id) {
+                    if markingBlockIDs.contains(block.id) || player.isLoggingAny(in: block) {
                         ProgressView()
                             .frame(maxWidth: .infinity)
                     } else {
@@ -235,7 +260,7 @@ struct WorkoutPlayerView: View {
                     }
                 }
                 .buttonStyle(.dsSecondary)
-                .disabled(markingBlockIDs.contains(block.id))
+                .disabled(markingBlockIDs.contains(block.id) || player.isLoggingAny(in: block))
             }
         }
         .padding(DSSpacing.md)
@@ -249,12 +274,16 @@ struct WorkoutPlayerView: View {
         )
     }
 
-    /// Marks one block done via the shared store, then refreshes
-    /// the player's local statuses so the header and hints catch
-    /// up without refetching items.
+    /// Autosubmits the block's valid drafts, then marks it done
+    /// via the shared store (status-only write) and refreshes the
+    /// player's local statuses so the header and hints catch up
+    /// without refetching items. A failed submit aborts before
+    /// the status write — nothing is marked done unlogged, and
+    /// the error stays on screen for retry.
     private func markBlockDone(_ block: WorkoutBlockDetailDTO) async {
         markingBlockIDs.insert(block.id)
         defer { markingBlockIDs.remove(block.id) }
+        guard await player.logAllValid(in: block) else { return }
         await workoutStore.setBlockStatus(
             workoutID: workoutID,
             workoutBlockID: block.id,
@@ -301,7 +330,7 @@ struct WorkoutPlayerView: View {
 
     // MARK: - Items
 
-    private func itemView(_ item: BlockItemDTO, in block: WorkoutBlockDetailDTO) -> some View {
+    private func itemView(_ item: BlockItemDTO) -> some View {
         let skipped = player.skippedItemIDs.contains(item.id)
         let logged = player.loggedCount(itemID: item.id)
         return VStack(alignment: .leading, spacing: DSSpacing.xs) {
@@ -340,26 +369,42 @@ struct WorkoutPlayerView: View {
             }
             if !skipped {
                 editorRows(item)
-                Button {
-                    Task { await player.log(item: item, in: block) }
-                } label: {
-                    if player.isLogging(itemID: item.id) {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Text(item.isCardio ? "Log session" : "Log sets")
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .buttonStyle(.dsSecondary)
-                .disabled(player.isLogging(itemID: item.id) || !hasValidDraft(item))
             } else {
                 Text("No sets will be logged for this exercise.")
                     .font(.footnote)
                     .foregroundStyle(DSColors.textSecondary)
             }
+            // Collapsible notes ride along with the item's next
+            // log call (Mark as Done autosubmits). Shown for
+            // skipped items too — unskipping keeps the text.
+            notesDisclosure(item)
         }
         .padding(.vertical, DSSpacing.xs)
+    }
+
+    /// Collapsible per-exercise notes, mirroring `NewSetView`'s
+    /// notes section. Collapsed by default so it costs no screen
+    /// room; every keystroke persists to the on-device snapshot.
+    private func notesDisclosure(_ item: BlockItemDTO) -> some View {
+        DisclosureGroup("Notes") {
+            TextField(
+                "Optional — e.g. felt easy, left knee niggle",
+                text: notesBinding(for: item.id),
+                axis: .vertical
+            )
+            .font(.body)
+            .foregroundStyle(DSColors.text)
+        }
+        .font(.footnote.weight(.semibold))
+        .foregroundStyle(DSColors.textSecondary)
+        .tint(DSColors.accent)
+    }
+
+    private func notesBinding(for itemID: String) -> Binding<String> {
+        Binding(
+            get: { player.notes[itemID] ?? "" },
+            set: { player.setNotes($0, for: itemID) }
+        )
     }
 
     private func editorRows(_ item: BlockItemDTO) -> some View {
@@ -409,20 +454,18 @@ struct WorkoutPlayerView: View {
                 // font, so the row reads identically in both
                 // places. The plain style + accent keeps it
                 // legible on the card surface (a Form row gets
-                // that tint for free).
+                // that tint for free). Pinned leading to match the
+                // exercise-entry form alignment.
                 Button {
                     player.addDraftRow(itemID: item.id)
                 } label: {
                     Label("Add set", systemImage: "plus.circle")
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(DSColors.accent)
             }
         }
-    }
-
-    private func hasValidDraft(_ item: BlockItemDTO) -> Bool {
-        (player.drafts[item.id] ?? []).contains { $0.isValid(isCardioMode: item.isCardio) }
     }
 
     // MARK: - Finish

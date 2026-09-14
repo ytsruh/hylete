@@ -210,6 +210,191 @@ final class WorkoutPlayerTests: XCTestCase {
         }
     }
 
+    // MARK: - Autosubmit + notes
+
+    /// Lock-guarded POST-body capture. The stub handler runs on a
+    /// URLSession thread, so plain array appends would race.
+    private final class PostCapture: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _bodies: [[String: Any]] = []
+
+        func append(_ json: [String: Any]) {
+            lock.lock()
+            defer { lock.unlock() }
+            _bodies.append(json)
+        }
+
+        var bodies: [[String: Any]] {
+            lock.lock()
+            defer { lock.unlock() }
+            return _bodies
+        }
+    }
+
+    /// Reads a captured request's body. Stubs at the
+    /// `URLProtocol` layer may receive the body as a stream
+    /// instead of `httpBody` — without this, POST captures are
+    /// silently empty while the requests still succeed.
+    private func stubBody(of request: URLRequest) -> Data? {
+        if let body = request.httpBody, !body.isEmpty { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        while stream.hasBytesAvailable {
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count <= 0 { break }
+            data.append(buffer, count: count)
+        }
+        return data.isEmpty ? nil : data
+    }
+
+    /// Player GET stubs plus POST capture. `postStatus`/`failExercise`
+    /// let failure tests fail one item's submit while the other
+    /// succeeds: `failExercise` names the `exercise_id` whose POST
+    /// returns `postStatus`.
+    private func stubPlayerPathsCapturingPosts(
+        posts: PostCapture,
+        postStatus: Int = 201,
+        failExercise: String? = nil
+    ) {
+        StubURLProtocol.handler = { [resumeBody, withItemsBody] request in
+            if request.httpMethod == "POST" {
+                let body = self.stubBody(of: request) ?? Data()
+                if let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
+                    posts.append(json)
+                }
+                let exerciseID = (try? JSONSerialization.jsonObject(with: body) as? [String: Any])
+                    .flatMap { $0["exercise_id"] as? String }
+                if let failExercise, exerciseID == failExercise {
+                    return self.respond(status: postStatus, body: #"{"error":"boom"}"#)
+                }
+                // One created entry per POST keeps `loggedCounts`
+                // math exact (+1 per successful submit).
+                return self.respond(status: postStatus, body: resumeBody)
+            }
+            if request.url?.absoluteString.contains("exercise-entries") == true {
+                return self.respond(body: resumeBody)
+            }
+            return self.respond(body: withItemsBody)
+        }
+    }
+
+    private func validStrengthDraft(reps: Int, weight: String) -> SetDraft {
+        var row = SetDraft(distanceUnit: "kg")
+        row.reps = reps
+        row.weightText = weight
+        row.restSeconds = 90
+        return row
+    }
+
+    func testLogAllValidSubmitsEachItemWithValidDrafts() async throws {
+        let posts = PostCapture()
+        stubPlayerPathsCapturingPosts(posts: posts)
+        let store = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        await store.load()
+        XCTAssertNil(store.errorMessage)
+        store.setDrafts([validStrengthDraft(reps: 5, weight: "100")], for: "bi-1")
+        store.setDrafts([validStrengthDraft(reps: 8, weight: "60")], for: "bi-2")
+        store.setNotes("  felt strong  ", for: "bi-1")
+
+        let ok = await store.logAllValid(in: store.workout!.blocks[0])
+
+        XCTAssertTrue(ok)
+        XCTAssertNil(store.errorMessage)
+        XCTAssertEqual(posts.bodies.count, 2)
+        // Notes ride on the item's own log call (trimmed);
+        // the other item posts empty notes.
+        let squatPost = posts.bodies.first { $0["exercise_id"] as? String == "ex-1" }
+        XCTAssertEqual(squatPost?["notes"] as? String, "felt strong")
+        let benchPost = posts.bodies.first { $0["exercise_id"] as? String == "ex-2" }
+        XCTAssertEqual(benchPost?["notes"] as? String, "")
+        // Resume seeded bi-1 with 1; each POST adds one more.
+        XCTAssertEqual(store.loggedCount(itemID: "bi-1"), 2)
+        XCTAssertEqual(store.loggedCount(itemID: "bi-2"), 1)
+    }
+
+    func testLogAllValidSkipsSkippedItemsAndEmptyDrafts() async throws {
+        let posts = PostCapture()
+        stubPlayerPathsCapturingPosts(posts: posts)
+        let store = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        await store.load()
+        store.toggleSkip(itemID: "bi-2")
+        // bi-1 keeps its empty starter draft: nothing submittable,
+        // so Done proceeds with zero requests (skip-only path).
+        let ok = await store.logAllValid(in: store.workout!.blocks[0])
+
+        XCTAssertTrue(ok)
+        XCTAssertNil(store.errorMessage)
+        XCTAssertEqual(posts.bodies.count, 0)
+    }
+
+    func testLogAllValidAbortsOnFirstFailure() async throws {
+        let posts = PostCapture()
+        stubPlayerPathsCapturingPosts(posts: posts, postStatus: 500, failExercise: "ex-1")
+        let store = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        await store.load()
+        store.setDrafts([validStrengthDraft(reps: 5, weight: "100")], for: "bi-1")
+        store.setDrafts([validStrengthDraft(reps: 8, weight: "60")], for: "bi-2")
+
+        // bi-1 sorts before bi-2: its failure must stop the run
+        // before bi-2 is attempted (the Done handler then skips
+        // the status write on `false`).
+        let ok = await store.logAllValid(in: store.workout!.blocks[0])
+
+        XCTAssertFalse(ok)
+        XCTAssertNotNil(store.errorMessage)
+        XCTAssertEqual(posts.bodies.count, 1)
+        XCTAssertEqual(store.loggedCount(itemID: "bi-1"), 1)
+        XCTAssertEqual(store.loggedCount(itemID: "bi-2"), 0)
+    }
+
+    func testNotesTrimCapAndPersist() async throws {
+        stubPlayerPaths()
+        let first = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        await first.load()
+        first.setNotes("   ", for: "bi-1")
+        XCTAssertNil(first.notes["bi-1"])
+        first.setNotes("  easy  ", for: "bi-1")
+        XCTAssertEqual(first.notes["bi-1"], "easy")
+        first.setNotes(String(repeating: "x", count: 600), for: "bi-2")
+        XCTAssertEqual(first.notes["bi-2"]?.count, 500)
+
+        let second = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        await second.load()
+        XCTAssertEqual(second.notes["bi-1"], "easy")
+        XCTAssertEqual(second.notes["bi-2"]?.count, 500)
+    }
+
+    func testOldSnapshotWithoutNotesKeyStillDecodes() async throws {
+        // Snapshots written before notes existed carry no `notes`
+        // key: they must decode with empty notes, not throw.
+        defaults.set(
+            Data(#"{"drafts":{},"skipped":[]}"#.utf8),
+            forKey: "hylete.workout-player.wo-1"
+        )
+        stubPlayerPaths()
+        let store = WorkoutPlayerStore(workoutID: "wo-1", api: makeAPI(), defaults: defaults)
+        await store.load()
+        XCTAssertNil(store.errorMessage)
+        XCTAssertEqual(store.notes, [:])
+    }
+
+    func testBlockDescriptionDecodes() throws {
+        // (Plain escaped strings: `#""...""#` raw literals swallow
+        // a quote at each boundary and corrupt the JSON.)
+        let body = withItemsBody.replacingOccurrences(
+            of: "\"block_description\":\"\"",
+            with: "\"block_description\":\"Rest 2 min between rounds\""
+        )
+        let workout = try APIClient.jsonDecoder.decode(
+            WorkoutWithItemsDTO.self,
+            from: Data(body.utf8)
+        )
+        XCTAssertEqual(workout.blocks[0].blockDescription, "Rest 2 min between rounds")
+    }
+
     func testSetInputMapping() {
         // Strength drafts map reps/weight/rest with the linkage.
         var strength = SetDraft(distanceUnit: "km")
