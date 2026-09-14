@@ -101,6 +101,17 @@ struct BlockDetailView: View {
 
     private func loadedView(_ block: BlockDTO) -> some View {
         List {
+            // Surfaces mutation failures inline — e.g. the 409 when
+            // this block is still used by a workout. The delete
+            // confirm already dismissed, so without this the user
+            // would see nothing happen.
+            if let error = store.errorMessage {
+                Section {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(DSColors.destructive)
+                }
+            }
             Section {
                 if !block.description.isEmpty {
                     Text(block.description)
@@ -142,28 +153,33 @@ struct BlockDetailView: View {
             // Full-width action buttons in the DesignSystem
             // primary/secondary idiom: Duplicate is the safe,
             // reversible action (secondary chrome), Delete is
-            // filled destructive. Keeps the two visually
-            // distinct so a thumb aiming for Duplicate never
-            // lands on Delete.
+            // filled destructive. Both live in a single row so
+            // no list separator or inter-row padding sits
+            // between them — just a tight stack spacing. Keeps
+            // the two visually distinct so a thumb aiming for
+            // Duplicate never lands on Delete.
             Section {
-                Button {
-                    editorRequest = EditorRequest(duplicate: true)
-                } label: {
-                    Text("Duplicate block")
-                }
-                .buttonStyle(.dsSecondary)
+                VStack(spacing: DSSpacing.xs) {
+                    Button {
+                        editorRequest = EditorRequest(duplicate: true)
+                    } label: {
+                        Text("Duplicate block")
+                    }
+                    .buttonStyle(.dsSecondary)
 
-                Button(role: .destructive) {
-                    showingDelete = true
-                } label: {
-                    Text("Delete block")
+                    Button(role: .destructive) {
+                        showingDelete = true
+                    } label: {
+                        Text("Delete block")
+                    }
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(DSColors.destructive)
+                    .clipShape(RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous))
                 }
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .background(DSColors.destructive)
-                .clipShape(RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous))
+                .listRowSeparator(.hidden)
             }
         }
         .listStyle(.automatic)

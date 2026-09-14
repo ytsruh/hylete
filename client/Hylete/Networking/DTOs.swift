@@ -1113,6 +1113,333 @@ public struct UpdateBlockRequest: Encodable, Equatable {
     }
 }
 
+// MARK: Workouts
+
+/// The overall state of a scheduled workout. Mirrors the server's
+/// `WorkoutStatus` (`planned|in_progress|completed|skipped`). The raw
+/// value is the wire value. The status is set explicitly — never
+/// derived — so a completed workout may still hold pending blocks.
+public enum WorkoutStatusDTO: String, Codable, Equatable, CaseIterable, Hashable {
+    case planned
+    case inProgress = "in_progress"
+    case completed
+    case skipped
+
+    /// User-facing label for status chips and pickers.
+    public var displayName: String {
+        switch self {
+        case .planned: return "Planned"
+        case .inProgress: return "In Progress"
+        case .completed: return "Completed"
+        case .skipped: return "Skipped"
+        }
+    }
+}
+
+/// The per-block completion state inside a workout. Mirrors the
+/// server's `WorkoutBlockStatus` (`pending|done|skipped`).
+public enum WorkoutBlockStatusDTO: String, Codable, Equatable, CaseIterable, Hashable {
+    case pending
+    case done
+    case skipped
+
+    /// User-facing label for the check-off control.
+    public var displayName: String {
+        switch self {
+        case .pending: return "Pending"
+        case .done: return "Done"
+        case .skipped: return "Skipped"
+        }
+    }
+}
+
+/// One planned block inside a workout. Mirrors the server's
+/// `WorkoutBlockDTO`. `blockName`/`blockType`/`blockDescription`/
+/// `itemCount` are resolved server-side for display and never written
+/// by the client. `position` is the zero-based order in the workout.
+public struct WorkoutBlockDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let blockID: String
+    public let blockName: String
+    public let blockDescription: String
+    public let blockType: BlockTypeDTO
+    public let position: Int
+    public let status: WorkoutBlockStatusDTO
+    public let itemCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case blockID = "block_id"
+        case blockName = "block_name"
+        case blockDescription = "block_description"
+        case blockType = "block_type"
+        case position
+        case status
+        case itemCount = "item_count"
+    }
+
+    public init(
+        id: String,
+        blockID: String,
+        blockName: String,
+        blockDescription: String = "",
+        blockType: BlockTypeDTO,
+        position: Int,
+        status: WorkoutBlockStatusDTO,
+        itemCount: Int
+    ) {
+        self.id = id
+        self.blockID = blockID
+        self.blockName = blockName
+        self.blockDescription = blockDescription
+        self.blockType = blockType
+        self.position = position
+        self.status = status
+        self.itemCount = itemCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        blockID = try container.decode(String.self, forKey: .blockID)
+        blockName = try container.decode(String.self, forKey: .blockName)
+        // Tolerant decode: older servers omit the description.
+        blockDescription = try container.decodeIfPresent(String.self, forKey: .blockDescription) ?? ""
+        blockType = try container.decode(BlockTypeDTO.self, forKey: .blockType)
+        position = try container.decode(Int.self, forKey: .position)
+        status = try container.decode(WorkoutBlockStatusDTO.self, forKey: .status)
+        itemCount = try container.decode(Int.self, forKey: .itemCount)
+    }
+}
+
+/// A full workout with its planned blocks. Mirrors the server's
+/// `WorkoutDTO` (detail view, create/update/duplicate responses).
+/// `scheduledDate` is a device-local calendar date (YYYY-MM-DD).
+public struct WorkoutDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let name: String
+    public let description: String
+    public let scheduledDate: String
+    public let status: WorkoutStatusDTO
+    public let blocks: [WorkoutBlockDTO]
+    public let createdAt: Date
+    public let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case description
+        case scheduledDate = "scheduled_date"
+        case status
+        case blocks
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    public init(
+        id: String,
+        name: String,
+        description: String,
+        scheduledDate: String,
+        status: WorkoutStatusDTO,
+        blocks: [WorkoutBlockDTO],
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.scheduledDate = scheduledDate
+        self.status = status
+        self.blocks = blocks
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    /// "2/3 blocks" progress label for rows and headers.
+    public var progressLabel: String {
+        let done = blocks.filter { $0.status == .done }.count
+        return "\(done)/\(blocks.count) blocks"
+    }
+}
+
+/// List-view shape: the workout without blocks plus block/done
+/// counts. Mirrors the server's `WorkoutSummaryDTO`.
+public struct WorkoutSummaryDTO: Codable, Equatable, Identifiable, Hashable {
+    public let id: String
+    public let name: String
+    public let description: String
+    public let scheduledDate: String
+    public let status: WorkoutStatusDTO
+    public let blockCount: Int
+    public let doneCount: Int
+    public let createdAt: Date
+    public let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case description
+        case scheduledDate = "scheduled_date"
+        case status
+        case blockCount = "block_count"
+        case doneCount = "done_count"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    public init(
+        id: String,
+        name: String,
+        description: String,
+        scheduledDate: String,
+        status: WorkoutStatusDTO,
+        blockCount: Int,
+        doneCount: Int,
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.scheduledDate = scheduledDate
+        self.status = status
+        self.blockCount = blockCount
+        self.doneCount = doneCount
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    /// "2/3 blocks" progress label for list rows.
+    public var progressLabel: String {
+        "\(doneCount)/\(blockCount) blocks"
+    }
+}
+
+/// Response body for `GET /api/v1/workouts`.
+public struct WorkoutsResponse: Decodable, Equatable {
+    public let workouts: [WorkoutSummaryDTO]
+}
+
+/// One planned block in a workout create/update body. Position is
+/// implicit (array order); statuses always start pending.
+public struct WorkoutBlockRequest: Encodable, Equatable {
+    public let blockID: String
+
+    enum CodingKeys: String, CodingKey {
+        case blockID = "block_id"
+    }
+
+    public init(blockID: String) {
+        self.blockID = blockID
+    }
+}
+
+/// JSON body for `POST /api/v1/workouts`.
+public struct CreateWorkoutRequest: Encodable, Equatable {
+    public let name: String
+    public let description: String
+    public let scheduledDate: String
+    public let status: WorkoutStatusDTO?
+    public let blocks: [WorkoutBlockRequest]
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case scheduledDate = "scheduled_date"
+        case status
+        case blocks
+    }
+
+    public init(
+        name: String,
+        description: String = "",
+        scheduledDate: String,
+        status: WorkoutStatusDTO? = nil,
+        blocks: [WorkoutBlockRequest]
+    ) {
+        self.name = name
+        self.description = description
+        self.scheduledDate = scheduledDate
+        self.status = status
+        self.blocks = blocks
+    }
+}
+
+/// JSON body for `PUT /api/v1/workouts/:id`. Blocks are fully
+/// replaced with statuses reset to pending — same shape as create.
+public struct UpdateWorkoutRequest: Encodable, Equatable {
+    public let name: String
+    public let description: String
+    public let scheduledDate: String
+    public let status: WorkoutStatusDTO?
+    public let blocks: [WorkoutBlockRequest]
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case scheduledDate = "scheduled_date"
+        case status
+        case blocks
+    }
+
+    public init(
+        name: String,
+        description: String = "",
+        scheduledDate: String,
+        status: WorkoutStatusDTO? = nil,
+        blocks: [WorkoutBlockRequest]
+    ) {
+        self.name = name
+        self.description = description
+        self.scheduledDate = scheduledDate
+        self.status = status
+        self.blocks = blocks
+    }
+}
+
+/// JSON body for `POST /api/v1/workouts/:id/duplicate`.
+public struct DuplicateWorkoutRequest: Encodable, Equatable {
+    public let scheduledDate: String
+
+    enum CodingKeys: String, CodingKey {
+        case scheduledDate = "scheduled_date"
+    }
+
+    public init(scheduledDate: String) {
+        self.scheduledDate = scheduledDate
+    }
+}
+
+/// JSON body for `POST /api/v1/workouts/:id/duplicate-batch`.
+/// `dates` is the explicit expanded schedule (the client turns
+/// weekly / every-N-days patterns into concrete `YYYY-MM-DD` days).
+/// At most 50 — enforced server-side too.
+public struct DuplicateWorkoutBatchRequest: Encodable, Equatable {
+    public let dates: [String]
+
+    public init(dates: [String]) {
+        self.dates = dates
+    }
+}
+
+/// Response body for the batch duplicate endpoint: the created
+/// workouts in request-date order.
+public struct WorkoutBatchResponse: Decodable, Equatable {
+    public let workouts: [WorkoutDTO]
+}
+
+// MARK: Feedback
+
+/// JSON body for `PATCH /api/v1/workouts/:id/blocks/:blockId`.
+public struct UpdateWorkoutBlockStatusRequest: Encodable, Equatable {
+    public let status: WorkoutBlockStatusDTO
+
+    public init(status: WorkoutBlockStatusDTO) {
+        self.status = status
+    }
+}
+
 // MARK: Feedback
 
 /// JSON body for `POST /api/v1/feedback`. Mirrors the

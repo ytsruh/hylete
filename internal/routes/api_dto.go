@@ -637,6 +637,157 @@ func BlockSummariesFromModels(ss []models.BlockSummary) []BlockSummaryDTO {
 	return out
 }
 
+// --- Workouts ---
+
+// WorkoutBlockDTO is the JSON shape for one planned block inside a
+// workout. BlockName/Type/Description/ItemCount are resolved
+// server-side for display; the client never writes them. Position is
+// the zero-based order in the workout. Status is the per-block
+// completion state (pending|done|skipped).
+type WorkoutBlockDTO struct {
+	ID               string `json:"id"`
+	BlockID          string `json:"block_id"`
+	BlockName        string `json:"block_name"`
+	BlockDescription string `json:"block_description"`
+	BlockType        string `json:"block_type"`
+	Position         int    `json:"position"`
+	Status           string `json:"status"`
+	ItemCount        int    `json:"item_count"`
+}
+
+// WorkoutDTO is the JSON shape for a full workout with its blocks
+// (detail view, create/update/duplicate responses).
+type WorkoutDTO struct {
+	ID            string           `json:"id"`
+	Name          string           `json:"name"`
+	Description   string           `json:"description"`
+	ScheduledDate string           `json:"scheduled_date"`
+	Status        string           `json:"status"`
+	Blocks        []WorkoutBlockDTO `json:"blocks"`
+	CreatedAt     time.Time        `json:"created_at"`
+	UpdatedAt     time.Time        `json:"updated_at"`
+}
+
+// WorkoutSummaryDTO is the list-view shape: the workout without
+// blocks plus block/done counts ("3/5 blocks").
+type WorkoutSummaryDTO struct {
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	ScheduledDate string    `json:"scheduled_date"`
+	Status        string    `json:"status"`
+	BlockCount    int       `json:"block_count"`
+	DoneCount     int       `json:"done_count"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// CreateWorkoutBlockRequest is one planned block in a workout
+// create/update body. Position is implicit (array order).
+type CreateWorkoutBlockRequest struct {
+	BlockID string `json:"block_id" validate:"required"`
+}
+
+// CreateWorkoutRequest is the body for POST /api/v1/workouts. Status
+// defaults to planned when empty; scheduled_date is YYYY-MM-DD.
+type CreateWorkoutRequest struct {
+	Name          string                      `json:"name" validate:"required,min=1,max=100"`
+	Description   string                      `json:"description" validate:"max=1000"`
+	ScheduledDate string                      `json:"scheduled_date" validate:"required"`
+	Status        string                      `json:"status" validate:"omitempty,oneof=planned in_progress completed skipped"`
+	Blocks        []CreateWorkoutBlockRequest `json:"blocks" validate:"required,min=1,max=20,dive"`
+}
+
+// UpdateWorkoutRequest is the body for PUT /api/v1/workouts/:id.
+// Blocks are fully replaced with statuses reset to pending (same
+// semantics as create).
+type UpdateWorkoutRequest struct {
+	Name          string                      `json:"name" validate:"required,min=1,max=100"`
+	Description   string                      `json:"description" validate:"max=1000"`
+	ScheduledDate string                      `json:"scheduled_date" validate:"required"`
+	Status        string                      `json:"status" validate:"omitempty,oneof=planned in_progress completed skipped"`
+	Blocks        []CreateWorkoutBlockRequest `json:"blocks" validate:"required,min=1,max=20,dive"`
+}
+
+// UpdateWorkoutBlockStatusRequest is the body for PATCH
+// /api/v1/workouts/:id/blocks/:blockId.
+type UpdateWorkoutBlockStatusRequest struct {
+	Status string `json:"status" validate:"required,oneof=pending done skipped"`
+}
+
+// DuplicateWorkoutRequest is the body for POST
+// /api/v1/workouts/:id/duplicate.
+type DuplicateWorkoutRequest struct {
+	ScheduledDate string `json:"scheduled_date" validate:"required"`
+}
+
+// DuplicateWorkoutBatchRequest is the body for POST
+// /api/v1/workouts/:id/duplicate-batch. Dates is the explicit
+// expanded schedule (the client turns weekly / every-N-days
+// patterns into concrete YYYY-MM-DD days); at most 50 so a typo
+// cannot create a runaway schedule.
+type DuplicateWorkoutBatchRequest struct {
+	Dates []string `json:"dates" validate:"required,min=1,max=50"`
+}
+
+// WorkoutBlockFromModel converts a models.WorkoutBlock into its DTO.
+func WorkoutBlockFromModel(b models.WorkoutBlock) WorkoutBlockDTO {
+	return WorkoutBlockDTO{
+		ID:               b.ID,
+		BlockID:          b.BlockID,
+		BlockName:        b.BlockName,
+		BlockDescription: b.BlockDescription,
+		BlockType:        string(b.BlockType),
+		Position:         b.Position,
+		Status:           string(b.Status),
+		ItemCount:        b.ItemCount,
+	}
+}
+
+// WorkoutFromModel converts a models.Workout (with blocks) into its
+// DTO. Blocks default to `[]` (not null) when empty.
+func WorkoutFromModel(w models.Workout) WorkoutDTO {
+	blocks := make([]WorkoutBlockDTO, 0, len(w.Blocks))
+	for _, b := range w.Blocks {
+		blocks = append(blocks, WorkoutBlockFromModel(b))
+	}
+	return WorkoutDTO{
+		ID:            w.ID,
+		Name:          w.Name,
+		Description:   w.Description,
+		ScheduledDate: w.ScheduledDate,
+		Status:        string(w.Status),
+		Blocks:        blocks,
+		CreatedAt:     w.CreatedAt,
+		UpdatedAt:     w.UpdatedAt,
+	}
+}
+
+// WorkoutSummaryFromModel converts a models.WorkoutSummary into its DTO.
+func WorkoutSummaryFromModel(s models.WorkoutSummary) WorkoutSummaryDTO {
+	return WorkoutSummaryDTO{
+		ID:            s.ID,
+		Name:          s.Name,
+		Description:   s.Description,
+		ScheduledDate: s.ScheduledDate,
+		Status:        string(s.Status),
+		BlockCount:    s.BlockCount,
+		DoneCount:     s.DoneCount,
+		CreatedAt:     s.CreatedAt,
+		UpdatedAt:     s.UpdatedAt,
+	}
+}
+
+// WorkoutSummariesFromModels converts workout summaries into DTOs,
+// writing `[]` rather than `null` when the user has none.
+func WorkoutSummariesFromModels(ss []models.WorkoutSummary) []WorkoutSummaryDTO {
+	out := make([]WorkoutSummaryDTO, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, WorkoutSummaryFromModel(s))
+	}
+	return out
+}
+
 // --- Weight ---
 
 // WeightEntryDTO is the JSON shape for a single body-weight

@@ -52,11 +52,14 @@ struct DashboardView: View {
     /// paths fire on a reappear; the single-flight guard in
     /// `load()` coalesces them into one network pass.
     @State private var hasAppeared: Bool = false
-    /// Bound navigation path so pop-back is detectable. The
-    /// stack only ever pushes `ExerciseDTO` destinations, so a
-    /// plain array suffices; an empty path after a non-empty one
-    /// means the user returned from a pushed view.
-    @State private var navigationPath: [ExerciseDTO] = []
+    /// Bound navigation path so pop-back is detectable. The stack
+    /// pushes `ExerciseDTO` (history) and `WorkoutSummaryDTO`
+    /// (workout detail) destinations. `NavigationPath` (rather than
+    /// a concrete array) is the documented path type: it preserves
+    /// each pushed value's type for destination lookup. An empty
+    /// path after a non-empty one means the user returned from a
+    /// pushed view.
+    @State private var navigationPath = NavigationPath()
     /// Serialises the reappear-refresh triggers (`onAppear` and
     /// path-change can both fire for one pop-back).
     @State private var isRefreshing: Bool = false
@@ -72,8 +75,23 @@ struct DashboardView: View {
     /// queries until an explicit refresh.
     @StateObject private var healthSummary: HealthViewModel
 
-    init(distanceUnit: String = "km") {
+    /// Shared workout store (owned by `MainTabView`, same as
+    /// `BlockStore`). Feeds the calendar's planned-workout dots
+    /// and the selected-day workout section.
+    @ObservedObject var workoutStore: WorkoutStore
+    /// Shared block store, passed through to the workout detail
+    /// view the calendar rows push to (its editor needs the block
+    /// catalogue).
+    @ObservedObject var blockStore: BlockStore
+
+    init(
+        distanceUnit: String = "km",
+        workoutStore: WorkoutStore,
+        blockStore: BlockStore
+    ) {
         _healthSummary = StateObject(wrappedValue: HealthViewModel(distanceUnit: distanceUnit))
+        self._workoutStore = ObservedObject(wrappedValue: workoutStore)
+        self._blockStore = ObservedObject(wrappedValue: blockStore)
     }
 
     var body: some View {
@@ -82,6 +100,9 @@ struct DashboardView: View {
                 .navigationTitle("Dashboard")
                 .navigationDestination(for: ExerciseDTO.self) { exercise in
                     ExerciseHistoryView(exercise: exercise)
+                }
+                .navigationDestination(for: WorkoutSummaryDTO.self) { workout in
+                    WorkoutDetailView(store: workoutStore, blockStore: blockStore, workoutID: workout.id)
                 }
                 // NOTE: attached to the content INSIDE the stack,
                 // not to the NavigationStack itself — the outer
@@ -126,7 +147,10 @@ struct DashboardView: View {
             // change handler can't quietly hop off-main and
             // trip SwiftUI's iOS 17 main-thread `@State`
             // assertion.
-            Task { @MainActor in await ensureWeekLoaded(for: newSelection) }
+            Task { @MainActor in
+                await ensureWeekLoaded(for: newSelection)
+                await workoutStore.ensureWeekLoaded(for: newSelection)
+            }
         }
     }
 
@@ -177,9 +201,16 @@ struct DashboardView: View {
                 WeekCalendarView(
                     selection: $selectedDate,
                     isBusy: { day in
-                        !(entriesByDay[CalendarMath.startOfDay(day)] ?? []).isEmpty
+                        let startOfDay = CalendarMath.startOfDay(day)
+                        return !(entriesByDay[startOfDay] ?? []).isEmpty
+                            || !(workoutStore.workoutsByDay[startOfDay] ?? []).isEmpty
                     }
                 ) { day in
+                    SelectedDayWorkoutList(
+                        date: day,
+                        workouts: workoutStore.workoutsByDay[day] ?? [],
+                        isLoading: workoutStore.isLoadingWeek(for: day)
+                    )
                     SelectedDaySetList(
                         date: day,
                         entries: entriesByDay[day] ?? [],
@@ -314,6 +345,7 @@ struct DashboardView: View {
             errorMessage = "Could not load your sets."
         }
         await ensureWeekLoaded(for: selectedDate)
+        await workoutStore.ensureWeekLoaded(for: selectedDate)
     }
 
     /// Post-change reload (pull-to-refresh, new-set sheet
@@ -324,6 +356,8 @@ struct DashboardView: View {
     /// then re-pulls the donut snapshot; `load` refetches the
     /// selected week since its marker was just cleared. Any
     /// other week is fetched fresh the next time it's visited.
+    /// The workout calendar cache is invalidated too so planned
+    /// workouts edited elsewhere (or on another device) refresh.
     ///
     /// `@MainActor` because this clears `loadedWeeks` before
     /// delegating to `load()`. See `load()` for the full
@@ -331,6 +365,7 @@ struct DashboardView: View {
     @MainActor
     private func refresh() async {
         loadedWeeks.removeAll()
+        workoutStore.invalidateCalendarCache()
         await load()
         // Beta-gated vitals refresh alongside the server data.
         // `shouldRefresh` keeps this off for non-beta users
@@ -406,10 +441,19 @@ struct DashboardView: View {
 }
 
 #Preview {
-    DashboardView()
-        .environmentObject(AppEnvironment.live(baseURL: URL(string: "http://localhost:8080/api/v1")!))
-        .environmentObject(AuthStore(api: APIClient(
+    DashboardView(
+        workoutStore: WorkoutStore(api: APIClient(
             baseURL: URL(string: "http://localhost:8080/api/v1")!,
             tokenProvider: { nil }
-        )))
+        )),
+        blockStore: BlockStore(api: APIClient(
+            baseURL: URL(string: "http://localhost:8080/api/v1")!,
+            tokenProvider: { nil }
+        ))
+    )
+    .environmentObject(AppEnvironment.live(baseURL: URL(string: "http://localhost:8080/api/v1")!))
+    .environmentObject(AuthStore(api: APIClient(
+        baseURL: URL(string: "http://localhost:8080/api/v1")!,
+        tokenProvider: { nil }
+    )))
 }

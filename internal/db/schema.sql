@@ -213,3 +213,30 @@ CREATE TABLE block_items (
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_block_items_block ON block_items(block_id, position);
+
+-- Workouts are user-owned scheduled collections of blocks (see
+-- migration 00020_add_workouts.sql). workout_blocks rows are ordered
+-- live references to blocks with their own per-block status.
+CREATE TABLE workouts (
+    id             TEXT PRIMARY KEY,
+    user_id        TEXT NOT NULL REFERENCES users(id),
+    name           TEXT NOT NULL,
+    description    TEXT NOT NULL DEFAULT '',
+    scheduled_date TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'planned',
+    created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_workouts_user_date ON workouts(user_id, scheduled_date);
+
+CREATE TABLE workout_blocks (
+    id         TEXT PRIMARY KEY,
+    workout_id TEXT NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+    block_id   TEXT NOT NULL REFERENCES blocks(id),
+    position   INTEGER NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'pending',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(workout_id, position)
+);
+CREATE INDEX idx_workout_blocks_workout ON workout_blocks(workout_id, position);
+CREATE INDEX idx_workout_blocks_block ON workout_blocks(block_id);

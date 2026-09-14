@@ -208,6 +208,45 @@ type BlockRepo interface {
 // Compile-time check to ensure BlockRepository implements BlockRepo.
 var _ BlockRepo = (*BlockRepository)(nil)
 
+// WorkoutRepo defines the interface for workout data access. The
+// controller depends on this so route tests can substitute an
+// in-memory fake without touching the real sqlc repository.
+type WorkoutRepo interface {
+	// Create persists a new workout with its blocks, assigning
+	// generated IDs back onto the supplied value.
+	Create(w *Workout) error
+	// CreateBatch persists several workouts with their blocks in a
+	// single transaction (all or nothing), assigning generated IDs
+	// back onto each supplied value.
+	CreateBatch(ws []*Workout) error
+	// GetByID returns the workout with blocks, or nil when not
+	// found. Scoped to the user.
+	GetByID(id, userID string) (*Workout, error)
+	// List returns every workout for the user (newest scheduled
+	// date first) with block/done counts; blocks are not loaded.
+	List(userID string) ([]WorkoutSummary, error)
+	// ListRange returns workouts in an inclusive scheduled-date
+	// range (YYYY-MM-DD), oldest first. Scoped to the user.
+	ListRange(userID, from, to string) ([]WorkoutSummary, error)
+	// Update overwrites the workout fields and fully replaces
+	// its blocks. Scoped to the user.
+	Update(w *Workout, userID string) error
+	// SetBlockStatus updates one block's completion status. The
+	// caller gates the workout via GetByID first.
+	SetBlockStatus(workoutID, workoutBlockID string, status WorkoutBlockStatus) error
+	// GetWorkoutBlock returns one join row scoped to its
+	// workout, or nil when not found.
+	GetWorkoutBlock(workoutID, workoutBlockID string) (*WorkoutBlock, error)
+	// CountBlockUsage returns how many of the user's workouts
+	// reference the given block (409 guard on block deletion).
+	CountBlockUsage(blockID, userID string) (int64, error)
+	// Delete removes a workout and its blocks. Scoped to the user.
+	Delete(id, userID string) error
+}
+
+// Compile-time check to ensure WorkoutRepository implements WorkoutRepo.
+var _ WorkoutRepo = (*WorkoutRepository)(nil)
+
 // HealthSnapshotRepo defines the interface for health snapshot
 // data access. The controller depends on this so route tests can
 // substitute an in-memory fake without touching the real sqlc

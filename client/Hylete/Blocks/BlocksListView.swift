@@ -72,6 +72,31 @@ struct BlocksListView: View {
 
     private var loadedList: some View {
         List {
+            // Mutation errors (e.g. the 409 when deleting a block
+            // still used by a workout) surface inline — the list
+            // itself is non-empty so the full-screen error state
+            // never shows. Tapping dismisses.
+            if let error = store.errorMessage {
+                Section {
+                    Button {
+                        store.errorMessage = nil
+                    } label: {
+                        HStack(spacing: DSSpacing.xs) {
+                            Image(systemName: Icons.warning)
+                                .foregroundStyle(DSColors.destructive)
+                            Text(error)
+                                .font(.footnote)
+                                .foregroundStyle(DSColors.text)
+                            Spacer()
+                            Image(systemName: "xmark")
+                                .font(.caption)
+                                .foregroundStyle(DSColors.textSecondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss error")
+                }
+            }
             Section {
                 ForEach(store.blocks) { block in
                     NavigationLink {

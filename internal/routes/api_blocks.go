@@ -179,10 +179,23 @@ func (h *Handler) APIUpdateBlock(c echo.Context) error {
 }
 
 // APIDeleteBlock handles DELETE /api/v1/blocks/:id. Hard delete
-// scoped to the authenticated user. Returns 204.
+// scoped to the authenticated user. Returns 204. When the block is
+// referenced by any of the user's workouts the delete is rejected
+// with a 409 (plus the referencing count) so the client can tell the
+// user exactly why — logged exercise entries are never affected.
 func (h *Handler) APIDeleteBlock(c echo.Context) error {
 	claims := GetClaims(c)
 	id := c.Param("id")
+
+	if h.workoutsCtrl != nil {
+		useCount, err := h.workoutsCtrl.CountBlockUsage(id, claims.UserID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to delete block"})
+		}
+		if useCount > 0 {
+			return c.JSON(http.StatusConflict, APIError{Error: blockInUseMessage(useCount)})
+		}
+	}
 
 	if err := h.blocksCtrl.DeleteBlock(id, claims.UserID); err != nil {
 		if errors.Is(err, controllers.ErrBlockNotFound) {

@@ -88,6 +88,7 @@ struct MainTabView: View {
     @StateObject private var weightStore: WeightStore
     @StateObject private var coachStore: CoachStore
     @StateObject private var blockStore: BlockStore
+    @StateObject private var workoutStore: WorkoutStore
 
     init() {
         // Construct with a stub API; swapped to the real
@@ -103,14 +104,19 @@ struct MainTabView: View {
         _weightStore = StateObject(wrappedValue: WeightStore(api: stub))
         _coachStore = StateObject(wrappedValue: CoachStore(api: stub))
         _blockStore = StateObject(wrappedValue: BlockStore(api: stub))
+        _workoutStore = StateObject(wrappedValue: WorkoutStore(api: stub))
     }
 
     var body: some View {
         TabView {
             // Dashboard owns its stack (path-bound for
             // exercise-history pushes) — do NOT wrap it.
-            DashboardView(distanceUnit: env.authStore.currentUser?.distanceUnit ?? "km")
-                .tabItem { Label("Dashboard", systemImage: "house") }
+            DashboardView(
+                distanceUnit: env.authStore.currentUser?.distanceUnit ?? "km",
+                workoutStore: workoutStore,
+                blockStore: blockStore
+            )
+            .tabItem { Label("Dashboard", systemImage: "house") }
 
             NavigationStack {
                 ExerciseListView()
@@ -128,7 +134,7 @@ struct MainTabView: View {
             .tabItem { Label("Goals", systemImage: Icons.goals) }
 
             NavigationStack {
-                MoreView(coachStore: coachStore, blockStore: blockStore)
+                MoreView(coachStore: coachStore, blockStore: blockStore, workoutStore: workoutStore)
             }
             .tabItem { Label("More", systemImage: Icons.more) }
         }
@@ -144,6 +150,7 @@ struct MainTabView: View {
             weightStore.replaceAPI(env.api)
             coachStore.replaceAPI(env.api)
             blockStore.replaceAPI(env.api)
+            workoutStore.replaceAPI(env.api)
         }
     }
 }

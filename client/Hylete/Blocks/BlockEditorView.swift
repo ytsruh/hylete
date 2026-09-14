@@ -291,9 +291,7 @@ struct BlockEditorView: View {
                 showingDeleteConfirm = true
             } label: {
                 HStack {
-                    Spacer()
                     Text("Delete block")
-                    Spacer()
                 }
             }
         }

@@ -286,6 +286,67 @@ public final class APIClient: @unchecked Sendable {
         try await sendVoid("DELETE", "blocks/\(id)")
     }
 
+    // MARK: - Workouts
+
+    /// Lists the user's scheduled workouts. The server returns
+    /// summaries (newest scheduled date first) with block/done
+    /// counts; full blocks load per-workout via `getWorkout(id:)`.
+    public func listWorkouts() async throws -> [WorkoutSummaryDTO] {
+        let response: WorkoutsResponse = try await send("GET", "workouts")
+        return response.workouts
+    }
+
+    /// Lists workouts in an inclusive scheduled-date range
+    /// (`GET /api/v1/workouts?from=YYYY-MM-DD&to=YYYY-MM-DD`,
+    /// oldest first). The dashboard calendar uses this so week
+    /// paging fetches exactly the visible range; dates are plain
+    /// calendar days (no timezone encoding concerns).
+    public func listWorkouts(from: String, to: String) async throws -> [WorkoutSummaryDTO] {
+        let response: WorkoutsResponse = try await send("GET", "workouts?from=\(from)&to=\(to)")
+        return response.workouts
+    }
+
+    public func getWorkout(id: String) async throws -> WorkoutDTO {
+        try await send("GET", "workouts/\(id)")
+    }
+
+    public func createWorkout(_ request: CreateWorkoutRequest) async throws -> WorkoutDTO {
+        try await send("POST", "workouts", body: request)
+    }
+
+    /// Updates a workout. Blocks are fully replaced with statuses
+    /// reset to pending — send the complete desired block list in
+    /// array order.
+    public func updateWorkout(id: String, request: UpdateWorkoutRequest) async throws -> WorkoutDTO {
+        try await send("PUT", "workouts/\(id)", body: request)
+    }
+
+    public func deleteWorkout(id: String) async throws {
+        try await sendVoid("DELETE", "workouts/\(id)")
+    }
+
+    /// Marks one block in a workout pending/done/skipped. Returns
+    /// the refreshed workout.
+    public func setWorkoutBlockStatus(workoutID: String, workoutBlockID: String, status: WorkoutBlockStatusDTO) async throws -> WorkoutDTO {
+        try await send("PATCH", "workouts/\(workoutID)/blocks/\(workoutBlockID)", body: UpdateWorkoutBlockStatusRequest(status: status))
+    }
+
+    /// Copies a workout onto a new scheduled date with block
+    /// statuses reset to pending. Returns the created workout.
+    public func duplicateWorkout(id: String, scheduledDate: String) async throws -> WorkoutDTO {
+        try await send("POST", "workouts/\(id)/duplicate", body: DuplicateWorkoutRequest(scheduledDate: scheduledDate))
+    }
+
+    /// Copies a workout onto every listed date in one atomic batch
+    /// (the client's expanded recurrence). Copies keep the source's
+    /// exact name with block statuses reset to pending. At most 50
+    /// dates — enforced server-side. Returns the created workouts
+    /// in request-date order.
+    public func duplicateWorkouts(id: String, dates: [String]) async throws -> [WorkoutDTO] {
+        let response: WorkoutBatchResponse = try await send("POST", "workouts/\(id)/duplicate-batch", body: DuplicateWorkoutBatchRequest(dates: dates))
+        return response.workouts
+    }
+
     // MARK: - Feedback
 
     /// Submits user feedback to the server. Mirrors the web
