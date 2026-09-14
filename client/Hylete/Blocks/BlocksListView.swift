@@ -18,6 +18,15 @@ struct BlocksListView: View {
     @State private var deletingBlock: BlockSummaryDTO?
     @State private var showingDeleteAlert: Bool = false
     @State private var duplicatingBlock: BlockDTO?
+    @State private var search: String = ""
+    @State private var typeFilter: BlockTypeFilter = .all
+
+    /// Client-side name + type filter over the loaded summaries.
+    /// Trimmed, case-insensitive contains match — same as the
+    /// exercise catalogue filter.
+    private var filtered: [BlockSummaryDTO] {
+        filterBlocks(store.blocks, search: search, typeFilter: typeFilter)
+    }
 
     var body: some View {
         content
@@ -71,7 +80,23 @@ struct BlocksListView: View {
     }
 
     private var loadedList: some View {
-        List {
+        VStack(spacing: 0) {
+            Text("Blocks are sets of exercises that can be reused across workouts")
+                .font(.title3)
+                .foregroundStyle(DSColors.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.top, DSSpacing.sm)
+                .padding(.bottom, DSSpacing.xs)
+            InlineSearchField(text: $search, prompt: "Search blocks")
+                .padding(.horizontal)
+                .padding(.bottom, DSSpacing.xs)
+            BlockTypeFilterView(selection: $typeFilter)
+                .padding(.bottom, DSSpacing.xs)
+            if filtered.isEmpty {
+                noMatches
+            } else {
+                List {
             // Mutation errors (e.g. the 409 when deleting a block
             // still used by a workout) surface inline — the list
             // itself is non-empty so the full-screen error state
@@ -98,7 +123,7 @@ struct BlocksListView: View {
                 }
             }
             Section {
-                ForEach(store.blocks) { block in
+                ForEach(filtered) { block in
                     NavigationLink {
                         BlockDetailView(store: store, blockID: block.id)
                     } label: {
@@ -121,12 +146,25 @@ struct BlocksListView: View {
                         }
                     }
                 }
-            } header: {
-                Text("Blocks are sets of exercises that can be reused across workouts")
-                    .textCase(nil)
+            }
+                }
+                .listStyle(.automatic)
             }
         }
-        .listStyle(.automatic)
+    }
+
+    /// Shown when the list itself is non-empty but the current
+    /// search/type combination hides every row.
+    private var noMatches: some View {
+        VStack(spacing: DSSpacing.md) {
+            Spacer()
+            Text("No blocks match your search.")
+                .foregroundStyle(DSColors.textSecondary)
+                .multilineTextAlignment(.center)
+            Spacer()
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// Two-line row: name + "Kind · N exercises" subtitle with

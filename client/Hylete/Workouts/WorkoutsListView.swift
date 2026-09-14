@@ -25,6 +25,15 @@ struct WorkoutsListView: View {
     /// is clean). `navigationDestination(item:)` needs iOS 17+,
     /// which is the app's deployment target.
     @State private var navigatingWorkout: WorkoutDTO?
+    @State private var search: String = ""
+    @State private var statusFilter: WorkoutStatusFilter = .all
+
+    /// Client-side name + status filter over the loaded summaries.
+    /// Trimmed, case-insensitive contains match — same as the
+    /// exercise catalogue filter.
+    private var filtered: [WorkoutSummaryDTO] {
+        filterWorkouts(store.summaries, search: search, statusFilter: statusFilter)
+    }
 
     var body: some View {
         content
@@ -85,9 +94,25 @@ struct WorkoutsListView: View {
     }
 
     private var loadedList: some View {
-        List {
-            Section {
-                ForEach(store.summaries) { workout in
+        VStack(spacing: 0) {
+            Text("Planned training days, built from your blocks")
+                .font(.title3)
+                .foregroundStyle(DSColors.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.top, DSSpacing.sm)
+                .padding(.bottom, DSSpacing.xs)
+            InlineSearchField(text: $search, prompt: "Search workouts")
+                .padding(.horizontal)
+                .padding(.bottom, DSSpacing.xs)
+            WorkoutStatusFilterView(selection: $statusFilter)
+                .padding(.bottom, DSSpacing.xs)
+            if filtered.isEmpty {
+                noMatches
+            } else {
+                List {
+                    Section {
+                        ForEach(filtered) { workout in
                     NavigationLink {
                         WorkoutDetailView(store: store, blockStore: blockStore, workoutID: workout.id)
                     } label: {
@@ -110,12 +135,25 @@ struct WorkoutsListView: View {
                         }
                     }
                 }
-            } header: {
-                Text("Planned training days, built from your blocks")
-                    .textCase(nil)
+            }
+                }
+                .listStyle(.automatic)
             }
         }
-        .listStyle(.automatic)
+    }
+
+    /// Shown when the list itself is non-empty but the current
+    /// search/status combination hides every row.
+    private var noMatches: some View {
+        VStack(spacing: DSSpacing.md) {
+            Spacer()
+            Text("No workouts match your search.")
+                .foregroundStyle(DSColors.textSecondary)
+                .multilineTextAlignment(.center)
+            Spacer()
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// Three-line row: name, "Mon, Sep 14 · Planned" subtitle, and
