@@ -1,13 +1,13 @@
 import SwiftUI
 import UIKit
 
-/// Wraps `UIApplication.shared.isIdleTimerDisabled` so the
-/// timer sub-views can keep the screen awake while running
-/// without poking at `UIKit` directly. Best-effort: iOS
-/// still applies its own background-idle rules once the app
-/// leaves the foreground, which matches the web's
-/// `wake-lock.js` behavior (the wake lock is a hint, not a
-/// guarantee).
+/// Wraps `UIApplication.shared.isIdleTimerDisabled` so
+/// full-screen sessions (rest timers, the Workout Player) can
+/// keep the screen awake while active without poking at `UIKit`
+/// directly. Best-effort: iOS still applies its own
+/// background-idle rules once the app leaves the foreground,
+/// which matches the web's `wake-lock.js` behavior (the wake
+/// lock is a hint, not a guarantee).
 @MainActor
 enum TimerWakeLock {
     /// Disables the screen idle timer. Idempotent — calling

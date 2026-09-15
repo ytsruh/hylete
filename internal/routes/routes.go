@@ -30,9 +30,19 @@ type Handler struct {
 	weightCtrl        *controllers.WeightController
 	goalsCtrl         *controllers.GoalsController
 	healthCtrl        *controllers.HealthSnapshotController
-	userRepo          models.UserRepo
-	jwtService        *utils.JWTService
-	validator         utils.Validator
+	// blocksCtrl is the Blocks orchestrator (Beta, iOS-only JSON
+	// API — no web UI per the read-only companion policy).
+	// Attached via SetBlocksController (same pattern as
+	// SetCoachService) so Handler construction sites stay stable.
+	blocksCtrl *controllers.BlocksController
+	// workoutsCtrl is the Workouts orchestrator (same Beta,
+	// iOS-only JSON API as blocks). Attached via
+	// SetWorkoutsController. Also backs the 409 guard on block
+	// deletion (a referenced block cannot be deleted).
+	workoutsCtrl *controllers.WorkoutsController
+	userRepo     models.UserRepo
+	jwtService   *utils.JWTService
+	validator    utils.Validator
 	// clock is the time source the profile route uses
 	// when computing the next reminder fire time on form
 	// save. Tests substitute a fixed clock to assert on
@@ -229,6 +239,31 @@ func registerAPIRoutes(e *echo.Echo, h *Handler) {
 	e.POST("/api/v1/goals/:id/complete", h.APIMarkGoalComplete)
 	e.POST("/api/v1/goals/:id/reopen", h.APIReopenGoal)
 	e.DELETE("/api/v1/goals/:id", h.APIDeleteGoal)
+
+	// Blocks (Beta, iOS-only JSON API — no web UI: the web app is
+	// a read-only companion and never creates/edits workout data).
+	e.GET("/api/v1/blocks", h.APIListBlocks)
+	e.POST("/api/v1/blocks", h.APICreateBlock)
+	e.GET("/api/v1/blocks/:id", h.APIGetBlock)
+	e.PUT("/api/v1/blocks/:id", h.APIUpdateBlock)
+	e.DELETE("/api/v1/blocks/:id", h.APIDeleteBlock)
+
+	// Workouts (Beta, iOS-only JSON API — no web UI: the web app is
+	// a read-only companion and never creates/edits workout data).
+	// List accepts an optional ?from=&to= (YYYY-MM-DD) range for
+	// schedule views such as the dashboard calendar. Detail accepts
+	// ?include=items for the Workout Player's single-call fetch.
+	e.GET("/api/v1/workouts", h.APIListWorkouts)
+	e.POST("/api/v1/workouts", h.APICreateWorkout)
+	e.GET("/api/v1/workouts/:id", h.APIGetWorkout)
+	e.PUT("/api/v1/workouts/:id", h.APIUpdateWorkout)
+	e.PATCH("/api/v1/workouts/:id/status", h.APIUpdateWorkoutStatus)
+	e.DELETE("/api/v1/workouts/:id", h.APIDeleteWorkout)
+	e.PATCH("/api/v1/workouts/:id/blocks/:blockId", h.APIUpdateWorkoutBlockStatus)
+	e.POST("/api/v1/workouts/:id/duplicate", h.APIDuplicateWorkout)
+	e.POST("/api/v1/workouts/:id/duplicate-batch", h.APIDuplicateWorkoutBatch)
+	// Player resume: every exercise entry logged against one workout.
+	e.GET("/api/v1/workouts/:id/exercise-entries", h.APIListWorkoutExerciseEntries)
 
 	// Feedback (JSON mirror of the HTML /feedback POST
 	// handler — used by the iOS client). The same

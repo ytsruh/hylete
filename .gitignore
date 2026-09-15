@@ -13,7 +13,6 @@ public/css/styles.css
 
 # Binaries
 /hylete
-/stren
 main
 *.exe
 *.dll

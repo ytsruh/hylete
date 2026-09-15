@@ -254,6 +254,10 @@ func ExercisesFromModels(es []models.Exercise) []ExerciseDTO {
 // for the non-applicable pair, so clients can decode one struct and branch on
 // exercise_type instead of probing for nulls. Distance is metres; pace is not
 // sent — derive it as duration_seconds / (distance_meters/1000).
+//
+// WorkoutID/BlockID/WorkoutBlockID attribute the set to a Workout Player
+// session. Omitted when the set was logged outside a workout so older
+// clients (decoding without the keys) keep parsing.
 type ExerciseEntryDTO struct {
 	ID              string    `json:"id"`
 	ExerciseID      string    `json:"exercise_id"`
@@ -267,6 +271,9 @@ type ExerciseEntryDTO struct {
 	DistanceMeters  float64   `json:"distance_meters"`
 	AvgHeartRate    int       `json:"avg_heart_rate"`
 	CaloriesBurned  float64   `json:"calories_burned"`
+	WorkoutID       *string   `json:"workout_id,omitempty"`
+	BlockID         *string   `json:"block_id,omitempty"`
+	WorkoutBlockID  *string   `json:"workout_block_id,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 }
 
@@ -285,6 +292,9 @@ func ExerciseEntryFromModel(e models.ExerciseEntry) ExerciseEntryDTO {
 		DistanceMeters:  e.DistanceMeters,
 		AvgHeartRate:    e.AvgHeartRate,
 		CaloriesBurned:  e.CaloriesBurned,
+		WorkoutID:       e.WorkoutID,
+		BlockID:         e.BlockID,
+		WorkoutBlockID:  e.WorkoutBlockID,
 		CreatedAt:       e.CreatedAt,
 	}
 }
@@ -307,6 +317,11 @@ func ExerciseEntriesFromModels(es []models.ExerciseEntry) []ExerciseEntryDTO {
 // here because which fields are mandatory depends on the exercise's type
 // — that check lives in the controller's ValidateExerciseSetInput so the
 // JSON and any future surface share one rule set.
+//
+// WorkoutID/BlockID/WorkoutBlockID attribute the set to a Workout Player
+// session (all omitted = logged outside a workout). Ownership and
+// membership are validated in the controller; unknown IDs surface as
+// 400s, never FK errors.
 type CreateSetInput struct {
 	Reps            int     `json:"reps"             validate:"gte=0,lte=1000"`
 	Weight          float64 `json:"weight"           validate:"gte=0,lte=5000"`
@@ -315,6 +330,9 @@ type CreateSetInput struct {
 	DistanceMeters  float64 `json:"distance_meters"  validate:"gte=0,lte=500000"`
 	AvgHeartRate    int     `json:"avg_heart_rate"   validate:"gte=0,lte=300"`
 	CaloriesBurned  float64 `json:"calories_burned"  validate:"gte=0,lte=10000"`
+	WorkoutID       *string `json:"workout_id,omitempty"`
+	BlockID         *string `json:"block_id,omitempty"`
+	WorkoutBlockID  *string `json:"workout_block_id,omitempty"`
 }
 
 // CreateExerciseEntriesRequest is the body for
@@ -490,6 +508,369 @@ func GoalsFromModels(gs []models.Goal) []GoalDTO {
 	out := make([]GoalDTO, 0, len(gs))
 	for _, g := range gs {
 		out = append(out, GoalFromModel(g))
+	}
+	return out
+}
+
+// --- Blocks ---
+
+// BlockItemDTO is the JSON shape for one planned exercise inside
+// a block. ExerciseName/Type are resolved server-side for display;
+// the client never writes them. Position is the zero-based order
+// in the block. TargetText is free-text only in V1.
+type BlockItemDTO struct {
+	ID           string `json:"id"`
+	ExerciseID   string `json:"exercise_id"`
+	ExerciseName string `json:"exercise_name"`
+	ExerciseType string `json:"exercise_type"`
+	Position     int    `json:"position"`
+	TargetText   string `json:"target_text"`
+}
+
+// BlockDTO is the JSON shape for a full block with its items
+// (detail view, create/update responses).
+type BlockDTO struct {
+	ID              string         `json:"id"`
+	Name            string         `json:"name"`
+	Description     string         `json:"description"`
+	Type            string         `json:"type"`
+	Rounds          int            `json:"rounds"`
+	RestSeconds     int            `json:"rest_seconds"`
+	TimeCapSeconds  int            `json:"time_cap_seconds"`
+	IntervalSeconds int            `json:"interval_seconds"`
+	Items           []BlockItemDTO `json:"items"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+}
+
+// BlockSummaryDTO is the list-view shape: the block without items
+// plus the item count ("3 exercises · 4 rounds").
+type BlockSummaryDTO struct {
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	Description     string    `json:"description"`
+	Type            string    `json:"type"`
+	Rounds          int       `json:"rounds"`
+	RestSeconds     int       `json:"rest_seconds"`
+	TimeCapSeconds  int       `json:"time_cap_seconds"`
+	IntervalSeconds int       `json:"interval_seconds"`
+	ItemCount       int       `json:"item_count"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// CreateBlockItemRequest is one planned exercise in a block
+// create/update body.
+type CreateBlockItemRequest struct {
+	ExerciseID string `json:"exercise_id" validate:"required"`
+	TargetText string `json:"target_text" validate:"max=500"`
+}
+
+// CreateBlockRequest is the body for POST /api/v1/blocks. The
+// kind-specific config rules (e.g. circuits need rounds) live in
+// the controller — the tags below only enforce coarse bounds so
+// both layers reject the same garbage inputs.
+type CreateBlockRequest struct {
+	Name            string                   `json:"name" validate:"required,min=1,max=100"`
+	Description     string                   `json:"description" validate:"max=1000"`
+	Type            string                   `json:"type" validate:"required,oneof=standard circuit amrap emom"`
+	Rounds          int                      `json:"rounds" validate:"gte=0,lte=240"`
+	RestSeconds     int                      `json:"rest_seconds" validate:"gte=0,lte=3600"`
+	TimeCapSeconds  int                      `json:"time_cap_seconds" validate:"gte=0,lte=86400"`
+	IntervalSeconds int                      `json:"interval_seconds" validate:"gte=0,lte=3600"`
+	Items           []CreateBlockItemRequest `json:"items" validate:"required,min=1,max=20,dive"`
+}
+
+// UpdateBlockRequest is the body for PUT /api/v1/blocks/:id.
+// Items are fully replaced (same semantics as create).
+type UpdateBlockRequest struct {
+	Name            string                   `json:"name" validate:"required,min=1,max=100"`
+	Description     string                   `json:"description" validate:"max=1000"`
+	Type            string                   `json:"type" validate:"required,oneof=standard circuit amrap emom"`
+	Rounds          int                      `json:"rounds" validate:"gte=0,lte=240"`
+	RestSeconds     int                      `json:"rest_seconds" validate:"gte=0,lte=3600"`
+	TimeCapSeconds  int                      `json:"time_cap_seconds" validate:"gte=0,lte=86400"`
+	IntervalSeconds int                      `json:"interval_seconds" validate:"gte=0,lte=3600"`
+	Items           []CreateBlockItemRequest `json:"items" validate:"required,min=1,max=20,dive"`
+}
+
+// BlockItemFromModel converts a models.BlockItem into its DTO.
+func BlockItemFromModel(it models.BlockItem) BlockItemDTO {
+	return BlockItemDTO{
+		ID:           it.ID,
+		ExerciseID:   it.ExerciseID,
+		ExerciseName: it.ExerciseName,
+		ExerciseType: string(it.ExerciseType),
+		Position:     it.Position,
+		TargetText:   it.TargetText,
+	}
+}
+
+// BlockFromModel converts a models.Block (with items) into its
+// DTO. Items default to `[]` (not null) when empty.
+func BlockFromModel(b models.Block) BlockDTO {
+	items := make([]BlockItemDTO, 0, len(b.Items))
+	for _, it := range b.Items {
+		items = append(items, BlockItemFromModel(it))
+	}
+	return BlockDTO{
+		ID:              b.ID,
+		Name:            b.Name,
+		Description:     b.Description,
+		Type:            string(b.Type),
+		Rounds:          b.Rounds,
+		RestSeconds:     b.RestSeconds,
+		TimeCapSeconds:  b.TimeCapSeconds,
+		IntervalSeconds: b.IntervalSeconds,
+		Items:           items,
+		CreatedAt:       b.CreatedAt,
+		UpdatedAt:       b.UpdatedAt,
+	}
+}
+
+// BlockSummaryFromModel converts a models.BlockSummary into its DTO.
+func BlockSummaryFromModel(s models.BlockSummary) BlockSummaryDTO {
+	return BlockSummaryDTO{
+		ID:              s.ID,
+		Name:            s.Name,
+		Description:     s.Description,
+		Type:            string(s.Type),
+		Rounds:          s.Rounds,
+		RestSeconds:     s.RestSeconds,
+		TimeCapSeconds:  s.TimeCapSeconds,
+		IntervalSeconds: s.IntervalSeconds,
+		ItemCount:       s.ItemCount,
+		CreatedAt:       s.CreatedAt,
+		UpdatedAt:       s.UpdatedAt,
+	}
+}
+
+// BlockSummariesFromModels converts block summaries into DTOs,
+// writing `[]` rather than `null` when the user has no blocks.
+func BlockSummariesFromModels(ss []models.BlockSummary) []BlockSummaryDTO {
+	out := make([]BlockSummaryDTO, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, BlockSummaryFromModel(s))
+	}
+	return out
+}
+
+// --- Workouts ---
+
+// WorkoutBlockDTO is the JSON shape for one planned block inside a
+// workout. BlockName/Type/Description/ItemCount are resolved
+// server-side for display; the client never writes them. Position is
+// the zero-based order in the workout. Status is the per-block
+// completion state (pending|done|skipped).
+type WorkoutBlockDTO struct {
+	ID               string `json:"id"`
+	BlockID          string `json:"block_id"`
+	BlockName        string `json:"block_name"`
+	BlockDescription string `json:"block_description"`
+	BlockType        string `json:"block_type"`
+	Position         int    `json:"position"`
+	Status           string `json:"status"`
+	ItemCount        int    `json:"item_count"`
+}
+
+// WorkoutDTO is the JSON shape for a full workout with its blocks
+// (detail view, create/update/duplicate responses).
+type WorkoutDTO struct {
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	Description   string            `json:"description"`
+	ScheduledDate string            `json:"scheduled_date"`
+	Status        string            `json:"status"`
+	Blocks        []WorkoutBlockDTO `json:"blocks"`
+	CreatedAt     time.Time         `json:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at"`
+}
+
+// WorkoutSummaryDTO is the list-view shape: the workout without
+// blocks plus block/done counts ("3/5 blocks").
+type WorkoutSummaryDTO struct {
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	ScheduledDate string    `json:"scheduled_date"`
+	Status        string    `json:"status"`
+	BlockCount    int       `json:"block_count"`
+	DoneCount     int       `json:"done_count"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// CreateWorkoutBlockRequest is one planned block in a workout
+// create/update body. Position is implicit (array order).
+type CreateWorkoutBlockRequest struct {
+	BlockID string `json:"block_id" validate:"required"`
+}
+
+// CreateWorkoutRequest is the body for POST /api/v1/workouts. Status
+// defaults to planned when empty; scheduled_date is YYYY-MM-DD.
+type CreateWorkoutRequest struct {
+	Name          string                      `json:"name" validate:"required,min=1,max=100"`
+	Description   string                      `json:"description" validate:"max=1000"`
+	ScheduledDate string                      `json:"scheduled_date" validate:"required"`
+	Status        string                      `json:"status" validate:"omitempty,oneof=planned in_progress completed skipped"`
+	Blocks        []CreateWorkoutBlockRequest `json:"blocks" validate:"required,min=1,max=20,dive"`
+}
+
+// UpdateWorkoutRequest is the body for PUT /api/v1/workouts/:id.
+// Blocks are fully replaced with statuses reset to pending (same
+// semantics as create).
+type UpdateWorkoutRequest struct {
+	Name          string                      `json:"name" validate:"required,min=1,max=100"`
+	Description   string                      `json:"description" validate:"max=1000"`
+	ScheduledDate string                      `json:"scheduled_date" validate:"required"`
+	Status        string                      `json:"status" validate:"omitempty,oneof=planned in_progress completed skipped"`
+	Blocks        []CreateWorkoutBlockRequest `json:"blocks" validate:"required,min=1,max=20,dive"`
+}
+
+// UpdateWorkoutBlockStatusRequest is the body for PATCH
+// /api/v1/workouts/:id/blocks/:blockId.
+type UpdateWorkoutBlockStatusRequest struct {
+	Status string `json:"status" validate:"required,oneof=pending done skipped"`
+}
+
+// UpdateWorkoutStatusRequest is the body for PATCH
+// /api/v1/workouts/:id/status. Status-only by design: unlike PUT,
+// it never replaces blocks, so block check-offs survive explicit
+// status changes from the player Finish button and the detail
+// status picker.
+type UpdateWorkoutStatusRequest struct {
+	Status string `json:"status" validate:"required,oneof=planned in_progress completed skipped"`
+}
+
+// DuplicateWorkoutRequest is the body for POST
+// /api/v1/workouts/:id/duplicate.
+type DuplicateWorkoutRequest struct {
+	ScheduledDate string `json:"scheduled_date" validate:"required"`
+}
+
+// DuplicateWorkoutBatchRequest is the body for POST
+// /api/v1/workouts/:id/duplicate-batch. Dates is the explicit
+// expanded schedule (the client turns weekly / every-N-days
+// patterns into concrete YYYY-MM-DD days); at most 50 so a typo
+// cannot create a runaway schedule.
+type DuplicateWorkoutBatchRequest struct {
+	Dates []string `json:"dates" validate:"required,min=1,max=50"`
+}
+
+// WorkoutBlockFromModel converts a models.WorkoutBlock into its DTO.
+func WorkoutBlockFromModel(b models.WorkoutBlock) WorkoutBlockDTO {
+	return WorkoutBlockDTO{
+		ID:               b.ID,
+		BlockID:          b.BlockID,
+		BlockName:        b.BlockName,
+		BlockDescription: b.BlockDescription,
+		BlockType:        string(b.BlockType),
+		Position:         b.Position,
+		Status:           string(b.Status),
+		ItemCount:        b.ItemCount,
+	}
+}
+
+// WorkoutBlockDetailDTO is one planned block with its planned exercises
+// resolved. Returned by GET /api/v1/workouts/:id?include=items so the
+// Workout Player renders every block and row in one call. The timing
+// fields mirror the catalogue block's time config so the player can
+// show each type's time structure (circuit rounds/rest, AMRAP cap,
+// EMOM interval); they are zero for standard blocks and when the
+// catalogue block is gone.
+type WorkoutBlockDetailDTO struct {
+	WorkoutBlockDTO
+	Items           []BlockItemDTO `json:"items"`
+	Rounds          int            `json:"rounds"`
+	RestSeconds     int            `json:"rest_seconds"`
+	TimeCapSeconds  int            `json:"time_cap_seconds"`
+	IntervalSeconds int            `json:"interval_seconds"`
+}
+
+// WorkoutWithItemsDTO is the player-fetch shape: the full workout with
+// every block's items embedded. Blocks stay in position order.
+type WorkoutWithItemsDTO struct {
+	ID            string                  `json:"id"`
+	Name          string                  `json:"name"`
+	Description   string                  `json:"description"`
+	ScheduledDate string                  `json:"scheduled_date"`
+	Status        string                  `json:"status"`
+	Blocks        []WorkoutBlockDetailDTO `json:"blocks"`
+	CreatedAt     time.Time               `json:"created_at"`
+	UpdatedAt     time.Time               `json:"updated_at"`
+}
+
+// WorkoutWithItemsFromModel converts a models.WorkoutWithItems into its
+// DTO. Item slices default to [] (not null) when a block has no items
+// (e.g. its catalogue block was deleted after planning).
+func WorkoutWithItemsFromModel(w models.WorkoutWithItems) WorkoutWithItemsDTO {
+	blocks := make([]WorkoutBlockDetailDTO, 0, len(w.Blocks))
+	for _, b := range w.Blocks {
+		items := make([]BlockItemDTO, 0, len(b.Items))
+		for _, it := range b.Items {
+			items = append(items, BlockItemFromModel(it))
+		}
+		blocks = append(blocks, WorkoutBlockDetailDTO{
+			WorkoutBlockDTO: WorkoutBlockFromModel(b.WorkoutBlock),
+			Items:           items,
+			Rounds:          b.Rounds,
+			RestSeconds:     b.RestSeconds,
+			TimeCapSeconds:  b.TimeCapSeconds,
+			IntervalSeconds: b.IntervalSeconds,
+		})
+	}
+	return WorkoutWithItemsDTO{
+		ID:            w.ID,
+		Name:          w.Name,
+		Description:   w.Description,
+		ScheduledDate: w.ScheduledDate,
+		Status:        string(w.Status),
+		Blocks:        blocks,
+		CreatedAt:     w.CreatedAt,
+		UpdatedAt:     w.UpdatedAt,
+	}
+}
+
+// WorkoutFromModel converts a models.Workout (with blocks) into its
+// DTO. Blocks default to `[]` (not null) when empty.
+func WorkoutFromModel(w models.Workout) WorkoutDTO {
+	blocks := make([]WorkoutBlockDTO, 0, len(w.Blocks))
+	for _, b := range w.Blocks {
+		blocks = append(blocks, WorkoutBlockFromModel(b))
+	}
+	return WorkoutDTO{
+		ID:            w.ID,
+		Name:          w.Name,
+		Description:   w.Description,
+		ScheduledDate: w.ScheduledDate,
+		Status:        string(w.Status),
+		Blocks:        blocks,
+		CreatedAt:     w.CreatedAt,
+		UpdatedAt:     w.UpdatedAt,
+	}
+}
+
+// WorkoutSummaryFromModel converts a models.WorkoutSummary into its DTO.
+func WorkoutSummaryFromModel(s models.WorkoutSummary) WorkoutSummaryDTO {
+	return WorkoutSummaryDTO{
+		ID:            s.ID,
+		Name:          s.Name,
+		Description:   s.Description,
+		ScheduledDate: s.ScheduledDate,
+		Status:        string(s.Status),
+		BlockCount:    s.BlockCount,
+		DoneCount:     s.DoneCount,
+		CreatedAt:     s.CreatedAt,
+		UpdatedAt:     s.UpdatedAt,
+	}
+}
+
+// WorkoutSummariesFromModels converts workout summaries into DTOs,
+// writing `[]` rather than `null` when the user has none.
+func WorkoutSummariesFromModels(ss []models.WorkoutSummary) []WorkoutSummaryDTO {
+	out := make([]WorkoutSummaryDTO, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, WorkoutSummaryFromModel(s))
 	}
 	return out
 }
@@ -771,34 +1152,34 @@ type HealthSnapshotsResponse struct {
 // controller (validateSnapshotDate) so the error surfaces as a
 // sentinel-mapped 400.
 type HealthSnapshotItem struct {
-	SnapshotDate         string     `json:"snapshot_date"          validate:"required"`
-	Tz                   string     `json:"tz"                     validate:"max=64"`
-	Steps                int64      `json:"steps"                  validate:"gte=0,lte=200000"`
-	DistanceMeters       float64    `json:"distance_meters"        validate:"gte=0,lte=500000"`
-	ActiveEnergyKcal     float64    `json:"active_energy_kcal"     validate:"gte=0,lte=20000"`
-	BasalEnergyKcal      float64    `json:"basal_energy_kcal"      validate:"gte=0,lte=20000"`
-	ExerciseMinutes      float64    `json:"exercise_minutes"       validate:"gte=0,lte=1440"`
-	SleepSeconds         float64    `json:"sleep_seconds"          validate:"gte=0,lte=86400"`
-	Weight               float64    `json:"weight"                 validate:"gte=0,lte=1000"`
-	WeightMeasuredAt     *time.Time `json:"weight_measured_at,omitempty"`
-	BMI                  float64    `json:"bmi"                    validate:"gte=0,lte=100"`
-	BMIMeasuredAt        *time.Time `json:"bmi_measured_at,omitempty"`
-	BodyFatPercentage    float64    `json:"body_fat_percentage"    validate:"gte=0,lte=100"`
-	BodyFatMeasuredAt    *time.Time `json:"body_fat_measured_at,omitempty"`
-	LeanBodyMass         float64    `json:"lean_body_mass"         validate:"gte=0,lte=1000"`
-	LeanMassMeasuredAt   *time.Time `json:"lean_mass_measured_at,omitempty"`
-	HeartRate            float64    `json:"heart_rate"             validate:"gte=0,lte=300"`
-	HeartRateMeasuredAt  *time.Time `json:"heart_rate_measured_at,omitempty"`
-	RestingHeartRate     float64    `json:"resting_heart_rate"     validate:"gte=0,lte=300"`
-	RestingHRMeasuredAt  *time.Time `json:"resting_hr_measured_at,omitempty"`
-	WalkingHeartRateAvg  float64    `json:"walking_heart_rate_avg" validate:"gte=0,lte=300"`
-	WalkingHRMeasuredAt  *time.Time `json:"walking_hr_measured_at,omitempty"`
-	HRV                  float64    `json:"hrv_ms"                 validate:"gte=0,lte=1000"`
-	HRVMeasuredAt        *time.Time `json:"hrv_measured_at,omitempty"`
-	CardioRecoveryBPM    float64    `json:"cardio_recovery_bpm"    validate:"gte=0,lte=300"`
-	CardioRecoveryAt     *time.Time `json:"cardio_recovery_measured_at,omitempty"`
-	VO2Max               float64    `json:"vo2_max"                validate:"gte=0,lte=100"`
-	VO2MeasuredAt        *time.Time `json:"vo2_measured_at,omitempty"`
+	SnapshotDate        string     `json:"snapshot_date"          validate:"required"`
+	Tz                  string     `json:"tz"                     validate:"max=64"`
+	Steps               int64      `json:"steps"                  validate:"gte=0,lte=200000"`
+	DistanceMeters      float64    `json:"distance_meters"        validate:"gte=0,lte=500000"`
+	ActiveEnergyKcal    float64    `json:"active_energy_kcal"     validate:"gte=0,lte=20000"`
+	BasalEnergyKcal     float64    `json:"basal_energy_kcal"      validate:"gte=0,lte=20000"`
+	ExerciseMinutes     float64    `json:"exercise_minutes"       validate:"gte=0,lte=1440"`
+	SleepSeconds        float64    `json:"sleep_seconds"          validate:"gte=0,lte=86400"`
+	Weight              float64    `json:"weight"                 validate:"gte=0,lte=1000"`
+	WeightMeasuredAt    *time.Time `json:"weight_measured_at,omitempty"`
+	BMI                 float64    `json:"bmi"                    validate:"gte=0,lte=100"`
+	BMIMeasuredAt       *time.Time `json:"bmi_measured_at,omitempty"`
+	BodyFatPercentage   float64    `json:"body_fat_percentage"    validate:"gte=0,lte=100"`
+	BodyFatMeasuredAt   *time.Time `json:"body_fat_measured_at,omitempty"`
+	LeanBodyMass        float64    `json:"lean_body_mass"         validate:"gte=0,lte=1000"`
+	LeanMassMeasuredAt  *time.Time `json:"lean_mass_measured_at,omitempty"`
+	HeartRate           float64    `json:"heart_rate"             validate:"gte=0,lte=300"`
+	HeartRateMeasuredAt *time.Time `json:"heart_rate_measured_at,omitempty"`
+	RestingHeartRate    float64    `json:"resting_heart_rate"     validate:"gte=0,lte=300"`
+	RestingHRMeasuredAt *time.Time `json:"resting_hr_measured_at,omitempty"`
+	WalkingHeartRateAvg float64    `json:"walking_heart_rate_avg" validate:"gte=0,lte=300"`
+	WalkingHRMeasuredAt *time.Time `json:"walking_hr_measured_at,omitempty"`
+	HRV                 float64    `json:"hrv_ms"                 validate:"gte=0,lte=1000"`
+	HRVMeasuredAt       *time.Time `json:"hrv_measured_at,omitempty"`
+	CardioRecoveryBPM   float64    `json:"cardio_recovery_bpm"    validate:"gte=0,lte=300"`
+	CardioRecoveryAt    *time.Time `json:"cardio_recovery_measured_at,omitempty"`
+	VO2Max              float64    `json:"vo2_max"                validate:"gte=0,lte=100"`
+	VO2MeasuredAt       *time.Time `json:"vo2_measured_at,omitempty"`
 }
 
 // UpsertHealthSnapshotsRequest is the body for POST

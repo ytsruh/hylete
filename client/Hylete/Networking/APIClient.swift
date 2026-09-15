@@ -21,11 +21,22 @@ public final class APIClient: @unchecked Sendable {
     /// fractional seconds (matching Go's `time.Time` JSON
     /// output) with a no-fractional-seconds fallback for
     /// older server versions.
+    ///
+    /// Each formatter below is configured once and never
+    /// mutated afterwards, and every use goes through
+    /// `dateFormattingLock`. A single shared formatter whose
+    /// `formatOptions` were rewritten on every parse used to
+    /// live here instead — concurrent decodes (the player and
+    /// dashboard both fetch two resources with `async let`)
+    /// raced on those options and intermittently failed date
+    /// parsing, surfacing as "unexpected response" errors.
+    /// (`DateFormatter` is not thread-safe even for reads, so
+    /// the lock guards immutable instances too.)
     public static let jsonEncoder: JSONEncoder = {
         let enc = JSONEncoder()
         enc.dateEncodingStrategy = .custom { date, encoder in
             var container = encoder.singleValueContainer()
-            try container.encode(APIClient.dateFormatter.string(from: date))
+            try container.encode(APIClient.formatDate(date))
         }
         return enc
     }()
@@ -37,11 +48,8 @@ public final class APIClient: @unchecked Sendable {
             let str = try container.decode(String.self)
             // Try the two on-the-wire variants we expect from
             // the server, in order of specificity.
-            for options in APIClient.dateFormatOptions {
-                APIClient.dateFormatter.formatOptions = options
-                if let date = APIClient.dateFormatter.date(from: str) {
-                    return date
-                }
+            if let date = APIClient.parseDate(str) {
+                return date
             }
             throw DecodingError.dataCorruptedError(
                 in: container,
@@ -51,13 +59,43 @@ public final class APIClient: @unchecked Sendable {
         return dec
     }()
 
-    private static let dateFormatOptions: [ISO8601DateFormatter.Options] = [
-        [.withInternetDateTime, .withFractionalSeconds],
-        [.withInternetDateTime],
-    ]
+    /// Serializes all shared-formatter use. Uncontended lock
+    /// overhead is negligible next to JSON parsing itself.
+    private static let dateFormattingLock = NSLock()
 
-    private static let dateFormatter: ISO8601DateFormatter = {
+    /// Formats a date for request bodies (fractional-seconds
+    /// RFC 3339, matching Go's `time.Time` output).
+    private static func formatDate(_ date: Date) -> String {
+        dateFormattingLock.lock()
+        defer { dateFormattingLock.unlock() }
+        return fractionalDateFormatter.string(from: date)
+    }
+
+    /// Parses a server date string, trying fractional seconds
+    /// first with a plain RFC 3339 fallback.
+    private static func parseDate(_ str: String) -> Date? {
+        dateFormattingLock.lock()
+        defer { dateFormattingLock.unlock() }
+        if let date = fractionalDateFormatter.date(from: str) {
+            return date
+        }
+        return plainDateFormatter.date(from: str)
+    }
+
+    /// RFC 3339 with fractional seconds. Pinned for the
+    /// encoder so request bodies no longer depend on decode
+    /// history.
+    private static let fractionalDateFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    /// RFC 3339 without fractional seconds (fallback for
+    /// older server versions).
+    private static let plainDateFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
         return f
     }()
 
@@ -256,6 +294,119 @@ public final class APIClient: @unchecked Sendable {
 
     public func deleteGoal(id: String) async throws {
         try await sendVoid("DELETE", "goals/\(id)")
+    }
+
+    // MARK: - Blocks
+
+    /// Lists the user's planned blocks (Beta). The server
+    /// returns summaries (newest first) with item counts;
+    /// full items load per-block via `getBlock(id:)`.
+    public func listBlocks() async throws -> [BlockSummaryDTO] {
+        let response: BlocksResponse = try await send("GET", "blocks")
+        return response.blocks
+    }
+
+    public func getBlock(id: String) async throws -> BlockDTO {
+        try await send("GET", "blocks/\(id)")
+    }
+
+    public func createBlock(_ request: CreateBlockRequest) async throws -> BlockDTO {
+        try await send("POST", "blocks", body: request)
+    }
+
+    /// Updates a block. Items are fully replaced — send the
+    /// complete desired item list in array order.
+    public func updateBlock(id: String, request: UpdateBlockRequest) async throws -> BlockDTO {
+        try await send("PUT", "blocks/\(id)", body: request)
+    }
+
+    public func deleteBlock(id: String) async throws {
+        try await sendVoid("DELETE", "blocks/\(id)")
+    }
+
+    // MARK: - Workouts
+
+    /// Lists the user's scheduled workouts. The server returns
+    /// summaries (newest scheduled date first) with block/done
+    /// counts; full blocks load per-workout via `getWorkout(id:)`.
+    public func listWorkouts() async throws -> [WorkoutSummaryDTO] {
+        let response: WorkoutsResponse = try await send("GET", "workouts")
+        return response.workouts
+    }
+
+    /// Lists workouts in an inclusive scheduled-date range
+    /// (`GET /api/v1/workouts?from=YYYY-MM-DD&to=YYYY-MM-DD`,
+    /// oldest first). The dashboard calendar uses this so week
+    /// paging fetches exactly the visible range; dates are plain
+    /// calendar days (no timezone encoding concerns).
+    public func listWorkouts(from: String, to: String) async throws -> [WorkoutSummaryDTO] {
+        let response: WorkoutsResponse = try await send("GET", "workouts?from=\(from)&to=\(to)")
+        return response.workouts
+    }
+
+    public func getWorkout(id: String) async throws -> WorkoutDTO {
+        try await send("GET", "workouts/\(id)")
+    }
+
+    /// Player single-call fetch: the workout with every block's
+    /// planned exercises embedded
+    /// (`GET /api/v1/workouts/:id?include=items`). Blocks stay in
+    /// position order; a block whose catalogue row is gone arrives
+    /// with an empty items list.
+    public func getWorkoutWithItems(id: String) async throws -> WorkoutWithItemsDTO {
+        try await send("GET", "workouts/\(id)?include=items")
+    }
+
+    /// Player resume: every exercise entry logged against one
+    /// workout, newest first. Used for per-exercise "logged(n)"
+    /// counts when reopening a workout already in progress.
+    public func listWorkoutExerciseEntries(workoutID: String) async throws -> [ExerciseEntryDTO] {
+        try await send("GET", "workouts/\(workoutID)/exercise-entries")
+    }
+
+    public func createWorkout(_ request: CreateWorkoutRequest) async throws -> WorkoutDTO {
+        try await send("POST", "workouts", body: request)
+    }
+
+    /// Updates a workout. Blocks are fully replaced with statuses
+    /// reset to pending — send the complete desired block list in
+    /// array order.
+    public func updateWorkout(id: String, request: UpdateWorkoutRequest) async throws -> WorkoutDTO {
+        try await send("PUT", "workouts/\(id)", body: request)
+    }
+
+    /// Changes only a workout's status (plan, blocks, and their
+    /// check-offs untouched). Use for the player Finish button and
+    /// the detail status picker — both must preserve block
+    /// progress, which the full-replacement `PUT` resets.
+    public func setWorkoutStatus(id: String, status: WorkoutStatusDTO) async throws -> WorkoutDTO {
+        try await send("PATCH", "workouts/\(id)/status", body: UpdateWorkoutStatusRequest(status: status))
+    }
+
+    public func deleteWorkout(id: String) async throws {
+        try await sendVoid("DELETE", "workouts/\(id)")
+    }
+
+    /// Marks one block in a workout pending/done/skipped. Returns
+    /// the refreshed workout.
+    public func setWorkoutBlockStatus(workoutID: String, workoutBlockID: String, status: WorkoutBlockStatusDTO) async throws -> WorkoutDTO {
+        try await send("PATCH", "workouts/\(workoutID)/blocks/\(workoutBlockID)", body: UpdateWorkoutBlockStatusRequest(status: status))
+    }
+
+    /// Copies a workout onto a new scheduled date with block
+    /// statuses reset to pending. Returns the created workout.
+    public func duplicateWorkout(id: String, scheduledDate: String) async throws -> WorkoutDTO {
+        try await send("POST", "workouts/\(id)/duplicate", body: DuplicateWorkoutRequest(scheduledDate: scheduledDate))
+    }
+
+    /// Copies a workout onto every listed date in one atomic batch
+    /// (the client's expanded recurrence). Copies keep the source's
+    /// exact name with block statuses reset to pending. At most 50
+    /// dates — enforced server-side. Returns the created workouts
+    /// in request-date order.
+    public func duplicateWorkouts(id: String, dates: [String]) async throws -> [WorkoutDTO] {
+        let response: WorkoutBatchResponse = try await send("POST", "workouts/\(id)/duplicate-batch", body: DuplicateWorkoutBatchRequest(dates: dates))
+        return response.workouts
     }
 
     // MARK: - Feedback

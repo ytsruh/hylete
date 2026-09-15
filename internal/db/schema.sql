@@ -50,6 +50,16 @@ CREATE TABLE exercise_entries (
     distance_meters REAL NOT NULL DEFAULT 0,
     avg_heart_rate INTEGER NOT NULL DEFAULT 0,
     calories_burned REAL NOT NULL DEFAULT 0,
+    -- Workout Player attribution (all nullable; NULL = logged outside a
+    -- workout). workout_id + block_id are stable across workout edits;
+    -- workout_block_id is the precise join row but is nulled when
+    -- UpdateWorkout regenerates join IDs. All ON DELETE SET NULL so
+    -- deleting a workout/block never destroys logged history. Columns
+    -- are plain TEXT (nullable by default); do not add an explicit
+    -- NULL keyword - libsql misparses it as NOT NULL.
+    workout_id TEXT REFERENCES workouts(id) ON DELETE SET NULL,
+    block_id TEXT REFERENCES blocks(id) ON DELETE SET NULL,
+    workout_block_id TEXT REFERENCES workout_blocks(id) ON DELETE SET NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (exercise_id) REFERENCES exercises(id)
 );
@@ -57,6 +67,8 @@ CREATE TABLE exercise_entries (
 CREATE INDEX idx_entries_exercise ON exercise_entries(exercise_id);
 CREATE INDEX idx_entries_user ON exercise_entries(user_id);
 CREATE INDEX idx_entries_created ON exercise_entries(created_at);
+CREATE INDEX idx_entries_workout ON exercise_entries(user_id, workout_id);
+CREATE INDEX idx_entries_block ON exercise_entries(block_id);
 CREATE INDEX idx_users_email ON users(email);
 
 CREATE TABLE feedback (
@@ -184,3 +196,59 @@ CREATE TABLE ai_reports (
 );
 CREATE UNIQUE INDEX idx_ai_reports_user_type_period ON ai_reports(user_id, type, period_start);
 CREATE INDEX idx_ai_reports_user ON ai_reports(user_id, type, period_start DESC);
+
+-- Blocks are user-owned planned exercise groups (Beta). block_items
+-- rows are planned references to the exercise catalog with a
+-- free-text target — not logged exercise entries (see migration
+-- 00019_add_blocks.sql for the rationale).
+CREATE TABLE blocks (
+    id               TEXT PRIMARY KEY,
+    user_id          TEXT NOT NULL REFERENCES users(id),
+    name             TEXT NOT NULL,
+    description      TEXT NOT NULL DEFAULT '',
+    block_type       TEXT NOT NULL DEFAULT 'standard',
+    rounds           INTEGER NOT NULL DEFAULT 0,
+    rest_seconds     INTEGER NOT NULL DEFAULT 0,
+    time_cap_seconds INTEGER NOT NULL DEFAULT 0,
+    interval_seconds INTEGER NOT NULL DEFAULT 0,
+    created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_blocks_user ON blocks(user_id);
+
+CREATE TABLE block_items (
+    id          TEXT PRIMARY KEY,
+    block_id    TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+    exercise_id TEXT NOT NULL REFERENCES exercises(id),
+    position    INTEGER NOT NULL,
+    target_text TEXT NOT NULL DEFAULT '',
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_block_items_block ON block_items(block_id, position);
+
+-- Workouts are user-owned scheduled collections of blocks (see
+-- migration 00020_add_workouts.sql). workout_blocks rows are ordered
+-- live references to blocks with their own per-block status.
+CREATE TABLE workouts (
+    id             TEXT PRIMARY KEY,
+    user_id        TEXT NOT NULL REFERENCES users(id),
+    name           TEXT NOT NULL,
+    description    TEXT NOT NULL DEFAULT '',
+    scheduled_date TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'planned',
+    created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_workouts_user_date ON workouts(user_id, scheduled_date);
+
+CREATE TABLE workout_blocks (
+    id         TEXT PRIMARY KEY,
+    workout_id TEXT NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+    block_id   TEXT NOT NULL REFERENCES blocks(id),
+    position   INTEGER NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'pending',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(workout_id, position)
+);
+CREATE INDEX idx_workout_blocks_workout ON workout_blocks(workout_id, position);
+CREATE INDEX idx_workout_blocks_block ON workout_blocks(block_id);

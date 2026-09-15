@@ -307,6 +307,15 @@ func (h *Handler) APIGetExerciseEntry(c echo.Context) error {
 	return c.JSON(http.StatusOK, ExerciseEntryFromModel(*entry))
 }
 
+// SetExerciseWorkoutsResolver attaches the workout store the exercise
+// entry controller uses to validate player linkage
+// (workout_id/block_id/workout_block_id) and to flip a planned workout
+// to in_progress on the first linked set. Kept as a setter so Handler
+// construction sites stay stable — same pattern as SetBlocksController.
+func (h *Handler) SetExerciseWorkoutsResolver(w controllers.ExerciseWorkoutLinks) {
+	h.exerciseEntryCtrl.SetWorkoutsResolver(w)
+}
+
 // exerciseEntryValidationError reports whether err is one of the
 // controller's per-type validation sentinels and returns its
 // human-readable message. These are client mistakes (e.g. a cardio
@@ -321,6 +330,20 @@ func exerciseEntryValidationError(err error) (string, bool) {
 	return "", false
 }
 
+// workoutLinkValidationError reports whether err is one of the player
+// linkage sentinels (unknown workout, join row from another workout,
+// block not in the workout). These are client mistakes so they map to
+// 400 rather than 500 — mirroring exerciseEntryValidationError.
+func workoutLinkValidationError(err error) (string, bool) {
+	switch {
+	case errors.Is(err, controllers.ErrEntryWorkoutNotFound),
+		errors.Is(err, controllers.ErrEntryWorkoutBlockNotFound),
+		errors.Is(err, controllers.ErrEntryBlockMismatch):
+		return err.Error(), true
+	}
+	return "", false
+}
+
 // APICreateExerciseEntries handles POST /api/v1/exercise-entries.
 // Mirrors the web form's "create one or more sets at once"
 // behavior: the body contains an array of sets, and a single
@@ -330,6 +353,11 @@ func exerciseEntryValidationError(err error) (string, bool) {
 // the linked exercise's type: strength sets need reps >= 1, cardio
 // sets need duration_seconds > 0 and distance_meters > 0; the server
 // zeroes whichever metric pair does not apply.
+//
+// Sets may carry optional workout_id/block_id/workout_block_id to
+// attribute them to a Workout Player session. The controller validates
+// ownership and membership (unknown IDs are 400s); the first linked
+// set flips a planned workout to in_progress.
 func (h *Handler) APICreateExerciseEntries(c echo.Context) error {
 	var in CreateExerciseEntriesRequest
 	if err := c.Bind(&in); err != nil {
@@ -369,12 +397,18 @@ func (h *Handler) APICreateExerciseEntries(c echo.Context) error {
 			DistanceMeters:  s.DistanceMeters,
 			AvgHeartRate:    s.AvgHeartRate,
 			CaloriesBurned:  s.CaloriesBurned,
+			WorkoutID:       s.WorkoutID,
+			BlockID:         s.BlockID,
+			WorkoutBlockID:  s.WorkoutBlockID,
 		})
 	}
 
 	created, err := h.exerciseEntryCtrl.CreateExerciseEntries(claims.UserID, in.ExerciseID, exercise.Type, in.Notes, createdAt, sets)
 	if err != nil {
 		if msg, ok := exerciseEntryValidationError(err); ok {
+			return c.JSON(http.StatusBadRequest, APIError{Error: msg})
+		}
+		if msg, ok := workoutLinkValidationError(err); ok {
 			return c.JSON(http.StatusBadRequest, APIError{Error: msg})
 		}
 		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to save exercise entry"})

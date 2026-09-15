@@ -131,6 +131,68 @@ func TestMigrate_WeightThreePhotoColumns(t *testing.T) {
 	}
 }
 
+// TestMigrate_CreatesBlocksTables boots a fresh local database
+// (running every embedded goose migration) and asserts the blocks
+// and block_items tables plus their indexes exist. This executes
+// the 00019 migration SQL itself — a syntax error there would
+// otherwise surface only at first boot.
+func TestMigrate_CreatesBlocksTables(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	database, err := NewLocalConnection(dbPath)
+	if err != nil {
+		t.Fatalf("NewLocalConnection: %v", err)
+	}
+	defer database.Close()
+
+	for _, table := range []string{"blocks", "block_items"} {
+		var tableName string
+		if err := database.Conn().QueryRow(
+			"SELECT name FROM sqlite_master WHERE type='table' AND name=?", table,
+		).Scan(&tableName); err != nil {
+			t.Errorf("%s table missing after migrate: %v", table, err)
+		}
+	}
+	for _, want := range []string{"idx_blocks_user", "idx_block_items_block"} {
+		var name string
+		if err := database.Conn().QueryRow(
+			"SELECT name FROM sqlite_master WHERE type='index' AND name=?", want,
+		).Scan(&name); err != nil {
+			t.Errorf("index %s missing after migrate: %v", want, err)
+		}
+	}
+}
+
+// TestMigrate_CreatesWorkoutTables boots a fresh local database
+// (running every embedded goose migration) and asserts the workouts
+// and workout_blocks tables plus their indexes exist. This executes
+// the 00020 migration SQL itself — a syntax error there would
+// otherwise surface only at first boot.
+func TestMigrate_CreatesWorkoutTables(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	database, err := NewLocalConnection(dbPath)
+	if err != nil {
+		t.Fatalf("NewLocalConnection: %v", err)
+	}
+	defer database.Close()
+
+	for _, table := range []string{"workouts", "workout_blocks"} {
+		var tableName string
+		if err := database.Conn().QueryRow(
+			"SELECT name FROM sqlite_master WHERE type='table' AND name=?", table,
+		).Scan(&tableName); err != nil {
+			t.Errorf("%s table missing after migrate: %v", table, err)
+		}
+	}
+	for _, want := range []string{"idx_workouts_user_date", "idx_workout_blocks_workout", "idx_workout_blocks_block"} {
+		var name string
+		if err := database.Conn().QueryRow(
+			"SELECT name FROM sqlite_master WHERE type='index' AND name=?", want,
+		).Scan(&name); err != nil {
+			t.Errorf("index %s missing after migrate: %v", want, err)
+		}
+	}
+}
+
 // TestMigrate_AddsExerciseAliasesColumn boots a fresh local
 // database (running every embedded goose migration) and asserts
 // the exercises.aliases column exists. This executes the

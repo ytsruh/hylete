@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"time"
 )
+
 // Repository defines the interface for exercise data access.
 // This abstraction allows handlers to be tested with mock implementations
 // without requiring a real database connection.
@@ -85,6 +86,11 @@ type Repository interface {
 	// created_at descending with insertion order (rowid descending) as the tie-breaker.
 	// Scopes to the given user ID.
 	ListExerciseEntriesLast7Days(userID string) ([]ExerciseEntry, error)
+
+	// ListExerciseEntriesByWorkout returns every exercise entry the user logged
+	// against one workout, newest first. Scoped to the user. Backs player
+	// resume (per-exercise "logged(n)" counts).
+	ListExerciseEntriesByWorkout(workoutID string, userID string) ([]ExerciseEntry, error)
 }
 
 // UserRepo defines the interface for user data access.
@@ -183,6 +189,77 @@ type GoalRepo interface {
 
 // Compile-time check to ensure GoalRepository implements GoalRepo.
 var _ GoalRepo = (*GoalRepository)(nil)
+
+// BlockRepo defines the interface for block data access. The
+// controller depends on this so route tests can substitute an
+// in-memory fake without touching the real sqlc repository.
+type BlockRepo interface {
+	// Create persists a new block with its items, assigning
+	// generated IDs back onto the supplied value.
+	Create(b *Block) error
+	// GetByID returns the block with items, or nil when not
+	// found. Scoped to the user.
+	GetByID(id, userID string) (*Block, error)
+	// List returns every block for the user (newest first)
+	// with item counts; items are not loaded.
+	List(userID string) ([]BlockSummary, error)
+	// Update overwrites the block fields and fully replaces
+	// its items. Scoped to the user.
+	Update(b *Block, userID string) error
+	// Delete removes a block and its items. Scoped to the user.
+	Delete(id, userID string) error
+}
+
+// Compile-time check to ensure BlockRepository implements BlockRepo.
+var _ BlockRepo = (*BlockRepository)(nil)
+
+// WorkoutRepo defines the interface for workout data access. The
+// controller depends on this so route tests can substitute an
+// in-memory fake without touching the real sqlc repository.
+type WorkoutRepo interface {
+	// Create persists a new workout with its blocks, assigning
+	// generated IDs back onto the supplied value.
+	Create(w *Workout) error
+	// CreateBatch persists several workouts with their blocks in a
+	// single transaction (all or nothing), assigning generated IDs
+	// back onto each supplied value.
+	CreateBatch(ws []*Workout) error
+	// GetByID returns the workout with blocks, or nil when not
+	// found. Scoped to the user.
+	GetByID(id, userID string) (*Workout, error)
+	// List returns every workout for the user (newest scheduled
+	// date first) with block/done counts; blocks are not loaded.
+	List(userID string) ([]WorkoutSummary, error)
+	// ListRange returns workouts in an inclusive scheduled-date
+	// range (YYYY-MM-DD), oldest first. Scoped to the user.
+	ListRange(userID, from, to string) ([]WorkoutSummary, error)
+	// Update overwrites the workout fields and fully replaces
+	// its blocks. Scoped to the user.
+	Update(w *Workout, userID string) error
+	// SetBlockStatus updates one block's completion status. The
+	// caller gates the workout via GetByID first.
+	SetBlockStatus(workoutID, workoutBlockID string, status WorkoutBlockStatus) error
+	// GetWorkoutBlock returns one join row scoped to its
+	// workout, or nil when not found.
+	GetWorkoutBlock(workoutID, workoutBlockID string) (*WorkoutBlock, error)
+	// CountBlockUsage returns how many of the user's workouts
+	// reference the given block (409 guard on block deletion).
+	CountBlockUsage(blockID, userID string) (int64, error)
+	// Delete removes a workout and its blocks. Scoped to the user.
+	Delete(id, userID string) error
+	// MarkInProgressIfPlanned flips a planned workout to in_progress
+	// on the first linked exercise entry. No-op otherwise.
+	MarkInProgressIfPlanned(workoutID, userID string) error
+	// MarkCompletedIfBlocksDone sets the workout to completed when
+	// every block is done or skipped. No-op otherwise.
+	MarkCompletedIfBlocksDone(workoutID, userID string) error
+	// SetWorkoutStatus overwrites only the workout status, leaving
+	// blocks untouched. Scoped to the user.
+	SetWorkoutStatus(workoutID, userID string, status WorkoutStatus) error
+}
+
+// Compile-time check to ensure WorkoutRepository implements WorkoutRepo.
+var _ WorkoutRepo = (*WorkoutRepository)(nil)
 
 // HealthSnapshotRepo defines the interface for health snapshot
 // data access. The controller depends on this so route tests can

@@ -926,26 +926,55 @@ private struct ChartPoint: Identifiable {
 /// A single row in the exercise-history list. Intentionally
 /// narrower than the dashboard's `SetRow`: the exercise name
 /// is implicit (we're already inside that exercise's screen),
-/// notes are dropped, and the time of day is hidden in favour
-/// of the date so rows scan cleanly when paging through
-/// history. Cardio entries render duration · distance instead
-/// of reps × weight.
-private struct HistorySetRow: View {
+/// notes are dropped by default, and the time of day is hidden
+/// in favour of the date so rows scan cleanly when paging
+/// through history. Cardio entries render duration · distance
+/// instead of reps × weight.
+///
+/// Internal (not private): the Workout Player's history sheet
+/// and the workout detail's history section reuse it with
+/// `showsNotes` on — mid-workout and per-workout notes are the
+/// point there, where the lifetime history screen drops them.
+/// The detail section additionally passes `showsExerciseName`:
+/// its rows are grouped by block (mixed exercises), so the name
+/// identifies the row and the date gives way to it.
+struct HistorySetRow: View {
     let entry: ExerciseEntryDTO
     let weightUnit: String
     let distanceUnit: String
+    var showsNotes: Bool = false
+    var showsExerciseName: Bool = false
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(entry.createdAt, format: .dateTime.day().month(.abbreviated).year())
-                .font(.subheadline)
-                .foregroundStyle(DSColors.textSecondary)
-            Spacer()
-            Text(summaryText)
-                .font(.body.weight(.semibold).monospacedDigit())
-                .foregroundStyle(DSColors.text)
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline) {
+                leadingView
+                    .font(.subheadline)
+                    .foregroundStyle(DSColors.textSecondary)
+                Spacer()
+                Text(summaryText)
+                    .font(.body.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(DSColors.text)
+            }
+            if showsNotes && !entry.notes.isEmpty {
+                Text(entry.notes)
+                    .font(.footnote)
+                    .foregroundStyle(DSColors.textSecondary)
+            }
         }
         .padding(.vertical, DSSpacing.xxs)
+    }
+
+    /// Leading column: the date by default, the exercise name
+    /// when the row sits in a mixed-exercise group (workout
+    /// detail history) where the name is the identifier.
+    @ViewBuilder
+    private var leadingView: some View {
+        if showsExerciseName {
+            Text(entry.exerciseName)
+        } else {
+            Text(entry.createdAt, format: .dateTime.day().month(.abbreviated).year())
+        }
     }
 
     private var summaryText: String {

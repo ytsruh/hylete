@@ -317,7 +317,7 @@ func TestService_SendWeightReminder_ValidatesInputs(t *testing.T) {
 
 func TestService_SendWeightReminder_PropagatesSenderError(t *testing.T) {
 	// The Sender's error must surface verbatim so the
-	// reminders package's goroutine can log it. Swallowing
+	// cron package's goroutine can log it. Swallowing
 	// the error would hide SMTP outages.
 	wantErr := errors.New("smtp connection refused")
 	sender := &recordingSender{err: wantErr}

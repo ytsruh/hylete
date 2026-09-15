@@ -1,4 +1,4 @@
-// Package reminders contains the scheduled jobs that run in the
+// Package cron contains the scheduled jobs that run in the
 // background while the server is up. The package owns the only
 // place in the codebase that imports a third-party scheduler
 // (github.com/robfig/cron/v3); everything else in the package
@@ -12,7 +12,7 @@
 // up a scheduler. Conversely, the Scheduler is testable with a
 // fake job function in the rare case we want to exercise the
 // cron lifecycle in isolation.
-package reminders
+package cron
 
 import (
 	"context"
@@ -20,7 +20,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/robfig/cron/v3"
+	// Aliased because the package itself is now named cron: an
+	// unaliased import would read as cron.New inside package cron.
+	robfigcron "github.com/robfig/cron/v3"
 )
 
 // Job is the function the Scheduler invokes when a scheduled
@@ -67,10 +69,10 @@ func NewCronScheduler(spec string, loc *time.Location, job Job) (Scheduler, erro
 		loc = time.UTC
 	}
 	if job == nil {
-		return nil, fmt.Errorf("reminders: job is nil")
+		return nil, fmt.Errorf("cron: job is nil")
 	}
 
-	c := cron.New(cron.WithLocation(loc))
+	c := robfigcron.New(robfigcron.WithLocation(loc))
 
 	// AddFunc returns an error for an unparseable spec. We
 	// surface it before the caller wires the scheduler into
@@ -84,7 +86,7 @@ func NewCronScheduler(spec string, loc *time.Location, job Job) (Scheduler, erro
 		// has no per-tick context to thread through.
 		job(context.Background())
 	}); err != nil {
-		return nil, fmt.Errorf("reminders: parse cron spec %q: %w", spec, err)
+		return nil, fmt.Errorf("cron: parse cron spec %q: %w", spec, err)
 	}
 
 	return &cronScheduler{c: c}, nil
@@ -93,16 +95,16 @@ func NewCronScheduler(spec string, loc *time.Location, job Job) (Scheduler, erro
 // cronScheduler is the production Scheduler implementation
 // behind the Scheduler interface. Held by value in a small
 // struct so the interface can be passed around without
-// exposing the underlying *cron.Cron.
+// exposing the underlying *robfigcron.Cron.
 type cronScheduler struct {
-	c *cron.Cron
+	c *robfigcron.Cron
 }
 
 // Start begins firing jobs on their schedule. cron.Start is
 // non-blocking; the underlying goroutine lives for the
 // lifetime of the process or until Stop is called.
 func (s *cronScheduler) Start() {
-	log.Printf("reminders: scheduler starting")
+	log.Printf("cron: scheduler starting")
 	s.c.Start()
 }
 
@@ -113,7 +115,7 @@ func (s *cronScheduler) Start() {
 // times" guarantee.
 func (s *cronScheduler) Stop() {
 	<-s.c.Stop().Done()
-	log.Printf("reminders: scheduler stopped")
+	log.Printf("cron: scheduler stopped")
 }
 
 // Compile-time check: the production implementation must

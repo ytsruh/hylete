@@ -54,6 +54,7 @@ func TestBuildExerciseEntriesZip_EmptyInput(t *testing.T) {
 		"id", "created_at", "date", "exercise_id", "exercise_name", "exercise_type",
 		"reps", "weight", "weight_unit", "rest_time_seconds",
 		"duration_seconds", "distance_km", "avg_heart_rate_bpm", "calories_burned", "pace_sec_per_km",
+		"workout_id", "block_id",
 		"notes",
 	}
 	if !equalRow(rows[0], wantHeader) {
@@ -115,6 +116,8 @@ func TestBuildExerciseEntriesZip_MultipleEntries(t *testing.T) {
 		"0",                    // avg_heart_rate_bpm
 		"0.0",                  // calories_burned
 		"",                     // pace_sec_per_km (empty when not derivable)
+		"",                     // workout_id (logged outside a workout)
+		"",                     // block_id
 		"first",                // notes
 	}
 	if !equalRow(first, wantRow) {
@@ -168,8 +171,38 @@ func TestBuildExerciseEntriesZip_CSVEscaping(t *testing.T) {
 		t.Fatalf("expected header + 1 row, got %d", len(rows))
 	}
 	want := `has, comma and "quote" and` + "\nnewline"
-	if rows[1][15] != want {
-		t.Errorf("csv notes = %q, want %q", rows[1][15], want)
+	if rows[1][17] != want {
+		t.Errorf("csv notes = %q, want %q", rows[1][17], want)
+	}
+}
+
+// TestBuildExerciseEntriesZip_WorkoutLinks ensures a set logged from the
+// Workout Player exports its stable workout_id + block_id attribution
+// (workout_block_id is intentionally not exported — it is nulled on
+// workout edits while block_id survives).
+func TestBuildExerciseEntriesZip_WorkoutLinks(t *testing.T) {
+	day := time.Date(2026, 1, 9, 8, 0, 0, 0, time.UTC)
+	workoutID := "wo-1"
+	blockID := "blk-1"
+	entries := []models.ExerciseEntry{
+		{ID: "e1", UserID: "u1", ExerciseName: "Squat", ExerciseType: models.ExerciseTypeStrength, Reps: 5, Weight: 100, WorkoutID: &workoutID, BlockID: &blockID, CreatedAt: day},
+	}
+
+	var buf bytes.Buffer
+	if _, err := BuildExerciseEntriesZip(context.Background(), &buf, entries, "u1", "kg", "km"); err != nil {
+		t.Fatalf("BuildExerciseEntriesZip: %v", err)
+	}
+
+	files := readZip(t, buf.Bytes())
+	rows := mustReadCSV(t, files["exercise_entries.csv"])
+	if len(rows) != 2 {
+		t.Fatalf("expected header + 1 row, got %d", len(rows))
+	}
+	if rows[1][15] != "wo-1" {
+		t.Errorf("workout_id = %q, want wo-1", rows[1][15])
+	}
+	if rows[1][16] != "blk-1" {
+		t.Errorf("block_id = %q, want blk-1", rows[1][16])
 	}
 }
 

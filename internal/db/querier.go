@@ -21,6 +21,14 @@ type Querier interface {
 	// decides what "expired" means. SQLite's datetime('now') returns
 	// UTC, matching the value written by the application.
 	ConsumeAuthToken(ctx context.Context, arg ConsumeAuthTokenParams) (AuthToken, error)
+	// Pending-block count for one workout, read inside the sweep
+	// transaction before flipping so the tick can log how many blocks
+	// moved alongside the workout.
+	CountPendingWorkoutBlocks(ctx context.Context, workoutID string) (int64, error)
+	// Guards block deletion: a block referenced by any of the user's
+	// workouts is rejected with a 409 instead of being silently
+	// unlinked. Scoped to the user via the workouts join.
+	CountWorkoutsUsingBlock(ctx context.Context, arg CountWorkoutsUsingBlockParams) (int64, error)
 	Create(ctx context.Context, arg CreateParams) (string, error)
 	// Insert a Coach report. The caller enforces idempotency on
 	// (user_id, type, period_start): re-runs for the same week
@@ -30,14 +38,34 @@ type Querier interface {
 	// the raw token with sha256 before storing. The raw token only ever
 	// lives in the email link; the database never sees it.
 	CreateAuthToken(ctx context.Context, arg CreateAuthTokenParams) (AuthToken, error)
+	// Blocks are user-owned planned exercise groups. Every query is
+	// scoped to user_id (via the blocks row) so a request can never read
+	// or mutate another user's plan.
+	CreateBlock(ctx context.Context, arg CreateBlockParams) (Block, error)
+	CreateBlockItem(ctx context.Context, arg CreateBlockItemParams) (BlockItem, error)
 	CreateExerciseEntry(ctx context.Context, arg CreateExerciseEntryParams) (string, error)
 	CreateFeedback(ctx context.Context, arg CreateFeedbackParams) (Feedback, error)
 	CreateGoal(ctx context.Context, arg CreateGoalParams) (Goal, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (string, error)
 	CreateWeightEntry(ctx context.Context, arg CreateWeightEntryParams) (WeightEntry, error)
+	// Workouts are user-owned scheduled collections of blocks. Every
+	// query is scoped to user_id (via the workouts row) so a request can
+	// never read or mutate another user's training schedule.
+	CreateWorkout(ctx context.Context, arg CreateWorkoutParams) (Workout, error)
+	CreateWorkoutBlock(ctx context.Context, arg CreateWorkoutBlockParams) (WorkoutBlock, error)
+	DeleteBlock(ctx context.Context, arg DeleteBlockParams) error
+	// Full item replacement on update: delete-all then re-insert in a
+	// transaction (the repository owns the tx). Also keeps deletes
+	// correct on databases ignoring ON DELETE CASCADE.
+	DeleteBlockItems(ctx context.Context, blockID string) error
 	DeleteExerciseEntry(ctx context.Context, arg DeleteExerciseEntryParams) error
 	DeleteGoal(ctx context.Context, arg DeleteGoalParams) error
 	DeleteWeightEntry(ctx context.Context, arg DeleteWeightEntryParams) error
+	DeleteWorkout(ctx context.Context, arg DeleteWorkoutParams) error
+	// Full block replacement on update: delete-all then re-insert in a
+	// transaction (the repository owns the tx). Also keeps deletes
+	// correct on databases ignoring ON DELETE CASCADE.
+	DeleteWorkoutBlocks(ctx context.Context, workoutID string) error
 	// Fetch a single report for idempotency checks ((user_id, type,
 	// period_start) unique key) before deciding to call the LLM.
 	GetAIReport(ctx context.Context, arg GetAIReportParams) (AiReport, error)
@@ -51,6 +79,7 @@ type Querier interface {
 	// (duration divided by distance). Entries without distance are excluded;
 	// returns 0 when no qualifying exercise entries exist.
 	GetBestPaceByExercise(ctx context.Context, arg GetBestPaceByExerciseParams) (float64, error)
+	GetBlock(ctx context.Context, arg GetBlockParams) (Block, error)
 	GetByID(ctx context.Context, id string) (Exercise, error)
 	GetByName(ctx context.Context, name string) (Exercise, error)
 	GetExerciseEntriesByDateRange(ctx context.Context, arg GetExerciseEntriesByDateRangeParams) ([]GetExerciseEntriesByDateRangeRow, error)
@@ -73,6 +102,8 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetWeightEntriesByIDs(ctx context.Context, arg GetWeightEntriesByIDsParams) ([]WeightEntry, error)
 	GetWeightEntry(ctx context.Context, arg GetWeightEntryParams) (WeightEntry, error)
+	GetWorkout(ctx context.Context, arg GetWorkoutParams) (Workout, error)
+	GetWorkoutBlock(ctx context.Context, arg GetWorkoutBlockParams) (WorkoutBlock, error)
 	List(ctx context.Context) ([]Exercise, error)
 	// Every user with ai_opt_in = 1. The weekly Coach cron iterates
 	// this list; per-user report generation is idempotent on
@@ -84,12 +115,33 @@ type Querier interface {
 	// last, then by created_at asc as a stable tiebreaker. The CASE expression
 	// emulates NULLS LAST for SQLite versions that don't support it natively.
 	ListActiveGoals(ctx context.Context, userID string) ([]Goal, error)
+	ListBlockItems(ctx context.Context, blockID string) ([]BlockItem, error)
+	// Detail view resolves each planned item to its exercise name/type
+	// in one query. Ownership is gated by the caller's prior GetBlock
+	// (scoped to user_id); this query only orders the items.
+	ListBlockItemsWithExercise(ctx context.Context, blockID string) ([]ListBlockItemsWithExerciseRow, error)
+	// Newest first; rowid breaks created_at ties (same convention as
+	// exercise_entries ordering).
+	ListBlocks(ctx context.Context, userID string) ([]Block, error)
+	// List view needs per-block item counts without N+1 queries.
+	ListBlocksWithItemCount(ctx context.Context, userID string) ([]ListBlocksWithItemCountRow, error)
 	// Completed goals: completed_at IS NOT NULL. Most recently completed first.
 	ListCompletedGoals(ctx context.Context, userID string) ([]Goal, error)
 	ListExerciseEntries(ctx context.Context, userID sql.NullString) ([]ListExerciseEntriesRow, error)
+	// Player resume: every exercise entry the user logged against one
+	// workout, newest first. Scoped to the user via e.user_id so a
+	// guessed workout ID cannot leak another user's sets.
+	ListExerciseEntriesByWorkout(ctx context.Context, arg ListExerciseEntriesByWorkoutParams) ([]ListExerciseEntriesByWorkoutRow, error)
 	ListExerciseEntriesLast7Days(ctx context.Context, userID sql.NullString) ([]ListExerciseEntriesLast7DaysRow, error)
 	ListExerciseEntriesWithLimit(ctx context.Context, arg ListExerciseEntriesWithLimitParams) ([]ListExerciseEntriesWithLimitRow, error)
 	ListHealthSnapshotsRange(ctx context.Context, arg ListHealthSnapshotsRangeParams) ([]HealthSnapshot, error)
+	// Auto-skip sweep (1am UTC cron): every still-planned workout with
+	// scheduled_date before today (YYYY-MM-DD, lexical compare is
+	// chronological) that has zero linked exercise entries. Planned-only:
+	// in_progress means the user started it, so it is left alone even
+	// when nothing is linked yet. Block-less workouts are included (no
+	// blocks plus no entries means nothing was done).
+	ListStalePlannedWorkoutsWithoutEntries(ctx context.Context, scheduledDate string) ([]string, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	// Returns every enabled user whose next_fire_at is at or before the
 	// supplied reference time. The hourly tick calls this once per hour;
@@ -98,17 +150,49 @@ type Querier interface {
 	// build its email payload without an extra round-trip.
 	ListUsersDueForReminder(ctx context.Context, reminderNextFireAt sql.NullTime) ([]User, error)
 	ListWeightEntries(ctx context.Context, userID string) ([]WeightEntry, error)
+	ListWorkoutBlocks(ctx context.Context, workoutID string) ([]WorkoutBlock, error)
+	// Detail view resolves each planned block to its name/type plus
+	// item count in one query. Ownership is gated by the caller's prior
+	// GetWorkout (scoped to user_id); this query only orders the rows.
+	ListWorkoutBlocksWithBlock(ctx context.Context, workoutID string) ([]ListWorkoutBlocksWithBlockRow, error)
+	// Newest scheduled date first; rowid breaks ties (same convention
+	// as exercise_entries ordering).
+	ListWorkouts(ctx context.Context, userID string) ([]Workout, error)
+	// Schedule views (e.g. the dashboard calendar week) fetch one
+	// inclusive date range. scheduled_date is YYYY-MM-DD so lexical
+	// comparison is chronological.
+	ListWorkoutsInRange(ctx context.Context, arg ListWorkoutsInRangeParams) ([]Workout, error)
+	// Range variant of the list view (calendar weeks).
+	ListWorkoutsInRangeWithBlockCounts(ctx context.Context, arg ListWorkoutsInRangeWithBlockCountsParams) ([]ListWorkoutsInRangeWithBlockCountsRow, error)
+	// List view needs per-workout block + done counts without N+1.
+	ListWorkoutsWithBlockCounts(ctx context.Context, userID string) ([]ListWorkoutsWithBlockCountsRow, error)
 	// Stamp dismissed_at. Idempotent: re-dismissals overwrite.
 	MarkAIReportDismissed(ctx context.Context, arg MarkAIReportDismissedParams) error
 	// Atomically set completed_at and bump updated_at. Scoped to user_id so
 	// the request cannot mark another user's goal complete.
 	MarkGoalComplete(ctx context.Context, arg MarkGoalCompleteParams) error
+	// Sweep body: flip every still-pending block on one workout to
+	// skipped. done/skipped rows are untouched.
+	MarkPendingWorkoutBlocksSkipped(ctx context.Context, workoutID string) error
 	// Atomically set last_fired_at = now and advance next_fire_at to the
 	// caller's computed next occurrence. Scoped to id so a misbehaving
 	// caller cannot advance another user's row. updated_at is bumped so
 	// the row's edit history stays accurate (useful for future "when was
 	// this user last updated" UI).
 	MarkUserReminderFired(ctx context.Context, arg MarkUserReminderFiredParams) error
+	// Block delete must never destroy logged history: detach the stable
+	// block pointer first (explicit, not relying on FK pragma).
+	NullExerciseEntryLinksForBlock(ctx context.Context, blockID sql.NullString) error
+	// Workout delete must never destroy logged history: detach every
+	// linked exercise entry first (explicit, not relying on FK pragma).
+	NullExerciseEntryLinksForWorkout(ctx context.Context, arg NullExerciseEntryLinksForWorkoutParams) error
+	// Workout edits regenerate every workout_blocks join ID
+	// (delete-all + re-insert), which would orphan
+	// exercise_entries.workout_block_id. Null the precise join pointer
+	// before the join rows are replaced; block_id (stable) is retained
+	// so block attribution survives. FKs alone cannot be relied on
+	// (SQLite defaults PRAGMA foreign_keys=OFF), so this is explicit.
+	NullWorkoutBlockLinksForWorkout(ctx context.Context, workoutID sql.NullString) error
 	// Clear dismissed_at, returning the report to the card list.
 	// Idempotent: reopening a non-dismissed row is a no-op that
 	// still matches (so the route can call it without checking).
@@ -125,6 +209,9 @@ type Querier interface {
 	// clobbering any other columns.
 	SetUserAdmin(ctx context.Context, arg SetUserAdminParams) (string, error)
 	Update(ctx context.Context, arg UpdateParams) (Exercise, error)
+	// Overwrites the editable block fields and bumps updated_at.
+	// Items are replaced separately via DeleteBlockItems + CreateBlockItem.
+	UpdateBlock(ctx context.Context, arg UpdateBlockParams) error
 	UpdateExerciseEntry(ctx context.Context, arg UpdateExerciseEntryParams) error
 	UpdateExerciseEntryWithDate(ctx context.Context, arg UpdateExerciseEntryWithDateParams) error
 	// Update the editable fields. completed_at is managed by MarkGoalComplete
@@ -153,6 +240,21 @@ type Querier interface {
 	// for both "user changed preferences" and "tick just fired" callers.
 	UpdateUserReminder(ctx context.Context, arg UpdateUserReminderParams) error
 	UpdateWeightEntry(ctx context.Context, arg UpdateWeightEntryParams) error
+	// Overwrites the editable workout fields and bumps updated_at.
+	// Blocks are replaced separately via DeleteWorkoutBlocks +
+	// CreateWorkoutBlock.
+	UpdateWorkout(ctx context.Context, arg UpdateWorkoutParams) error
+	UpdateWorkoutBlockStatus(ctx context.Context, arg UpdateWorkoutBlockStatusParams) error
+	// Status-only update for the player lifecycle: first linked set flips
+	// planned to in_progress, and the last block flip to done/skipped
+	// auto-completes the workout. Bumps updated_at. Scoping to the
+	// workout ID alone is intentional; callers gate ownership via a
+	// prior scoped GetByID.
+	UpdateWorkoutStatus(ctx context.Context, arg UpdateWorkoutStatusParams) error
+	// Scoped status-only update for explicit status changes (player
+	// Finish button, detail status picker). Touches status alone so
+	// block check-offs survive. Scoped to the user directly.
+	UpdateWorkoutStatusScoped(ctx context.Context, arg UpdateWorkoutStatusScopedParams) error
 	UpsertHealthSnapshot(ctx context.Context, arg UpsertHealthSnapshotParams) (HealthSnapshot, error)
 }
 

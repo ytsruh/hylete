@@ -34,6 +34,29 @@ type AuthToken struct {
 	CreatedAt time.Time
 }
 
+type Block struct {
+	ID              string
+	UserID          string
+	Name            string
+	Description     string
+	BlockType       string
+	Rounds          int64
+	RestSeconds     int64
+	TimeCapSeconds  int64
+	IntervalSeconds int64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type BlockItem struct {
+	ID         string
+	BlockID    string
+	ExerciseID string
+	Position   int64
+	TargetText string
+	CreatedAt  time.Time
+}
+
 type Exercise struct {
 	ID             string
 	Name           string
@@ -57,6 +80,9 @@ type ExerciseEntry struct {
 	DistanceMeters  float64
 	AvgHeartRate    int64
 	CaloriesBurned  float64
+	WorkoutID       sql.NullString
+	BlockID         sql.NullString
+	WorkoutBlockID  sql.NullString
 	CreatedAt       sql.NullTime
 }
 
@@ -163,4 +189,24 @@ type WeightEntry struct {
 	SidePhotoKey  sql.NullString
 	BackPhotoKey  sql.NullString
 	CreatedAt     time.Time
+}
+
+type Workout struct {
+	ID            string
+	UserID        string
+	Name          string
+	Description   string
+	ScheduledDate string
+	Status        string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type WorkoutBlock struct {
+	ID        string
+	WorkoutID string
+	BlockID   string
+	Position  int64
+	Status    string
+	CreatedAt time.Time
 }

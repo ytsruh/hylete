@@ -1,4 +1,4 @@
-// Package reminders contains the scheduled jobs that run in the
+// Package cron contains the scheduled jobs that run in the
 // background while the server is up. The package owns the only
 // place in the codebase that imports a third-party scheduler
 // (github.com/robfig/cron/v3); everything else in the package
@@ -12,7 +12,7 @@
 // up a scheduler. Conversely, the Scheduler is testable with a
 // fake job function in the rare case we want to exercise the
 // scheduler lifecycle in isolation.
-package reminders
+package cron
 
 import (
 	"context"
@@ -108,10 +108,10 @@ type UserReminderConfig struct {
 // clock is optional; nil falls back to RealClock.
 func NewUserReminder(repo ReminderRepo, emails EmailSender, cfg UserReminderConfig) (*UserReminder, error) {
 	if repo == nil {
-		return nil, fmt.Errorf("reminders: NewUserReminder: repo is nil")
+		return nil, fmt.Errorf("cron: NewUserReminder: repo is nil")
 	}
 	if emails == nil {
-		return nil, fmt.Errorf("reminders: NewUserReminder: emails is nil")
+		return nil, fmt.Errorf("cron: NewUserReminder: emails is nil")
 	}
 
 	maxEmail := cfg.MaxEmailWorkers
@@ -184,18 +184,18 @@ func (r *UserReminder) Run(ctx context.Context) (TickResult, bool) {
 	// clock reading here makes every downstream write (list param,
 	// last_fired_at, next_fire_at) land as "...Z".
 	start := r.clock.Now().UTC()
-	log.Printf("reminders: tick starting at %s", start.UTC().Format(time.RFC3339))
+	log.Printf("cron: tick starting at %s", start.UTC().Format(time.RFC3339))
 
 	users, err := r.repo.ListUsersDueForReminder(ctx, start)
 	if err != nil {
-		log.Printf("reminders: tick: list due users failed: %v", err)
+		log.Printf("cron: tick: list due users failed: %v", err)
 		return TickResult{
 			Duration:  time.Since(start),
 			ListError: err.Error(),
 			Now:       start,
 		}, false
 	}
-	log.Printf("reminders: tick: %d user(s) due", len(users))
+	log.Printf("cron: tick: %d user(s) due", len(users))
 
 	results := make([]UserReminderResult, 0, len(users))
 	for _, u := range users {
@@ -204,7 +204,7 @@ func (r *UserReminder) Run(ctx context.Context) (TickResult, bool) {
 
 	duration := time.Since(start)
 	log.Printf(
-		"reminders: tick complete: users=%d duration=%s",
+		"cron: tick complete: users=%d duration=%s",
 		len(users),
 		duration,
 	)
@@ -278,7 +278,7 @@ func (r *UserReminder) SendToUser(ctx context.Context, user *models.User, now ti
 			return r.emails.SendWeightReminder(ctx, user)
 		}()
 		if sendErr != nil {
-			log.Printf("reminders: user %s email failed: %v", user.Email, sendErr)
+			log.Printf("cron: user %s email failed: %v", user.Email, sendErr)
 			res.EmailFailed = true
 		} else {
 			res.EmailSent = true
@@ -316,7 +316,7 @@ func (r *UserReminder) SendToUser(ctx context.Context, user *models.User, now ti
 		nextFire = nextFire.AddDate(0, 0, 7)
 	}
 	if err := r.repo.MarkUserReminderFired(ctx, user.ID, now, nextFire); err != nil {
-		log.Printf("reminders: user %s: mark fired failed: %v", user.ID, err)
+		log.Printf("cron: user %s: mark fired failed: %v", user.ID, err)
 		res.Error = err.Error()
 	}
 	return res

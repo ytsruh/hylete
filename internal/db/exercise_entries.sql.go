@@ -11,8 +11,8 @@ import (
 )
 
 const createExerciseEntry = `-- name: CreateExerciseEntry :one
-INSERT INTO exercise_entries (id, exercise_id, user_id, reps, weight, notes, rest_time, duration_seconds, distance_meters, avg_heart_rate, calories_burned, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO exercise_entries (id, exercise_id, user_id, reps, weight, notes, rest_time, duration_seconds, distance_meters, avg_heart_rate, calories_burned, workout_id, block_id, workout_block_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id
 `
 
@@ -28,6 +28,9 @@ type CreateExerciseEntryParams struct {
 	DistanceMeters  float64
 	AvgHeartRate    int64
 	CaloriesBurned  float64
+	WorkoutID       sql.NullString
+	BlockID         sql.NullString
+	WorkoutBlockID  sql.NullString
 	CreatedAt       sql.NullTime
 }
 
@@ -44,6 +47,9 @@ func (q *Queries) CreateExerciseEntry(ctx context.Context, arg CreateExerciseEnt
 		arg.DistanceMeters,
 		arg.AvgHeartRate,
 		arg.CaloriesBurned,
+		arg.WorkoutID,
+		arg.BlockID,
+		arg.WorkoutBlockID,
 		arg.CreatedAt,
 	)
 	var id string
@@ -86,7 +92,7 @@ func (q *Queries) GetBestPaceByExercise(ctx context.Context, arg GetBestPaceByEx
 }
 
 const getExerciseEntriesByDateRange = `-- name: GetExerciseEntriesByDateRange :many
-SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.created_at
+SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.workout_id, e.block_id, e.workout_block_id, e.created_at
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.created_at BETWEEN ? AND ? AND e.user_id = ?
@@ -113,6 +119,9 @@ type GetExerciseEntriesByDateRangeRow struct {
 	DistanceMeters  float64
 	AvgHeartRate    int64
 	CaloriesBurned  float64
+	WorkoutID       sql.NullString
+	BlockID         sql.NullString
+	WorkoutBlockID  sql.NullString
 	CreatedAt       sql.NullTime
 }
 
@@ -139,6 +148,9 @@ func (q *Queries) GetExerciseEntriesByDateRange(ctx context.Context, arg GetExer
 			&i.DistanceMeters,
 			&i.AvgHeartRate,
 			&i.CaloriesBurned,
+			&i.WorkoutID,
+			&i.BlockID,
+			&i.WorkoutBlockID,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -155,7 +167,7 @@ func (q *Queries) GetExerciseEntriesByDateRange(ctx context.Context, arg GetExer
 }
 
 const getExerciseEntriesByExercisePaginated = `-- name: GetExerciseEntriesByExercisePaginated :many
-SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.created_at
+SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.workout_id, e.block_id, e.workout_block_id, e.created_at
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.exercise_id = ? AND e.user_id = ?
@@ -184,6 +196,9 @@ type GetExerciseEntriesByExercisePaginatedRow struct {
 	DistanceMeters  float64
 	AvgHeartRate    int64
 	CaloriesBurned  float64
+	WorkoutID       sql.NullString
+	BlockID         sql.NullString
+	WorkoutBlockID  sql.NullString
 	CreatedAt       sql.NullTime
 }
 
@@ -215,6 +230,9 @@ func (q *Queries) GetExerciseEntriesByExercisePaginated(ctx context.Context, arg
 			&i.DistanceMeters,
 			&i.AvgHeartRate,
 			&i.CaloriesBurned,
+			&i.WorkoutID,
+			&i.BlockID,
+			&i.WorkoutBlockID,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -231,7 +249,7 @@ func (q *Queries) GetExerciseEntriesByExercisePaginated(ctx context.Context, arg
 }
 
 const getExerciseEntry = `-- name: GetExerciseEntry :one
-SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.created_at
+SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.workout_id, e.block_id, e.workout_block_id, e.created_at
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.id = ? AND e.user_id = ?
@@ -256,6 +274,9 @@ type GetExerciseEntryRow struct {
 	DistanceMeters  float64
 	AvgHeartRate    int64
 	CaloriesBurned  float64
+	WorkoutID       sql.NullString
+	BlockID         sql.NullString
+	WorkoutBlockID  sql.NullString
 	CreatedAt       sql.NullTime
 }
 
@@ -276,13 +297,16 @@ func (q *Queries) GetExerciseEntry(ctx context.Context, arg GetExerciseEntryPara
 		&i.DistanceMeters,
 		&i.AvgHeartRate,
 		&i.CaloriesBurned,
+		&i.WorkoutID,
+		&i.BlockID,
+		&i.WorkoutBlockID,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getLastSetByExercise = `-- name: GetLastSetByExercise :one
-SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.created_at
+SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.workout_id, e.block_id, e.workout_block_id, e.created_at
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.exercise_id = ? AND e.user_id = ?
@@ -309,6 +333,9 @@ type GetLastSetByExerciseRow struct {
 	DistanceMeters  float64
 	AvgHeartRate    int64
 	CaloriesBurned  float64
+	WorkoutID       sql.NullString
+	BlockID         sql.NullString
+	WorkoutBlockID  sql.NullString
 	CreatedAt       sql.NullTime
 }
 
@@ -329,6 +356,9 @@ func (q *Queries) GetLastSetByExercise(ctx context.Context, arg GetLastSetByExer
 		&i.DistanceMeters,
 		&i.AvgHeartRate,
 		&i.CaloriesBurned,
+		&i.WorkoutID,
+		&i.BlockID,
+		&i.WorkoutBlockID,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -390,7 +420,7 @@ func (q *Queries) GetMaxWeightByExercise(ctx context.Context, arg GetMaxWeightBy
 }
 
 const listExerciseEntries = `-- name: ListExerciseEntries :many
-SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.created_at
+SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.workout_id, e.block_id, e.workout_block_id, e.created_at
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.user_id = ?
@@ -411,6 +441,9 @@ type ListExerciseEntriesRow struct {
 	DistanceMeters  float64
 	AvgHeartRate    int64
 	CaloriesBurned  float64
+	WorkoutID       sql.NullString
+	BlockID         sql.NullString
+	WorkoutBlockID  sql.NullString
 	CreatedAt       sql.NullTime
 }
 
@@ -437,6 +470,86 @@ func (q *Queries) ListExerciseEntries(ctx context.Context, userID sql.NullString
 			&i.DistanceMeters,
 			&i.AvgHeartRate,
 			&i.CaloriesBurned,
+			&i.WorkoutID,
+			&i.BlockID,
+			&i.WorkoutBlockID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listExerciseEntriesByWorkout = `-- name: ListExerciseEntriesByWorkout :many
+SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.workout_id, e.block_id, e.workout_block_id, e.created_at
+FROM exercise_entries e
+JOIN exercises t ON e.exercise_id = t.id
+WHERE e.workout_id = ? AND e.user_id = ?
+ORDER BY e.created_at DESC, e.rowid DESC
+`
+
+type ListExerciseEntriesByWorkoutParams struct {
+	WorkoutID sql.NullString
+	UserID    sql.NullString
+}
+
+type ListExerciseEntriesByWorkoutRow struct {
+	ID              string
+	ExerciseID      string
+	ExerciseName    string
+	ExerciseType    string
+	UserID          sql.NullString
+	Reps            int64
+	Weight          float64
+	Notes           sql.NullString
+	RestTime        int64
+	DurationSeconds int64
+	DistanceMeters  float64
+	AvgHeartRate    int64
+	CaloriesBurned  float64
+	WorkoutID       sql.NullString
+	BlockID         sql.NullString
+	WorkoutBlockID  sql.NullString
+	CreatedAt       sql.NullTime
+}
+
+// Player resume: every exercise entry the user logged against one
+// workout, newest first. Scoped to the user via e.user_id so a
+// guessed workout ID cannot leak another user's sets.
+func (q *Queries) ListExerciseEntriesByWorkout(ctx context.Context, arg ListExerciseEntriesByWorkoutParams) ([]ListExerciseEntriesByWorkoutRow, error) {
+	rows, err := q.db.QueryContext(ctx, listExerciseEntriesByWorkout, arg.WorkoutID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListExerciseEntriesByWorkoutRow
+	for rows.Next() {
+		var i ListExerciseEntriesByWorkoutRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ExerciseID,
+			&i.ExerciseName,
+			&i.ExerciseType,
+			&i.UserID,
+			&i.Reps,
+			&i.Weight,
+			&i.Notes,
+			&i.RestTime,
+			&i.DurationSeconds,
+			&i.DistanceMeters,
+			&i.AvgHeartRate,
+			&i.CaloriesBurned,
+			&i.WorkoutID,
+			&i.BlockID,
+			&i.WorkoutBlockID,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -453,7 +566,7 @@ func (q *Queries) ListExerciseEntries(ctx context.Context, userID sql.NullString
 }
 
 const listExerciseEntriesLast7Days = `-- name: ListExerciseEntriesLast7Days :many
-SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.created_at
+SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.workout_id, e.block_id, e.workout_block_id, e.created_at
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.created_at >= datetime('now', '-7 days') AND e.user_id = ?
@@ -474,6 +587,9 @@ type ListExerciseEntriesLast7DaysRow struct {
 	DistanceMeters  float64
 	AvgHeartRate    int64
 	CaloriesBurned  float64
+	WorkoutID       sql.NullString
+	BlockID         sql.NullString
+	WorkoutBlockID  sql.NullString
 	CreatedAt       sql.NullTime
 }
 
@@ -500,6 +616,9 @@ func (q *Queries) ListExerciseEntriesLast7Days(ctx context.Context, userID sql.N
 			&i.DistanceMeters,
 			&i.AvgHeartRate,
 			&i.CaloriesBurned,
+			&i.WorkoutID,
+			&i.BlockID,
+			&i.WorkoutBlockID,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -516,7 +635,7 @@ func (q *Queries) ListExerciseEntriesLast7Days(ctx context.Context, userID sql.N
 }
 
 const listExerciseEntriesWithLimit = `-- name: ListExerciseEntriesWithLimit :many
-SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.created_at
+SELECT e.id, e.exercise_id, t.name as exercise_name, t.type as exercise_type, e.user_id, e.reps, e.weight, e.notes, e.rest_time, e.duration_seconds, e.distance_meters, e.avg_heart_rate, e.calories_burned, e.workout_id, e.block_id, e.workout_block_id, e.created_at
 FROM exercise_entries e
 JOIN exercises t ON e.exercise_id = t.id
 WHERE e.user_id = ?
@@ -543,6 +662,9 @@ type ListExerciseEntriesWithLimitRow struct {
 	DistanceMeters  float64
 	AvgHeartRate    int64
 	CaloriesBurned  float64
+	WorkoutID       sql.NullString
+	BlockID         sql.NullString
+	WorkoutBlockID  sql.NullString
 	CreatedAt       sql.NullTime
 }
 
@@ -569,6 +691,9 @@ func (q *Queries) ListExerciseEntriesWithLimit(ctx context.Context, arg ListExer
 			&i.DistanceMeters,
 			&i.AvgHeartRate,
 			&i.CaloriesBurned,
+			&i.WorkoutID,
+			&i.BlockID,
+			&i.WorkoutBlockID,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -582,6 +707,48 @@ func (q *Queries) ListExerciseEntriesWithLimit(ctx context.Context, arg ListExer
 		return nil, err
 	}
 	return items, nil
+}
+
+const nullExerciseEntryLinksForBlock = `-- name: NullExerciseEntryLinksForBlock :exec
+UPDATE exercise_entries SET block_id = NULL WHERE block_id = ?
+`
+
+// Block delete must never destroy logged history: detach the stable
+// block pointer first (explicit, not relying on FK pragma).
+func (q *Queries) NullExerciseEntryLinksForBlock(ctx context.Context, blockID sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, nullExerciseEntryLinksForBlock, blockID)
+	return err
+}
+
+const nullExerciseEntryLinksForWorkout = `-- name: NullExerciseEntryLinksForWorkout :exec
+UPDATE exercise_entries SET workout_id = NULL, workout_block_id = NULL WHERE workout_id = ? AND user_id = ?
+`
+
+type NullExerciseEntryLinksForWorkoutParams struct {
+	WorkoutID sql.NullString
+	UserID    sql.NullString
+}
+
+// Workout delete must never destroy logged history: detach every
+// linked exercise entry first (explicit, not relying on FK pragma).
+func (q *Queries) NullExerciseEntryLinksForWorkout(ctx context.Context, arg NullExerciseEntryLinksForWorkoutParams) error {
+	_, err := q.db.ExecContext(ctx, nullExerciseEntryLinksForWorkout, arg.WorkoutID, arg.UserID)
+	return err
+}
+
+const nullWorkoutBlockLinksForWorkout = `-- name: NullWorkoutBlockLinksForWorkout :exec
+UPDATE exercise_entries SET workout_block_id = NULL WHERE workout_id = ?
+`
+
+// Workout edits regenerate every workout_blocks join ID
+// (delete-all + re-insert), which would orphan
+// exercise_entries.workout_block_id. Null the precise join pointer
+// before the join rows are replaced; block_id (stable) is retained
+// so block attribution survives. FKs alone cannot be relied on
+// (SQLite defaults PRAGMA foreign_keys=OFF), so this is explicit.
+func (q *Queries) NullWorkoutBlockLinksForWorkout(ctx context.Context, workoutID sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, nullWorkoutBlockLinksForWorkout, workoutID)
+	return err
 }
 
 const updateExerciseEntry = `-- name: UpdateExerciseEntry :exec

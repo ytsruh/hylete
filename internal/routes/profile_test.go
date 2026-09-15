@@ -451,8 +451,8 @@ func TestProfileUpdate_UnknownGenderNormalizesToUnset(t *testing.T) {
 
 // fixedClock is a tiny test-only time source for the
 // profile route's "now" computation. Same shape as the
-// reminders package's helper; declared in this file so the
-// test does not depend on the reminders package.
+// cron package's helper; declared in this file so the
+// test does not depend on the cron package.
 type fixedClock struct{ t time.Time }
 
 func (f *fixedClock) Now() time.Time { return f.t }

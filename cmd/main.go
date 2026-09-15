@@ -18,7 +18,7 @@ import (
 	"hylete/internal/export"
 	"hylete/internal/imaging"
 	"hylete/internal/models"
-	"hylete/internal/reminders"
+	"hylete/internal/cron"
 	"hylete/internal/routes"
 	"hylete/internal/utils"
 	"hylete/internal/views"
@@ -49,6 +49,15 @@ const weightReminderCronSpec = "0 * * * *"
 // policy as weightReminderCronSpec.
 const coachWeeklyCronSpec = "0 4 * * MON"
 
+// workoutSweepCronSpec fires the stale-workout auto-skip sweep every
+// day at 01:00 UTC. Each tick flips every still-planned workout
+// scheduled before today (YYYY-MM-DD) with zero linked exercise
+// entries to skipped, plus its still-pending blocks. In_progress
+// workouts are left alone, and re-running is a no-op (flipped rows
+// are no longer planned). Same hard-coded policy as
+// weightReminderCronSpec.
+const workoutSweepCronSpec = "0 1 * * *"
+
 func main() {
 	// Load and validate environment variables on startup
 	cfg, err := utils.LoadAndValidateEnv()
@@ -77,6 +86,8 @@ func main() {
 	goalsRepo := models.NewGoalRepository(database)
 	healthRepo := models.NewHealthSnapshotRepository(database)
 	aiReportsRepo := models.NewAIReportRepository(database)
+	blocksRepo := models.NewBlockRepository(database)
+	workoutsRepo := models.NewWorkoutRepository(database)
 
 	// Initialize auth service
 	jwtService := utils.NewJWTService(cfg.JWT_SECRET)
@@ -110,16 +121,26 @@ func main() {
 	authRecoveryCtrl := controllers.NewAuthRecoveryController(userRepo, authTokenRepo, emailService)
 	goalsCtrl := controllers.NewGoalsController(goalsRepo)
 	healthCtrl := controllers.NewHealthSnapshotController(healthRepo)
+	// Blocks resolve item exercises through the shared exercise
+	// repository (catalog reads are global, not per-user).
+	blocksCtrl := controllers.NewBlocksController(blocksRepo, repo)
+	// Workouts resolve their blocks through the shared block
+	// repository (plan reads are user-scoped inside the repo).
+	workoutsCtrl := controllers.NewWorkoutsController(workoutsRepo, blocksRepo)
+	// Player linkage: exercise entries validate workout_id/block_id
+	// against the workout store and flip planned to in_progress on
+	// the first linked set.
+	exerciseEntryCtrl.SetWorkoutsResolver(workoutsRepo)
 
 	// Initialize the per-user weight-reminder orchestrator here so
 	// the hourly cron scheduler below can drive it. The orchestrator
 	// fires each due user's email reminder on
 	// every tick; there is no admin UI for it any more — the hourly
 	// schedule is the only trigger.
-	weightReminder, err := reminders.NewUserReminder(
+	weightReminder, err := cron.NewUserReminder(
 		userRepo,
 		emailService,
-		reminders.UserReminderConfig{},
+		cron.UserReminderConfig{},
 	)
 	if err != nil {
 		log.Fatalf("Failed to initialize weight reminder: %v", err)
@@ -176,6 +197,13 @@ func main() {
 	// precise 503s instead of nil-panicking.
 	h.SetCoachService(coachService, aiReportsRepo)
 
+	// Attach the Blocks orchestrator to the /api/v1/blocks routes.
+	h.SetBlocksController(blocksCtrl)
+
+	// Attach the Workouts orchestrator to the /api/v1/workouts
+	// routes (and to the 409 guard on block deletion).
+	h.SetWorkoutsController(workoutsCtrl)
+
 	// Custom HTTP error handler. HTML routes get a templ-rendered
 	// error page so the user can read the message in the same
 	// design as the rest of the app; API routes (anything under
@@ -215,7 +243,7 @@ func main() {
 	// queue / system cron" change is a one-package diff. A bad
 	// spec (e.g. a typo in "0 * * * *") fails startup rather
 	// than silently never firing.
-	scheduler, err := reminders.NewCronScheduler(
+	scheduler, err := cron.NewCronScheduler(
 		weightReminderCronSpec,
 		time.UTC,
 		// The cron job discards the TickResult — every
@@ -233,7 +261,7 @@ func main() {
 	// generated, reused, failures, tokens) and per-user failures
 	// never abort the run. A disabled service makes RunWeekly a
 	// no-op returning a zero TickResult.
-	coachScheduler, err := reminders.NewCronScheduler(
+	coachScheduler, err := cron.NewCronScheduler(
 		coachWeeklyCronSpec,
 		time.UTC,
 		func(ctx context.Context) {
@@ -247,6 +275,30 @@ func main() {
 	}
 	coachScheduler.Start()
 	defer coachScheduler.Stop()
+
+	// Start the nightly stale-workout auto-skip sweep. Same cron
+	// wrapper as the other two jobs; the tick logs how many
+	// workouts and blocks flipped. A repo failure is logged, never
+	// fatal, and the next tick retries (flipped rows are no longer
+	// planned, so successful ticks never double-fire).
+	workoutSweeper, err := cron.NewWorkoutSweeper(workoutsRepo, nil)
+	if err != nil {
+		log.Fatalf("Failed to initialize workout sweeper: %v", err)
+	}
+	workoutSweepScheduler, err := cron.NewCronScheduler(
+		workoutSweepCronSpec,
+		time.UTC,
+		func(ctx context.Context) {
+			res := workoutSweeper.Run(ctx)
+			log.Printf("workout sweep: tick workouts=%d blocks=%d attempted=%v err=%q",
+				res.WorkoutsSkipped, res.BlocksSkipped, res.Attempted, res.ListError)
+		},
+	)
+	if err != nil {
+		log.Fatalf("Failed to initialize workout sweep scheduler: %v", err)
+	}
+	workoutSweepScheduler.Start()
+	defer workoutSweepScheduler.Stop()
 
 	// Start server
 	localIP := getLocalIP()

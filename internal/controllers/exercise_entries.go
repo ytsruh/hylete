@@ -23,16 +23,45 @@ var (
 	ErrDurationRequired = errors.New("duration is required for cardio exercises")
 	// ErrDistanceRequired is returned when a cardio exercise entry is submitted without a distance.
 	ErrDistanceRequired = errors.New("distance is required for cardio exercises")
+	// ErrEntryWorkoutNotFound is returned when a linked workout ID does not
+	// exist or belongs to another user.
+	ErrEntryWorkoutNotFound = errors.New("workout not found")
+	// ErrEntryWorkoutBlockNotFound is returned when a linked workout block
+	// join ID does not belong to the linked workout.
+	ErrEntryWorkoutBlockNotFound = errors.New("workout block not found")
+	// ErrEntryBlockMismatch is returned when a linked block ID is not part
+	// of the linked workout.
+	ErrEntryBlockMismatch = errors.New("block is not part of this workout")
 )
+
+// ExerciseWorkoutLinks is the narrow workout surface the exercise entry
+// controller needs to validate player linkage and flip planned ->
+// in_progress on the first linked set. The models.WorkoutRepository
+// implements it; tests substitute a fake.
+type ExerciseWorkoutLinks interface {
+	GetByID(id, userID string) (*models.Workout, error)
+	GetWorkoutBlock(workoutID, workoutBlockID string) (*models.WorkoutBlock, error)
+	MarkInProgressIfPlanned(workoutID, userID string) error
+}
 
 // ExerciseEntryController handles exercise entry business logic.
 type ExerciseEntryController struct {
-	repo models.Repository
+	repo     models.Repository
+	workouts ExerciseWorkoutLinks
 }
 
 // NewExerciseEntryController creates a new ExerciseEntryController instance.
 func NewExerciseEntryController(repo models.Repository) *ExerciseEntryController {
 	return &ExerciseEntryController{repo: repo}
+}
+
+// SetWorkoutsResolver attaches the workout store used to validate
+// player linkage (workout_id/block_id/workout_block_id) and to flip a
+// planned workout to in_progress on the first linked set. Kept as a
+// setter so existing construction sites and tests are untouched. A nil
+// resolver means linked sets are rejected.
+func (ec *ExerciseEntryController) SetWorkoutsResolver(w ExerciseWorkoutLinks) {
+	ec.workouts = w
 }
 
 // ListExerciseEntriesLast7Days returns exercise entries from the last 7 days for a user.
@@ -60,6 +89,11 @@ func (ec *ExerciseEntryController) GetExerciseEntry(id, userID string) (*models.
 // Reps/Weight/RestTime, cardio sets carry DurationSeconds/DistanceMeters plus
 // optional AvgHeartRate/CaloriesBurned — which pair applies is decided by the
 // exercise's type via ValidateExerciseSetInput and normalizeForExerciseType.
+//
+// WorkoutID/BlockID/WorkoutBlockID attribute the set to a Workout Player
+// session (all nil = logged outside a workout). WorkoutID + BlockID are
+// stable across workout edits; WorkoutBlockID is the precise join row but
+// is nulled when the workout is edited.
 type ExerciseSetInput struct {
 	Reps            int
 	Weight          float64
@@ -68,6 +102,9 @@ type ExerciseSetInput struct {
 	DistanceMeters  float64
 	AvgHeartRate    int
 	CaloriesBurned  float64
+	WorkoutID       *string
+	BlockID         *string
+	WorkoutBlockID  *string
 }
 
 // ValidateExerciseSetInput checks one set against the requirements for its
@@ -122,14 +159,24 @@ func (in ExerciseSetInput) normalizeForExerciseType(exerciseType models.Exercise
 // zeroed) before being written. On the first repository error the loop aborts
 // and the error is returned; partial-success semantics aren't worth the
 // complexity for a workout log.
+//
+// Sets carrying WorkoutID are validated against the owning workout (wrong
+// user or unknown ID fails the whole batch before anything is stored) and,
+// once persisted, flip a planned workout to in_progress — "Start" itself is
+// pure UI state; the status change is a side-effect of the first submitted
+// data.
 func (ec *ExerciseEntryController) CreateExerciseEntries(userID, exerciseID string, exerciseType models.ExerciseType, notes string, createdAt time.Time, sets []ExerciseSetInput) ([]models.ExerciseEntry, error) {
 	for _, s := range sets {
 		if err := ValidateExerciseSetInput(exerciseType, s); err != nil {
 			return nil, err
 		}
+		if err := ec.validateWorkoutLink(userID, s); err != nil {
+			return nil, err
+		}
 	}
 
 	created := make([]models.ExerciseEntry, 0, len(sets))
+	touchedWorkouts := map[string]bool{}
 	for i, s := range sets {
 		s = s.normalizeForExerciseType(exerciseType)
 		exerciseEntry := &models.ExerciseEntry{
@@ -143,14 +190,79 @@ func (ec *ExerciseEntryController) CreateExerciseEntries(userID, exerciseID stri
 			AvgHeartRate:    s.AvgHeartRate,
 			CaloriesBurned:  s.CaloriesBurned,
 			UserID:          userID,
+			WorkoutID:       s.WorkoutID,
+			BlockID:         s.BlockID,
+			WorkoutBlockID:  s.WorkoutBlockID,
 			CreatedAt:       createdAt.Add(time.Duration(i) * time.Second),
 		}
 		if err := ec.repo.CreateExerciseEntry(exerciseEntry); err != nil {
 			return nil, err
 		}
 		created = append(created, *exerciseEntry)
+		if s.WorkoutID != nil && *s.WorkoutID != "" {
+			touchedWorkouts[*s.WorkoutID] = true
+		}
+	}
+	for workoutID := range touchedWorkouts {
+		if ec.workouts == nil {
+			continue
+		}
+		if err := ec.workouts.MarkInProgressIfPlanned(workoutID, userID); err != nil {
+			return nil, err
+		}
 	}
 	return created, nil
+}
+
+// validateWorkoutLink checks one set's optional player attribution. Nil
+// WorkoutID means "logged outside a workout" and always passes. Otherwise
+// the workout must exist and belong to the user; a supplied
+// WorkoutBlockID must belong to that workout; a supplied BlockID must be
+// referenced by the workout (block_id alone is allowed so attribution
+// survives workout edits that regenerate join IDs).
+func (ec *ExerciseEntryController) validateWorkoutLink(userID string, s ExerciseSetInput) error {
+	if s.WorkoutID == nil || *s.WorkoutID == "" {
+		return nil
+	}
+	if ec.workouts == nil {
+		return ErrEntryWorkoutNotFound
+	}
+	w, err := ec.workouts.GetByID(*s.WorkoutID, userID)
+	if err != nil {
+		return err
+	}
+	if w == nil {
+		return ErrEntryWorkoutNotFound
+	}
+	if s.WorkoutBlockID != nil && *s.WorkoutBlockID != "" {
+		row, err := ec.workouts.GetWorkoutBlock(*s.WorkoutID, *s.WorkoutBlockID)
+		if err != nil {
+			return err
+		}
+		if row == nil {
+			return ErrEntryWorkoutBlockNotFound
+		}
+	}
+	if s.BlockID != nil && *s.BlockID != "" {
+		found := false
+		for _, b := range w.Blocks {
+			if b.BlockID == *s.BlockID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return ErrEntryBlockMismatch
+		}
+	}
+	return nil
+}
+
+// ListExerciseEntriesByWorkout returns every exercise entry the user logged
+// against one workout, newest first. Thin wrapper over the repository so
+// the player-resume route stays inside the controller layer.
+func (ec *ExerciseEntryController) ListExerciseEntriesByWorkout(workoutID, userID string) ([]models.ExerciseEntry, error) {
+	return ec.repo.ListExerciseEntriesByWorkout(workoutID, userID)
 }
 
 // UpdateExerciseEntry updates an existing exercise entry, including its timestamp.
