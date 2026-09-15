@@ -42,6 +42,16 @@ struct WorkoutPlayerView: View {
 
     @ObservedObject var workoutStore: WorkoutStore
     @StateObject private var player: WorkoutPlayerStore
+    /// The player-scoped single shared timer. Block header
+    /// chips start timers here; the sticky pill and expanded
+    /// sheet render this store. Never persisted — a timer is
+    /// session UI, not workout data.
+    @StateObject private var timerStore = PlayerTimerStore()
+    /// Bridges the timer store's fire dates to fallback
+    /// local notifications (background/locked-phone cue).
+    /// Watches `timerStore.endDate` — one observation point
+    /// for starts, pauses, resumes, round rolls, and resets.
+    @StateObject private var timerNotifier = PlayerTimerNotifier()
 
     let workoutID: String
 
@@ -57,6 +67,23 @@ struct WorkoutPlayerView: View {
     /// `BlockItemDTO` is `Identifiable`, so the sheet binds by
     /// item and always reads live buckets from the store.
     @State private var historyItem: BlockItemDTO?
+    /// Expanded timer sheet visibility.
+    @State private var showingTimerSheet: Bool = false
+    /// Block whose plan config prefills the timer sheet's
+    /// custom form. Set by a block's "Custom…" timer row, or
+    /// nil when the sheet opens from the pill (the running
+    /// timer already carries its block context).
+    @State private var timerSetupBlock: WorkoutBlockDetailDTO?
+    /// Hides the sticky pill after its completion auto-dismiss
+    /// fires. Pill-only: the store stays complete so the
+    /// auto-opened sheet is unaffected — a new start or reset
+    /// re-shows the pill via the observers below.
+    @State private var hideCompletedPill = false
+    /// Generation for the auto-dismiss task. Bumped on every
+    /// timer event so a new start/reset cancels a pending hide
+    /// (the task additionally re-checks `isComplete`, so only
+    /// a genuine completion can hide the pill).
+    @State private var pillDismissGeneration = 0
 
     init(workoutID: String, workoutStore: WorkoutStore, player: WorkoutPlayerStore) {
         self.workoutID = workoutID
@@ -166,6 +193,51 @@ struct WorkoutPlayerView: View {
             }
             .padding(DSSpacing.md)
         }
+        // Sticky live timer, pinned under the nav bar while a
+        // timer runs. Outside the scroll content so logging
+        // rows never shift under it; zero height when idle or
+        // once a completed timer auto-dismisses below.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if timerStore.isActive && !hideCompletedPill {
+                PlayerTimerPill(store: timerStore) {
+                    timerSetupBlock = nil
+                    showingTimerSheet = true
+                }
+            }
+        }
+        .sheet(isPresented: $showingTimerSheet) {
+            PlayerTimerSheet(
+                store: timerStore,
+                setup: timerSetupBlock.map(PlayerTimerSetupContext.init(block:)),
+                notifier: timerNotifier
+            )
+        }
+        // Every fire-date change re-arms the fallback local
+        // notification (starts, round rolls, resumes) or
+        // cancels it (pauses, resets, completions).
+        .onChange(of: timerStore.endDate) { _, newDate in
+            timerNotifier.timerFireDateChanged(newDate, store: timerStore)
+        }
+        // Auto-dismisses the sticky pill a few seconds after
+        // completion. A new start or reset clears the event,
+        // which re-shows the pill and cancels the pending hide
+        // via the generation key; the task's `isComplete`
+        // re-check means only a genuine completion hides it.
+        // The store itself is untouched, so the auto-opened
+        // sheet keeps its complete state.
+        .onChange(of: timerStore.lastEvent) { _, _ in
+            hideCompletedPill = false
+            pillDismissGeneration += 1
+        }
+        .task(id: pillDismissGeneration) {
+            guard pillDismissGeneration > 0 else { return }
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            if timerStore.isComplete {
+                hideCompletedPill = true
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: hideCompletedPill)
         .background(DSColors.background.ignoresSafeArea())
     }
 
@@ -251,7 +323,14 @@ struct WorkoutPlayerView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(isCollapsed ? "Expand \(block.blockName)" : "Collapse \(block.blockName)")
                 Spacer()
-                blockStatusMenu(block)
+                // Trailing controls centre-align against each
+                // other — the 32pt timer hit-target is taller
+                // than the status pill — while the row as a
+                // whole stays top-anchored to the block name.
+                HStack(alignment: .center, spacing: DSSpacing.xs) {
+                    blockTimerMenu(block)
+                    blockStatusMenu(block)
+                }
             }
             // Row 2: block type left, logged counts right. Lives in
             // the card's full-width stack (not inside the toggle
@@ -384,6 +463,96 @@ struct WorkoutPlayerView: View {
     private func loggedLabel(for block: WorkoutBlockDetailDTO) -> String {
         let logged = block.items.filter { player.isItemDone(itemID: $0.id) }.count
         return "\(logged)/\(block.items.count) logged"
+    }
+
+    /// Whole- or one-decimal-minute label for an AMRAP cap in
+    /// seconds (e.g. 600 → "10", 90 → "1.5"), so the plan
+    /// timer row reads "AMRAP 10mins (plan)".
+    private func amrapCapLabel(_ capSeconds: Int) -> String {
+        let mins = Double(capSeconds) / 60
+        if mins == mins.rounded() {
+            return String(Int(mins))
+        }
+        var text = String(format: "%.1f", mins)
+        if text.hasSuffix(".0") {
+            text = String(text.dropLast(2))
+        }
+        return text
+    }
+
+    /// Per-block timer picker. A single quiet icon — the
+    /// manual choice of rest / EMOM / AMRAP lives one tap
+    /// away without costing the card any vertical space, and
+    /// it stays visible when the block is collapsed. The menu
+    /// stays short on purpose: the block's own programmed
+    /// timer first (when it has one), then the three standard
+    /// rests. "Custom…" covers everything else. Starts land
+    /// in the shared `timerStore`, replacing any running
+    /// timer.
+    private func blockTimerMenu(_ block: WorkoutBlockDetailDTO) -> some View {
+        let timerIsOurs = timerStore.isActive && timerStore.blockID == block.id
+        // The plan row only appears for genuinely distinct
+        // configs — EMOM rounds, an AMRAP cap, or a rest that
+        // isn't one of the three standards below (avoids a
+        // duplicate row when the plan rest IS 30/60/90).
+        return Menu {
+            if block.blockType == .emom, block.rounds > 0, block.intervalSeconds > 0 {
+                Button("EMOM \(block.rounds) × every \(block.intervalSeconds)s (plan)") {
+                    timerStore.startEMOM(
+                        rounds: block.rounds,
+                        intervalSeconds: block.intervalSeconds,
+                        blockID: block.id,
+                        blockName: block.blockName
+                    )
+                }
+            }
+            if block.blockType == .amrap, block.timeCapSeconds > 0 {
+                Button("AMRAP \(amrapCapLabel(block.timeCapSeconds))mins (plan)") {
+                    timerStore.startAMRAP(
+                        capSeconds: block.timeCapSeconds,
+                        blockID: block.id,
+                        blockName: block.blockName
+                    )
+                }
+            }
+            if block.restSeconds > 0, ![30, 60, 90].contains(block.restSeconds) {
+                Button("Rest \(block.restSeconds)s (plan)") {
+                    timerStore.startRest(
+                        seconds: block.restSeconds,
+                        blockID: block.id,
+                        blockName: block.blockName
+                    )
+                }
+            }
+            Button("Rest 30s") {
+                timerStore.startRest(seconds: 30, blockID: block.id, blockName: block.blockName)
+            }
+            Button("Rest 60s") {
+                timerStore.startRest(seconds: 60, blockID: block.id, blockName: block.blockName)
+            }
+            Button("Rest 90s") {
+                timerStore.startRest(seconds: 90, blockID: block.id, blockName: block.blockName)
+            }
+            Divider()
+            Button("Custom…") {
+                timerSetupBlock = block
+                showingTimerSheet = true
+            }
+            if timerStore.isActive {
+                Button("Open timer") {
+                    timerSetupBlock = nil
+                    showingTimerSheet = true
+                }
+            }
+        } label: {
+            Image(systemName: Icons.timer)
+                .font(.body)
+                .foregroundStyle(timerIsOurs ? DSColors.accent : DSColors.textSecondary)
+                .frame(width: 32, height: 32)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Start timer for \(block.blockName)")
+        .accessibilityHint("Rest, EMOM, or AMRAP timer for this block")
     }
 
     private func blockStatusMenu(_ block: WorkoutBlockDetailDTO) -> some View {
