@@ -6,44 +6,27 @@ import "hylete/internal/views/components"
 templ Landing() {
 	@Layout(PageData{Title: "iPhone Fitness App | Hylete"}) {
 		// Hero — full-bleed background image, dark overlay, centred copy over the top.
-		<section class="relative left-1/2 flex min-h-[72vh] w-screen -translate-x-1/2 -mt-4 items-center justify-center overflow-hidden px-4 py-16 text-center sm:min-h-[78vh] sm:py-20 md:-mt-8 lg:min-h-[82vh]">
-			<div aria-hidden="true" class="absolute inset-0">
-				<img
-					src="/img/homepage-hero.jpg"
-					alt=""
-					class="h-full w-full object-cover object-center"
-					loading="eager"
-					decoding="async"
-				/>
-				<div class="absolute inset-0 bg-black/50 dark:bg-black/65"></div>
-				<div class="absolute inset-0 bg-linear-to-t from-black/30 dark:from-black/40 via-black/5 dark:via-black/10 to-black/15 dark:to-black/25"></div>
+		@components.Hero(components.HeroProps{
+			Eyebrow: "Available for iPhone",
+			Title: "Track your fitness. See your progress. Own your data.",
+			Sub: "Hylete is a free fitness training tracker for iPhone that keeps logging simple and your data private.",
+			Image: "/img/homepage-hero.jpg",
+			Variant: "large",
+		}) {
+			<div class="flex flex-wrap items-center justify-center gap-3">
+				<a href="/register" class="btn">
+					Sign up
+				</a>
+				<a href="/login" class="btn border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white hover:text-black" data-variant="outline">
+					Log in
+				</a>
 			</div>
-			<div class="relative flex max-w-3xl flex-col items-center gap-6 sm:gap-7">
-				<span class="badge bg-primary text-primary-foreground border-primary px-3 py-1 text-sm h-auto">
-					Available for iPhone
-				</span>
-				<h1 class="text-4xl font-bold tracking-[-0.02em] leading-[1.05] text-white sm:text-5xl lg:text-[3.25rem]">
-					Track your fitness. See your progress. Own your data.
-				</h1>
-				<p class="max-w-2xl text-base leading-relaxed text-white/80 sm:text-lg">
-					Hylete is a free fitness training tracker for iPhone that keeps logging
-					simple and your data private.
-				</p>
-				<div class="flex flex-wrap items-center justify-center gap-3">
-					<a href="/register" class="btn">
-						Sign up
-					</a>
-					<a href="/login" class="btn border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white hover:text-black" data-variant="outline">
-						Log in
-					</a>
-				</div>
-				<p class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[15px] text-white/60">
-					<span>No trackers</span>
-					<span class="text-white/30">·</span>
-					<span>Export your data</span>
-				</p>
-			</div>
-		</section>
+			<p class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[15px] text-white/60">
+				<span>No trackers</span>
+				<span class="text-white/30">·</span>
+				<span>Export your data</span>
+			</p>
+		}
 		// Intro — editorial pull-quote, larger serif display with generous whitespace.
 		<section class="mx-auto flex max-w-5xl flex-col items-center gap-6 py-16 text-center sm:py-20">
 			<p class="text-balance font-serif text-2xl font-medium leading-8 tracking-[-0.02em] sm:text-[28px] sm:leading-9">

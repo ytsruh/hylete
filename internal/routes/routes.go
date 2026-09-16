@@ -135,6 +135,7 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	// signed-in web app lives under /dashboard. dashboardPath is
 	// the single source of truth for that URL across handlers.
 	e.GET("/", h.Home)
+	e.GET("/features", h.Features)
 	e.GET("/showcase", h.Showcase)
 	e.GET("/privacy", h.Privacy)
 	e.GET("/about", h.About)

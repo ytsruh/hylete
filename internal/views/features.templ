@@ -1,0 +1,202 @@
+package views
+
+import "hylete/internal/views/components"
+
+// Features renders the public features page at "/features".
+//
+// All seven tools in one list, mirroring the homepage "#features"
+// rows plus Coach, HealthKit integration and Workouts. Beta rows
+// carry an explicit Beta badge and opt-in/read-only caveats — they
+// are subject to change without notice.
+templ Features() {
+	@Layout(PageData{Title: "Features | Hylete"}) {
+		// Hero — compact sibling of the homepage hero with its own backdrop.
+		@components.Hero(components.HeroProps{
+			Eyebrow: "Features",
+			Title: "Everything you need. Nothing you don't.",
+			Sub: "Seven focused tools that work together — fast logging, clear progress, weight tracking, goals, plus Coach, HealthKit and Workouts in beta. Logging lives on iPhone, the web brings the picture together.",
+			Image: "/img/features-hero.jpg",
+			Variant: "compact",
+		}) {
+			<div class="flex flex-wrap items-center justify-center gap-3 pt-1">
+				<a href="/register" class="btn">
+					Sign up
+				</a>
+			</div>
+		}
+		// Features — same alternating rhythm as the homepage "#features" section.
+		<section class="mx-auto max-w-5xl">
+			<div class="flex flex-col gap-12 sm:gap-16">
+				// Row 1 — Log every set
+				<div class="grid items-center gap-6 sm:gap-8 lg:grid-cols-3 lg:gap-12">
+					<div class="flex flex-col gap-5 lg:col-span-2">
+						<div class="bg-primary text-white flex size-12 shrink-0 items-center justify-center rounded-xl">
+							@components.Icon(components.IconProps{Name: "dumbbell", Size: 24})
+						</div>
+						<h2 class="text-xl font-semibold tracking-tight sm:text-2xl">Log every set in seconds</h2>
+						<p class="text-base leading-7 text-muted-foreground sm:text-[17px] sm:leading-7">
+							Reps, weight, rest time, notes. Add a whole set of sets in one go, right between exercises.
+							Logging shouldn't get in the way of your workout — with Hylete, it doesn't.
+						</p>
+					</div>
+					<div class="mx-auto w-full max-w-70 sm:max-w-[320px] overflow-hidden rounded-xl border bg-card shadow-sm lg:col-span-1 lg:mx-0 lg:max-w-none">
+						<img src="/img/screenshots/dashboard.png" alt="Logging exercise entries in the Hylete iPhone app" class="aspect-3/4 w-full object-cover object-top" loading="lazy" decoding="async"/>
+					</div>
+				</div>
+				// Row 2 — Watch your progress
+				<div class="grid items-center gap-6 sm:gap-8 lg:grid-cols-3 lg:gap-12">
+					<div class="flex flex-col gap-5 lg:col-span-2 lg:order-2">
+						<div class="bg-primary text-white flex size-12 shrink-0 items-center justify-center rounded-xl">
+							@components.Icon(components.IconProps{Name: "trending-up", Size: 24})
+						</div>
+						<h2 class="text-xl font-semibold tracking-tight sm:text-2xl">Watch your progress happen</h2>
+						<p class="text-base leading-7 text-muted-foreground sm:text-[17px] sm:leading-7">
+							Every exercise you log builds your story. Personal bests are spotted automatically,
+							progression charts show your heaviest lifts climbing over time, and each exercise gets
+							its own history page so you always know where you stand.
+						</p>
+					</div>
+					<div class="mx-auto w-full max-w-70 sm:max-w-[320px] overflow-hidden rounded-xl border bg-card shadow-sm lg:col-span-1 lg:order-1 lg:mx-0 lg:max-w-none">
+						<img src="/img/screenshots/exercise.png" alt="Exercise history and progression chart in the Hylete iPhone app" class="aspect-3/4 w-full object-cover object-top" loading="lazy" decoding="async"/>
+					</div>
+				</div>
+				// Row 3 — Track your weight journey
+				<div class="grid items-center gap-6 sm:gap-8 lg:grid-cols-3 lg:gap-12">
+					<div class="flex flex-col gap-5 lg:col-span-2">
+						<div class="bg-primary text-white flex size-12 shrink-0 items-center justify-center rounded-xl">
+							@components.Icon(components.IconProps{Name: "scale", Size: 24})
+						</div>
+						<h2 class="text-xl font-semibold tracking-tight sm:text-2xl">Track your weight journey</h2>
+						<p class="text-base leading-7 text-muted-foreground sm:text-[17px] sm:leading-7">
+							Log weigh-ins with optional progress photos, set a target weight, and compare before
+							and after whenever you like. Optional email reminders keep you consistent — daily,
+							weekly, or fortnightly, on your schedule.
+						</p>
+					</div>
+					<div class="mx-auto w-full max-w-70 sm:max-w-[320px] overflow-hidden rounded-xl border bg-card shadow-sm lg:col-span-1 lg:mx-0 lg:max-w-none">
+						<img src="/img/screenshots/weight.png" alt="Weight tracking with progress photos in the Hylete iPhone app" class="aspect-3/4 w-full object-cover object-top" loading="lazy" decoding="async"/>
+					</div>
+				</div>
+				// Row 4 — Set goals
+				<div class="grid items-center gap-6 sm:gap-8 lg:grid-cols-3 lg:gap-12">
+					<div class="flex flex-col gap-5 lg:col-span-2 lg:order-2">
+						<div class="bg-primary text-white flex size-12 shrink-0 items-center justify-center rounded-xl">
+							@components.Icon(components.IconProps{Name: "target", Size: 24})
+						</div>
+						<h2 class="text-xl font-semibold tracking-tight sm:text-2xl">Set goals. Smash them.</h2>
+						<p class="text-base leading-7 text-muted-foreground sm:text-[17px] sm:leading-7">
+							Whether it's hitting a new bench press PR or sticking to a routine, set goals with
+							target dates and tick them off as you go. Built-in countdown and EMOM timers keep
+							your rest periods honest, too.
+						</p>
+					</div>
+					<div class="mx-auto w-full max-w-70 sm:max-w-[320px] overflow-hidden rounded-xl border bg-card shadow-sm lg:col-span-1 lg:order-1 lg:mx-0 lg:max-w-none">
+						<img src="/img/screenshots/goals.png" alt="Goals and timers in the Hylete iPhone app" class="aspect-3/4 w-full object-cover object-top" loading="lazy" decoding="async"/>
+					</div>
+				</div>
+				// Row 5 — Coach (Beta)
+				<div class="grid items-center gap-6 sm:gap-8 lg:grid-cols-3 lg:gap-12">
+					<div class="flex flex-col gap-5 lg:col-span-2">
+						<div class="flex flex-wrap items-center gap-3">
+							<div class="bg-primary text-white flex size-12 shrink-0 items-center justify-center rounded-xl">
+								@components.Icon(components.IconProps{Name: "speech", Size: 24})
+							</div>
+							<span class="badge w-fit px-2.5 py-0.5 text-xs h-auto" data-variant="outline">Beta</span>
+						</div>
+						<h2 class="text-xl font-semibold tracking-tight sm:text-2xl">Coach — a weekly review, every Monday</h2>
+						<p class="text-base leading-7 text-muted-foreground sm:text-[17px] sm:leading-7">
+							Every Monday morning Coach looks at your last full week of training and writes up
+							what improved, what's stalling, and gives you 3 specific things to work on next. Coach only works if you've completed 3 or more sessions in the previous week but is designed to help you hit your stated goal in an impartial way.
+						</p>
+						<p class="text-sm leading-6 text-muted-foreground">
+							Opt-in and off by default — set your aim in your own words, switch it off any time. Subject to change while in beta.
+						</p>
+					</div>
+					<div class="mx-auto w-full max-w-70 sm:max-w-[320px] overflow-hidden rounded-xl border bg-card shadow-sm lg:col-span-1 lg:mx-0 lg:max-w-none">
+						<img src="/img/screenshots/coach.png" alt="Coach weekly training review in the Hylete iPhone app" class="aspect-3/4 w-full object-cover object-top" loading="lazy" decoding="async"/>
+					</div>
+				</div>
+				// Row 6 — HealthKit (Beta)
+				<div class="grid items-center gap-6 sm:gap-8 lg:grid-cols-3 lg:gap-12">
+					<div class="flex flex-col gap-5 lg:col-span-2 lg:order-2">
+						<div class="flex flex-wrap items-center gap-3">
+							<div class="bg-primary text-white flex size-12 shrink-0 items-center justify-center rounded-xl">
+								@components.Icon(components.IconProps{Name: "heart", Size: 24})
+							</div>
+							<span class="badge w-fit px-2.5 py-0.5 text-xs h-auto" data-variant="outline">Beta</span>
+						</div>
+						<h2 class="text-xl font-semibold tracking-tight sm:text-2xl">HealthKit — your health, in context</h2>
+						<p class="text-base leading-7 text-muted-foreground sm:text-[17px] sm:leading-7">
+							Connect Apple Health to see steps, distance, energy, heart rate and recovery,
+							cardio fitness, and sleep alongside your training. Read-only — Hylete never
+							writes to HealthKit — and partial grants are fine if you're not comfortable sharing
+						</p>
+						<p class="text-base leading-7 text-muted-foreground sm:text-[17px] sm:leading-7">
+							You can optionally sync your health kit data back to our servers & we'll give you access to analytics on your data. This can also be shared with our Coach, if you opt-in to that feature.
+						</p>
+						<p class="text-sm leading-6 text-muted-foreground">
+							Opt-in per category, revocable any time in iOS Settings. Subject to change while in beta.
+						</p>
+					</div>
+					<div class="mx-auto w-full max-w-70 sm:max-w-[320px] overflow-hidden rounded-xl border bg-card shadow-sm lg:col-span-1 lg:order-1 lg:mx-0 lg:max-w-none">
+						<img src="/img/screenshots/health.png" alt="Apple Health metrics in the Hylete iPhone app" class="aspect-3/4 w-full object-cover object-top" loading="lazy" decoding="async"/>
+					</div>
+				</div>
+				// Row 7 — Workouts (Beta)
+				<div class="grid items-center gap-6 sm:gap-8 lg:grid-cols-3 lg:gap-12">
+					<div class="flex flex-col gap-5 lg:col-span-2">
+						<div class="flex flex-wrap items-center gap-3">
+							<div class="bg-primary text-white flex size-12 shrink-0 items-center justify-center rounded-xl">
+								@components.Icon(components.IconProps{Name: "play", Size: 24})
+							</div>
+							<span class="badge w-fit px-2.5 py-0.5 text-xs h-auto" data-variant="outline">Beta</span>
+						</div>
+						<h2 class="text-xl font-semibold tracking-tight sm:text-2xl">Workouts — plan it, then play it</h2>
+						<p class="text-base leading-7 text-muted-foreground sm:text-[17px] sm:leading-7">
+							Schedule workouts by date, organise them into blocks, then run the full-screen
+							Workout Player with built-in rest timers. Duplicate a plan to a new date, search
+							and filter by status — and everything you log stays linked to the plan.
+						</p>
+						<p class="text-base leading-7 text-muted-foreground sm:text-[17px] sm:leading-7">
+							Workouts are designed to help you plan your fitness journey ahead of time. You can also just repeat workouts you really enjoy, use it however works best for you.
+						</p>
+						<p class="text-sm leading-6 text-muted-foreground">
+							Beta: plans and the player may still change shape.
+						</p>
+					</div>
+					<div class="mx-auto w-full max-w-70 sm:max-w-[320px] overflow-hidden rounded-xl border bg-card shadow-sm lg:col-span-1 lg:mx-0 lg:max-w-none">
+						<img src="/img/screenshots/workout.png" alt="Workout plan and player in the Hylete iPhone app" class="aspect-3/4 w-full object-cover object-top" loading="lazy" decoding="async"/>
+					</div>
+				</div>
+			</div>
+		</section>
+		// Closing CTA — same pattern as the landing page.
+		<section class="relative mt-16 overflow-hidden rounded-2xl border px-6 py-16 text-center sm:mt-20 sm:px-8 sm:py-20">
+			<div aria-hidden="true" class="absolute inset-0">
+				<img
+					src="/img/stock/gym-1.jpg"
+					alt=""
+					class="h-full w-full object-cover object-center"
+					loading="lazy"
+					decoding="async"
+				/>
+				<div class="absolute inset-0 bg-black/35 dark:bg-black/65"></div>
+				<div class="absolute inset-0 bg-linear-to-t from-black/20 dark:from-black/40 via-black/5 dark:via-black/10 to-black/10 dark:to-black/25"></div>
+			</div>
+			<div class="relative mx-auto flex max-w-xl flex-col items-center gap-4">
+				<h2 class="text-2xl font-semibold tracking-tight text-white sm:text-[1.7rem]">Ready to see what you're capable of?</h2>
+				<p class="max-w-xl text-[15px] leading-6 text-white/80 sm:text-base">
+					Hylete is free. Sign up for the beta for iPhone today, or explore your dashboard on the web.
+				</p>
+				<div class="flex flex-wrap items-center justify-center gap-3 pt-1">
+					<a href="/register" class="btn">
+						Get Hylete for iPhone
+					</a>
+					<a href="/login" class="btn border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white hover:text-black" data-variant="outline">
+						Log in
+					</a>
+				</div>
+			</div>
+		</section>
+	}
+}
