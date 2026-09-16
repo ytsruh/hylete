@@ -24,8 +24,9 @@ import (
 //
 // The reminder section surfaces the user's per-user weight-reminder
 // preferences: master switch, frequency (off / daily / weekly /
-// biweekly), day-of-week (weekly + biweekly only), time-of-day
-// (hour-only), and the email channel checkbox.
+// biweekly), day-of-week (weekly + biweekly only) and time-of-day
+// (hour-only). Reminders are email-only: the master switch IS the
+// email opt-in, there is no separate channel control.
 templ ProfilePage(userName string, email string, isAdmin bool, targetWeight *float64, weightUnit string, distanceUnit string, heightCm *float64, gender string, dateOfBirth *string, reminder ReminderFormState) {
 	@views.Layout(views.PageData{Title: "Profile", UserName: userName, IsAuthenticated: true, IsAdmin: isAdmin, CurrentPath: "/profile"}) {
 		@components.Title(components.TitleProps{Size: "lg", Color: "default", Title: "Profile"})

@@ -23,7 +23,6 @@ CREATE TABLE users (
     reminder_day_of_week    INTEGER,
     reminder_time           TEXT    NOT NULL DEFAULT '09:00',
     reminder_email_enabled  INTEGER NOT NULL DEFAULT 1,
-    reminder_push_enabled   INTEGER NOT NULL DEFAULT 1,
     reminder_next_fire_at   DATETIME,
     reminder_last_fired_at  DATETIME,
     ai_opt_in INTEGER NOT NULL DEFAULT 0,
@@ -70,6 +69,9 @@ CREATE INDEX idx_entries_created ON exercise_entries(created_at);
 CREATE INDEX idx_entries_workout ON exercise_entries(user_id, workout_id);
 CREATE INDEX idx_entries_block ON exercise_entries(block_id);
 CREATE INDEX idx_users_email ON users(email);
+-- The hourly tick's "who is due" query is the only path that reads
+-- reminder_next_fire_at.
+CREATE INDEX idx_users_reminder_due ON users(reminder_next_fire_at);
 
 CREATE TABLE feedback (
     id TEXT PRIMARY KEY,
@@ -100,9 +102,9 @@ CREATE INDEX idx_weight_entries_user    ON weight_entries(user_id);
 CREATE INDEX idx_weight_entries_created ON weight_entries(created_at);
 
 -- Daily Apple Health snapshots (one row per user per calendar
--- day, upserted by the iOS client). See migration
--- 00011_add_health_snapshots.sql for the units contract and
--- the measured_at NULL semantics.
+-- day, upserted by the iOS client). See the health_snapshots table
+-- comment in migration 00001 for the units contract and the
+-- measured_at NULL semantics.
 CREATE TABLE health_snapshots (
     id         TEXT PRIMARY KEY,
     user_id    TEXT NOT NULL REFERENCES users(id),
@@ -141,17 +143,6 @@ CREATE TABLE health_snapshots (
 
 CREATE INDEX idx_health_snapshots_user ON health_snapshots(user_id);
 CREATE INDEX idx_health_snapshots_date ON health_snapshots(snapshot_date);
-
-CREATE TABLE push_subscriptions (
-    id           TEXT     PRIMARY KEY,
-    user_id      TEXT     NOT NULL REFERENCES users(id),
-    endpoint     TEXT     UNIQUE NOT NULL,
-    p256dh       TEXT     NOT NULL,
-    auth         TEXT     NOT NULL,
-    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX idx_push_subs_user ON push_subscriptions(user_id);
 
 CREATE TABLE auth_tokens (
     id         TEXT     PRIMARY KEY,
@@ -199,8 +190,9 @@ CREATE INDEX idx_ai_reports_user ON ai_reports(user_id, type, period_start DESC)
 
 -- Blocks are user-owned planned exercise groups (Beta). block_items
 -- rows are planned references to the exercise catalog with a
--- free-text target — not logged exercise entries (see migration
--- 00019_add_blocks.sql for the rationale).
+-- free-text target — not logged exercise entries: logged
+-- sets/sessions live in exercise_entries and feed history,
+-- charts, and exports, while a plan has no metrics yet.
 CREATE TABLE blocks (
     id               TEXT PRIMARY KEY,
     user_id          TEXT NOT NULL REFERENCES users(id),
@@ -226,8 +218,8 @@ CREATE TABLE block_items (
 );
 CREATE INDEX idx_block_items_block ON block_items(block_id, position);
 
--- Workouts are user-owned scheduled collections of blocks (see
--- migration 00020_add_workouts.sql). workout_blocks rows are ordered
+-- Workouts are user-owned scheduled collections of blocks.
+-- workout_blocks rows are ordered
 -- live references to blocks with their own per-block status.
 CREATE TABLE workouts (
     id             TEXT PRIMARY KEY,

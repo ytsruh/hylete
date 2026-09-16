@@ -144,16 +144,6 @@ type HealthSnapshot struct {
 	UpdatedAt                time.Time
 }
 
-type PushSubscription struct {
-	ID         string
-	UserID     string
-	Endpoint   string
-	P256dh     string
-	Auth       string
-	CreatedAt  time.Time
-	LastSeenAt time.Time
-}
-
 type User struct {
 	ID                   string
 	Name                 string
@@ -168,7 +158,6 @@ type User struct {
 	ReminderDayOfWeek    sql.NullInt64
 	ReminderTime         string
 	ReminderEmailEnabled int64
-	ReminderPushEnabled  int64
 	ReminderNextFireAt   sql.NullTime
 	ReminderLastFiredAt  sql.NullTime
 	AiOptIn              int64

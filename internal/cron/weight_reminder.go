@@ -75,7 +75,7 @@ const defaultMaxEmailWorkers = 10
 
 // UserReminder orchestrates the per-user weight reminder: for
 // every user whose next_fire_at is at or before the tick time, it
-// fires the user's chosen channel (email) and
+// sends the reminder email and
 // advances the user's next_fire_at by the appropriate stride
 // (24h for daily, 7d for weekly, 14d for biweekly). It is
 // constructed once in main and invoked by the Scheduler on every
