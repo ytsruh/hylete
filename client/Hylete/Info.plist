@@ -39,6 +39,8 @@
 	</dict>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Hylete reads steps, heart rate, and body measurements from Apple Health to show your daily activity alongside your workouts.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Hylete only reads activity from Apple Health to show alongside your workouts and does not save data to Health. iOS requires this description when HealthKit is enabled.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Inter_18pt-Regular.ttf</string>

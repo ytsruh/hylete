@@ -50,32 +50,50 @@ targets:
     # vitals (display-only, no workouts).
     # Fails the build early when the HealthKit entitlement goes
     # missing from Hylete.entitlements (Xcode's Signing &
-    # Capabilities editor has stripped it before). Without the
-    # key the app still compiles but every HealthKit
-    # authorization throws at runtime and the Health link fails
-    # silently — this turns that into a loud build error naming
-    # the fix instead.
+    # Capabilities editor has stripped it before), or when either
+    # HealthKit purpose string goes missing from Info.plist.
+    # Without the entitlement key the app still compiles but every
+    # HealthKit authorization throws at runtime and the Health link
+    # fails silently. Without BOTH plist keys App Store Connect
+    # rejects the upload with ITMS-90683 — even though the app is
+    # read-only (`toShare: []` in LiveHealthStore), Apple still
+    # requires NSHealthUpdateUsageDescription when the HealthKit
+    # capability is enabled. These checks turn both failures into
+    # loud build errors naming the fix instead.
     preBuildScripts:
       - script: |
           if ! grep -q "com.apple.developer.healthkit" "${SRCROOT}/Hylete/Hylete.entitlements"; then
             echo "error: Hylete/Hylete.entitlements is missing the com.apple.developer.healthkit key. HealthKit authorization will fail at runtime. Re-add the HealthKit capability (Signing & Capabilities) or restore the file, then rebuild."
             exit 1
           fi
+          if ! grep -q "NSHealthShareUsageDescription" "${SRCROOT}/Hylete/Info.plist"; then
+            echo "error: Hylete/Info.plist is missing NSHealthShareUsageDescription. HealthKit authorization will fail at runtime. Restore the key (see project.yml info.properties), re-run make gen, then rebuild."
+            exit 1
+          fi
+          if ! grep -q "NSHealthUpdateUsageDescription" "${SRCROOT}/Hylete/Info.plist"; then
+            echo "error: Hylete/Info.plist is missing NSHealthUpdateUsageDescription. App Store Connect rejects HealthKit builds without it (ITMS-90683), even for read-only apps. Restore the key (see project.yml info.properties), re-run make gen, then rebuild."
+            exit 1
+          fi
         name: Verify HealthKit entitlement
-        # Declared input doubles as a sandbox read grant:
-        # ENABLE_USER_SCRIPT_SANDBOXING is on, so without this
-        # the grep sees nothing and the check false-fails.
+        # Declared inputs double as sandbox read grants:
+        # ENABLE_USER_SCRIPT_SANDBOXING is on, so without these
+        # the greps see nothing and the checks false-fail.
         inputFiles:
           - Hylete/Hylete.entitlements
+          - Hylete/Info.plist
     info:
       path: Hylete/Info.plist
       properties:
         # Read-only Apple Health vitals (display-only, no workouts).
-        # Only the share (read) key is declared — there is no
-        # NSHealthUpdateUsageDescription because the app never
-        # writes to HealthKit. Wrapped behind BetaFeature until
-        # validated.
+        # BOTH keys are required: the app only reads (LiveHealthStore
+        # uses `toShare: []`), but App Store Connect rejects any
+        # HealthKit-enabled build missing either one with
+        # ITMS-90683. The update string honestly states we don't
+        # write — it exists because iOS mandates it when the
+        # HealthKit capability is on. Wrapped behind BetaFeature
+        # until validated.
         NSHealthShareUsageDescription: Hylete reads steps, heart rate, and body measurements from Apple Health to show your daily activity alongside your workouts.
+        NSHealthUpdateUsageDescription: Hylete only reads activity from Apple Health to show alongside your workouts and does not save data to Health. iOS requires this description when HealthKit is enabled.
         # Resolved per build configuration from the xcconfig
         # files (Hylete/Configs/*.xcconfig): "Hylete Dev" in
         # Debug, "Hylete" in Release — so dev and prod installs
