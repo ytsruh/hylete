@@ -229,3 +229,67 @@ func TestBuildWeeklyDisabled(t *testing.T) {
 		t.Fatalf("expected ErrDisabled, got %v", err)
 	}
 }
+
+// --- RunWeekly failure details (cron observability) ---
+
+type fakeUsersListErr struct{ err error }
+
+func (f fakeUsersListErr) GetUserByID(id string) (*models.User, error) { return nil, f.err }
+func (f fakeUsersListErr) ListAIOptedInUsers(ctx context.Context) ([]models.User, error) {
+	return nil, f.err
+}
+
+type errWeights struct{ err error }
+
+func (f errWeights) List(userID string) ([]models.WeightEntry, error) { return nil, f.err }
+
+func TestRunWeeklyListErrorRecordsDetail(t *testing.T) {
+	reports := &fakeReports{}
+	svc, err := NewService(fakeEntries{}, fakeWeights{}, fakeHealth{}, fakeGoals{},
+		fakeUsersListErr{err: context.DeadlineExceeded}, reports, &fakeClient{}, "test-model", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := svc.RunWeekly(context.Background(), time.Date(2026, 9, 14, 4, 0, 0, 0, time.UTC))
+	if res.Failures != 1 {
+		t.Fatalf("expected 1 failure, got %+v", res)
+	}
+	if res.ListError == "" {
+		t.Fatal("expected ListError to be set")
+	}
+	if len(res.FailuresDetail) != 1 {
+		t.Fatalf("expected 1 failure detail, got %+v", res)
+	}
+}
+
+func TestRunWeeklyPerUserFailureRecordsUserID(t *testing.T) {
+	user := &models.User{ID: "u1", AIOptIn: true, WeightUnit: "kg", DistanceUnit: "km"}
+	// Enough sessions to pass the thin-data gate would need LLM;
+	// instead force a data-load failure via the weights store so
+	// the per-user error path is exercised deterministically.
+	entries := []models.ExerciseEntry{
+		{ExerciseID: "e1", ExerciseName: "Squat", CreatedAt: time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)},
+		{ExerciseID: "e1", ExerciseName: "Squat", CreatedAt: time.Date(2026, 9, 11, 12, 0, 0, 0, time.UTC)},
+		{ExerciseID: "e1", ExerciseName: "Squat", CreatedAt: time.Date(2026, 9, 12, 12, 0, 0, 0, time.UTC)},
+	}
+	reports := &fakeReports{}
+	svc, err := NewService(fakeEntries{entries}, errWeights{err: context.DeadlineExceeded},
+		fakeHealth{}, fakeGoals{}, fakeUsers{user}, reports, &fakeClient{}, "test-model", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 14, 4, 0, 0, 0, time.UTC)
+	res := svc.RunWeekly(context.Background(), now)
+	if res.UsersSeen != 1 || res.Failures != 1 {
+		t.Fatalf("expected users=1 failures=1, got %+v", res)
+	}
+	if res.Generated != 0 || res.Reused != 0 {
+		t.Fatalf("expected no generated/reused, got %+v", res)
+	}
+	if len(res.FailuresDetail) != 1 || res.FailuresDetail[0].UserID != "u1" {
+		t.Fatalf("expected failure detail for u1, got %+v", res.FailuresDetail)
+	}
+	if res.FailuresDetail[0].Err == "" {
+		t.Fatal("expected non-empty error string")
+	}
+}

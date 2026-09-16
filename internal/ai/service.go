@@ -211,6 +211,16 @@ func (s *Service) BuildWeeklyReport(ctx context.Context, userID string, now time
 	return report, nil
 }
 
+// TickFailure is one per-user failure within a weekly tick. The
+// cron job logs each entry (user ID + error) so a failures=1 tick
+// can be diagnosed without re-running the batch.
+type TickFailure struct {
+	// UserID is empty when the failure happened before any user
+	// was processed (e.g. the opted-in user list was unreadable).
+	UserID string
+	Err    string
+}
+
 // TickResult summarises one cron run for the server log.
 type TickResult struct {
 	UsersSeen  int
@@ -219,11 +229,19 @@ type TickResult struct {
 	Failures   int
 	TokensIn   int
 	TokensOut  int
+	// FailuresDetail holds one entry per failed user (plus at most
+	// one entry with an empty UserID when listing users failed).
+	// The cron job logs these; callers that only need counts can
+	// ignore the slice.
+	FailuresDetail []TickFailure
+	// ListError is non-empty when the opted-in user list was
+	// unreadable. When set, no user was attempted.
+	ListError string
 }
 
 // RunWeekly iterates every opted-in user and builds their weekly
-// report. Per-user failures are counted (not returned) so one bad
-// row cannot abort the whole tick.
+// report. Per-user failures are counted and recorded (not returned
+// as an error) so one bad row cannot abort the whole tick.
 func (s *Service) RunWeekly(ctx context.Context, now time.Time) TickResult {
 	var res TickResult
 	if !s.Enabled() {
@@ -232,6 +250,8 @@ func (s *Service) RunWeekly(ctx context.Context, now time.Time) TickResult {
 	users, err := s.users.ListAIOptedInUsers(ctx)
 	if err != nil {
 		res.Failures++
+		res.ListError = err.Error()
+		res.FailuresDetail = append(res.FailuresDetail, TickFailure{Err: err.Error()})
 		return res
 	}
 	for _, u := range users {
@@ -240,6 +260,7 @@ func (s *Service) RunWeekly(ctx context.Context, now time.Time) TickResult {
 		report, err := s.BuildWeeklyReport(ctx, u.ID, now)
 		if err != nil {
 			res.Failures++
+			res.FailuresDetail = append(res.FailuresDetail, TickFailure{UserID: u.ID, Err: err.Error()})
 			continue
 		}
 		res.TokensIn += report.TokensIn

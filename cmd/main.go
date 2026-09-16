@@ -13,12 +13,12 @@ import (
 
 	aicoach "hylete/internal/ai"
 	"hylete/internal/controllers"
+	"hylete/internal/cron"
 	"hylete/internal/db"
 	"hylete/internal/email"
 	"hylete/internal/export"
 	"hylete/internal/imaging"
 	"hylete/internal/models"
-	"hylete/internal/cron"
 	"hylete/internal/routes"
 	"hylete/internal/utils"
 	"hylete/internal/views"
@@ -257,18 +257,20 @@ func main() {
 	defer scheduler.Stop()
 
 	// Start the weekly Coach scheduler. Same cron wrapper as the
-	// weight reminder; the tick logs its TickResult (users seen,
-	// generated, reused, failures, tokens) and per-user failures
-	// never abort the run. A disabled service makes RunWeekly a
-	// no-op returning a zero TickResult.
+	// weight reminder; the CoachWeekly job owns the tick logging
+	// (summary counters plus per-user failure lines) and per-user
+	// failures never abort the run. A disabled service makes
+	// RunWeekly a no-op returning a zero TickResult.
+	coachWeekly, err := cron.NewCoachWeekly(coachService, nil)
+	if err != nil {
+		log.Fatalf("Failed to initialize coach weekly job: %v", err)
+	}
 	coachScheduler, err := cron.NewCronScheduler(
 		coachWeeklyCronSpec,
 		time.UTC,
-		func(ctx context.Context) {
-			res := coachService.RunWeekly(ctx, time.Now())
-			log.Printf("coach: weekly tick users=%d generated=%d reused=%d failures=%d tokens_in=%d tokens_out=%d",
-				res.UsersSeen, res.Generated, res.Reused, res.Failures, res.TokensIn, res.TokensOut)
-		},
+		// The cron job discards the TickResult — every useful
+		// field is already written to the server log by the job.
+		func(ctx context.Context) { _ = coachWeekly.Run(ctx) },
 	)
 	if err != nil {
 		log.Fatalf("Failed to initialize coach scheduler: %v", err)
