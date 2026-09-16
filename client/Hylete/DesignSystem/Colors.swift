@@ -90,9 +90,16 @@ public enum DSColors {
     public static let destructive = Color("destructive", bundle: .main)
     /// Text on a destructive surface. Maps to web `--destructive-foreground`.
     public static let onDestructive = Color("destructive-foreground", bundle: .main)
-    /// Success state (toasts, confirmation icons). Not in the web
-    /// palette — uses Tailwind's green-500 (#22C55E).
+    /// Success state (toasts, confirmation icons). Maps to web `--success`
+    /// (#00C389 green).
     public static let success = Color("success", bundle: .main)
+    /// Text on a success surface. Maps to web `--success-foreground`.
+    public static let onSuccess = Color("success-foreground", bundle: .main)
+    /// Informational state (badges, highlights, info toasts).
+    /// Maps to web `--info` (#763EC1 purple).
+    public static let info = Color("info", bundle: .main)
+    /// Text on an info surface. Maps to web `--info-foreground`.
+    public static let onInfo = Color("info-foreground", bundle: .main)
 
     // MARK: - Chart palette
 

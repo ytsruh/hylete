@@ -48,6 +48,10 @@ public enum BrandColors {
         "accent-foreground":          "oklch(0.4732 0.1247 46.2007)  #92400E",
         "destructive":                "oklch(0.6368 0.2078 25.3313)  #EE4444",
         "destructive-foreground":     "oklch(1.0000 0.0000 0.0000)  #FEFEFE",
+        "success":                    "oklch(0.7229 0.1560 163.1133) #00C389 (green)",
+        "success-foreground":         "oklch(1.0000 0.0000 0.0000)  #FEFEFE",
+        "info":                       "oklch(0.5036 0.1942 298.7890) #763EC1 (purple)",
+        "info-foreground":            "oklch(1.0000 0.0000 0.0000)  #FEFEFE",
         "border":                     "oklch(0.9276 0.0058 264.5313) #E5E7EA",
         "input":                      "oklch(0.9276 0.0058 264.5313) #E5E7EA",
         "ring":                       "oklch(0.7686 0.1647 70.0804)  #F59D0A",
@@ -64,7 +68,6 @@ public enum BrandColors {
         "sidebar-accent-foreground":  "oklch(0.4732 0.1247 46.2007)  #92400E",
         "sidebar-border":             "oklch(0.9276 0.0058 264.5313) #E5E7EA",
         "sidebar-ring":               "oklch(0.7686 0.1647 70.0804)  #F59D0A",
-        "success":                    "(no web token)               #22C55E (Tailwind green-500)",
     ]
 
     // MARK: - Dark mode (`.dark` in styles/input.css)
@@ -86,6 +89,10 @@ public enum BrandColors {
         "accent-foreground":          "oklch(0.9243 0.1151 95.7459)  #FDE68A",
         "destructive":                "oklch(0.6368 0.2078 25.3313)  #EE4444",
         "destructive-foreground":     "oklch(1.0000 0.0000 0.0000)  #FEFEFE",
+        "success":                    "oklch(0.7229 0.1560 163.1133) #00C389 (green)",
+        "success-foreground":         "oklch(1.0000 0.0000 0.0000)  #FEFEFE",
+        "info":                       "oklch(0.5036 0.1942 298.7890) #763EC1 (purple)",
+        "info-foreground":            "oklch(1.0000 0.0000 0.0000)  #FEFEFE",
         "border":                     "oklch(0.3715 0.0000 0.0000)  #404040",
         "input":                      "oklch(0.3715 0.0000 0.0000)  #404040",
         "ring":                       "oklch(0.7686 0.1647 70.0804)  #F59D0A",
@@ -102,7 +109,6 @@ public enum BrandColors {
         "sidebar-accent-foreground":  "oklch(0.9243 0.1151 95.7459)  #FDE68A",
         "sidebar-border":             "oklch(0.3715 0.0000 0.0000)  #404040",
         "sidebar-ring":               "oklch(0.7686 0.1647 70.0804)  #F59D0A",
-        "success":                    "(no web token)               #22C55E (Tailwind green-500)",
     ]
 
     /// The brand orange in plain sRGB, for use in code that needs

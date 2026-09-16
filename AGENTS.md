@@ -21,6 +21,7 @@
 - Add documentation/annotations to code wherever possible to explain what functions, structs etc do.
 - Make use of `go doc` Go command to fetch documentation for packages/modules
 - When using HTMX, use existing patterns such as loading spinners and confirmation modals/dialogs
+- **Design system**: colours, theming, and component-library conventions (Basecoat CSS on web, SwiftUI on iOS) are documented in `Design.md` — read it before adding or changing any colour, token, or shared component.
 
 ## Technology & Architecture
 - **Tech stack**: Go 1.25+, Echo, Templ, Turso Sync (turso.tech/database/tursogo), htmx, Basecoat CSS
