@@ -20,6 +20,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>HYLETE_API_BASE_URL</key>
+	<string>$(HYLETE_API_SCHEME)://$(HYLETE_API_HOST)$(HYLETE_API_PATH)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -35,8 +37,6 @@
 			</dict>
 		</dict>
 	</dict>
-	<key>HYLETE_API_BASE_URL</key>
-	<string>$(HYLETE_API_SCHEME)://$(HYLETE_API_HOST)$(HYLETE_API_PATH)</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Hylete reads steps, heart rate, and body measurements from Apple Health to show your daily activity alongside your workouts.</string>
 	<key>UIAppFonts</key>
