@@ -141,7 +141,7 @@ type ReminderPreferencesDTO struct {
 
 // ReminderPreferencesFromModel converts the stored user row into
 // the DTO. Empty frequency reads as "off" and empty time as
-// "09:00" (matching the SQL column defaults in migrations 00009
+// "09:00" (matching the SQL column defaults in the schema
 // and the web form's empty-input behavior) so a never-touched
 // row decodes to a usable "reminders off" shape instead of a
 // blank picker.

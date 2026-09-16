@@ -1,10 +1,9 @@
 package emailtmpl
 
 // WeightReminderEmail is the HTML body of the per-user "time to
-// log your weight" reminder. It is the transactional counterpart
-// to the push notification fired by the same reminder job, so
-// the two share the same call-to-action: tap the button (or the
-// push), land on /weight/new, log the reading, optionally upload
+// log your weight" reminder. Reminders are email-only, so this
+// template IS the reminder: the call-to-action is to tap the
+// button, land on /weight/new, log the reading, optionally upload
 // a photo.
 //
 // The cadence is rendered into the title and the header blurb so

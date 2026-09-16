@@ -25,6 +25,7 @@ templ Layout(data PageData) {
 			<meta name="apple-mobile-web-app-capable" content="yes"/>
 			<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
 			<meta name="apple-mobile-web-app-title" content="Hylete"/>
+			<meta name="google-site-verification" content="vzQV9NoZiTZKDr86L-j6lk6Omhb61U-wx6Ee7w3Y64w"/>
 			<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"/>
 			<link rel="icon" type="image/png" href="/icons/favicon-96x96.png" sizes="96x96"/>
 			<link rel="icon" type="image/svg+xml" href="/icons/favicon.svg"/>
@@ -228,10 +229,12 @@ templ Layout(data PageData) {
 										data-variant="outline"
 										data-size="icon"
 									>
-										<span class="hidden dark:block">@components.Icon(components.IconProps{Name: "sun", Size: 16})
-</span>
-										<span class="block dark:hidden">@components.Icon(components.IconProps{Name: "moon", Size: 16})
-</span>
+										<span class="hidden dark:block">
+											@components.Icon(components.IconProps{Name: "sun", Size: 16})
+										</span>
+										<span class="block dark:hidden">
+											@components.Icon(components.IconProps{Name: "moon", Size: 16})
+										</span>
 									</button>
 								</div>
 							} else {
@@ -243,7 +246,7 @@ templ Layout(data PageData) {
 									// Desktop: full inline nav (md+). Keeps existing desktop look 1:1.
 									<div class="hidden md:flex items-center gap-2">
 										<a href="/" class="btn-ghost">Home</a>
-										<a href="/#features" class="btn-ghost">Features</a>
+										<a href="/features" class="btn-ghost">Features</a>
 										<a href="/login" class="btn" data-variant="outline" data-size="sm">Login</a>
 										<a href="/register" class="btn" data-size="sm">Sign Up</a>
 										<button
@@ -254,10 +257,12 @@ templ Layout(data PageData) {
 											data-variant="outline"
 											data-size="icon"
 										>
-											<span class="hidden dark:block">@components.Icon(components.IconProps{Name: "sun", Size: 16})
-</span>
-											<span class="block dark:hidden">@components.Icon(components.IconProps{Name: "moon", Size: 16})
-</span>
+											<span class="hidden dark:block">
+												@components.Icon(components.IconProps{Name: "sun", Size: 16})
+											</span>
+											<span class="block dark:hidden">
+												@components.Icon(components.IconProps{Name: "moon", Size: 16})
+											</span>
 										</button>
 									</div>
 									// Mobile: compact — theme toggle + Basecoat dropdown-menu containing all nav links.
@@ -270,10 +275,12 @@ templ Layout(data PageData) {
 											data-variant="outline"
 											data-size="icon"
 										>
-											<span class="hidden dark:block">@components.Icon(components.IconProps{Name: "sun", Size: 16})
-</span>
-											<span class="block dark:hidden">@components.Icon(components.IconProps{Name: "moon", Size: 16})
-</span>
+											<span class="hidden dark:block">
+												@components.Icon(components.IconProps{Name: "sun", Size: 16})
+											</span>
+											<span class="block dark:hidden">
+												@components.Icon(components.IconProps{Name: "moon", Size: 16})
+											</span>
 										</button>
 										<div class="dropdown-menu">
 											<button type="button" aria-label="Open menu" class="btn size-8" data-variant="ghost" data-size="icon">
@@ -282,7 +289,7 @@ templ Layout(data PageData) {
 											<div data-popover data-align="end" class="min-w-52">
 												<div role="menu" class="flex flex-col gap-1">
 													<a role="menuitem" href="/">Home</a>
-													<a role="menuitem" href="/#features">Features</a>
+													<a role="menuitem" href="/features">Features</a>
 													<div role="separator"></div>
 													<a role="menuitem" href="/login">Login</a>
 													<a role="menuitem" href="/register" class="font-medium">Sign Up</a>
@@ -308,7 +315,10 @@ templ Layout(data PageData) {
 						</div>
 						<nav class="flex items-center gap-4 md:gap-5 text-muted-foreground">
 							<a href="/" class="hover:text-foreground transition-colors py-1">Home</a>
+							<a href="/features" class="hover:text-foreground transition-colors py-1">Features</a>
 							<a href="/showcase" class="hover:text-foreground transition-colors py-1">Showcase</a>
+							<a href="/about" class="hover:text-foreground transition-colors py-1">About</a>
+							<a href="/privacy" class="hover:text-foreground transition-colors py-1">Privacy</a>
 							<a href="/register" class="hover:text-foreground transition-colors py-1">Sign up</a>
 							<a href="/login" class="hover:text-foreground transition-colors py-1">Login</a>
 						</nav>

@@ -11,7 +11,7 @@ import (
 // TestWeightRepository_RealDB exercises the weight repository against a
 // real (local, migrated) SQLite database rather than a mock. This is
 // the only coverage that runs the sqlc-generated weight queries
-// against the post-00018 schema (front/side/back_photo_key): a column
+// against the migrated schema (front/side/back_photo_key): a column
 // rename/add that compiles but doesn't match the database would
 // otherwise surface only at runtime as a 500 on GET /api/v1/weight.
 func TestWeightRepository_RealDB(t *testing.T) {

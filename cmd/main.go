@@ -28,7 +28,7 @@ import (
 // hourly "who is due for a weight reminder?" tick.
 // "0 * * * *" is minute=0, every hour, every day. Each
 // tick finds every user whose next_fire_at is at or before
-// now and fires their chosen channels. The per-user
+// now and sends their reminder email. The per-user
 // schedule (frequency, day-of-week, time) lives in the
 // users table — this is just the heartbeat.
 //

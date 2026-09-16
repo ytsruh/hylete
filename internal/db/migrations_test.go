@@ -7,7 +7,7 @@ import (
 )
 
 // TestMigrate_CreatesHealthSnapshotsTable boots a fresh local
-// database (running every embedded goose migration) and asserts
+// database (running the embedded goose migration) and asserts
 // the health_snapshots table, its uniqueness contract, and its
 // indexes exist. This is the only coverage that executes the
 // migration SQL itself — a syntax error here would otherwise
@@ -87,10 +87,10 @@ func TestMigrate_CreatesHealthSnapshotsTable(t *testing.T) {
 }
 
 // TestMigrate_WeightThreePhotoColumns boots a fresh local
-// database (running every embedded goose migration) and asserts
-// the weight_entries photo slots exist. Migration 00018 renames
-// photo_key to front_photo_key (all legacy photos are treated as
-// front-facing) and adds the side/back slots. This executes the
+// database (running the embedded goose migration) and asserts
+// the weight_entries photo slots exist. The squashed schema
+// declares front_photo_key (all legacy photos are treated as
+// front-facing) plus the side/back slots. This executes the
 // migration SQL itself — a syntax error there would otherwise
 // surface only at first boot.
 func TestMigrate_WeightThreePhotoColumns(t *testing.T) {
@@ -132,9 +132,9 @@ func TestMigrate_WeightThreePhotoColumns(t *testing.T) {
 }
 
 // TestMigrate_CreatesBlocksTables boots a fresh local database
-// (running every embedded goose migration) and asserts the blocks
+// (running the embedded goose migration) and asserts the blocks
 // and block_items tables plus their indexes exist. This executes
-// the 00019 migration SQL itself — a syntax error there would
+// the migration SQL itself — a syntax error there would
 // otherwise surface only at first boot.
 func TestMigrate_CreatesBlocksTables(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -163,9 +163,9 @@ func TestMigrate_CreatesBlocksTables(t *testing.T) {
 }
 
 // TestMigrate_CreatesWorkoutTables boots a fresh local database
-// (running every embedded goose migration) and asserts the workouts
+// (running the embedded goose migration) and asserts the workouts
 // and workout_blocks tables plus their indexes exist. This executes
-// the 00020 migration SQL itself — a syntax error there would
+// the migration SQL itself — a syntax error there would
 // otherwise surface only at first boot.
 func TestMigrate_CreatesWorkoutTables(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -194,9 +194,9 @@ func TestMigrate_CreatesWorkoutTables(t *testing.T) {
 }
 
 // TestMigrate_AddsExerciseAliasesColumn boots a fresh local
-// database (running every embedded goose migration) and asserts
+// database (running the embedded goose migration) and asserts
 // the exercises.aliases column exists. This executes the
-// 00012 migration SQL itself — a syntax error there would
+// migration SQL itself — a syntax error there would
 // otherwise surface only at first boot.
 func TestMigrate_AddsExerciseAliasesColumn(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")

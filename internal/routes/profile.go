@@ -46,16 +46,16 @@ type profileInput struct {
 }
 
 // defaultWeightUnit is used when the form omits the weight_unit field entirely
-// (e.g. on older forms). Matches the SQL DEFAULT in migration 00005.
+// (e.g. on older forms). Matches the SQL DEFAULT in the schema.
 const defaultWeightUnit = "kg"
 
 // defaultDistanceUnit is used when the form omits the distance_unit field.
-// Matches the SQL DEFAULT in migration 00010.
+// Matches the SQL DEFAULT in the schema.
 const defaultDistanceUnit = models.DistanceUnitKm
 
 // defaultReminderTime is the hour-of-day used when the form
 // omits reminder_time entirely. Matches the SQL DEFAULT in
-// migration 00009.
+// the schema.
 const defaultReminderTime = "09:00"
 
 // Profile renders the authenticated user's profile page.

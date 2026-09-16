@@ -135,7 +135,10 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	// signed-in web app lives under /dashboard. dashboardPath is
 	// the single source of truth for that URL across handlers.
 	e.GET("/", h.Home)
+	e.GET("/features", h.Features)
 	e.GET("/showcase", h.Showcase)
+	e.GET("/privacy", h.Privacy)
+	e.GET("/about", h.About)
 	e.GET("/dashboard", h.Dashboard)
 
 	// User profile
@@ -143,7 +146,8 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	e.POST("/profile", h.UpdateProfile)
 
 	// Feedback (user-facing form; submissions land in the admin
-	// feedback inbox). The dashboard's iOS banner links here.
+	// feedback inbox). The dashboard's iOS banner keeps this as a
+	// secondary "Get in touch" fallback.
 	e.GET("/feedback", h.FeedbackForm)
 	e.POST("/feedback", h.SubmitFeedback)
 

@@ -9,18 +9,24 @@ package components
 // subtle primary tint so banners read as "announcement" rather
 // than regular content cards.
 type BannerProps struct {
-	ID          string // Optional DOM id
-	Title       string // Headline (rendered as an h3)
+	ID string // Optional DOM id
+	Title string // Headline (rendered as an h3)
 	Description string // Supporting copy under the headline (optional)
-	LinkHref    string // Destination of the call-to-action (optional)
-	LinkLabel   string // Call-to-action label (optional)
-	IconName    string // Lucide icon name shown in the accent chip (optional)
-	Class       string // Additional CSS classes appended to the card classes
+	LinkHref string // Destination of the call-to-action (optional)
+	LinkLabel string // Call-to-action label (optional)
+	LinkTarget string // Optional anchor target for the primary CTA (e.g. "_blank" for external links)
+	LinkRel string // Optional anchor rel for the primary CTA (e.g. "noopener noreferrer" with _blank)
+	SecondaryLinkHref string // Destination of the secondary call-to-action (optional)
+	SecondaryLinkLabel string // Secondary call-to-action label (optional)
+	IconName string // Lucide icon name shown in the accent chip (optional)
+	Class string // Additional CSS classes appended to the card classes
 }
 
 // Banner renders a horizontal announcement banner: accent icon
-// chip, headline + description, and an optional call-to-action
-// link. On narrow screens the layout stacks vertically.
+// chip, headline + description, and optional primary and secondary
+// call-to-action links. Both CTAs stack vertically: the primary
+// renders as a solid primary button, the secondary as an outlined
+// button. On narrow screens the whole banner stacks vertically.
 func Banner(props BannerProps) templ.Component {
 	return bannerComponent(props)
 }
@@ -28,7 +34,7 @@ func Banner(props BannerProps) templ.Component {
 templ bannerComponent(props BannerProps) {
 	<div id={ props.ID } class={ "card flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-4 " + props.Class }>
 		if props.IconName != "" {
-			<div class="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg">
+			<div class="bg-primary/10 text-primary hidden md:flex size-10 shrink-0 items-center justify-center rounded-lg">
 				@Icon(IconProps{Name: props.IconName, Size: 20})
 			</div>
 		}
@@ -39,9 +45,31 @@ templ bannerComponent(props BannerProps) {
 			}
 		</section>
 		if props.LinkHref != "" {
-			<a href={ templ.URL(props.LinkHref) } class="btn-outline shrink-0 w-full sm:w-auto">
-				{ props.LinkLabel }
-			</a>
+			<div class="flex flex-col items-stretch gap-2 shrink-0 w-full sm:w-auto">
+				<a
+					href={ templ.URL(props.LinkHref) }
+					if props.LinkTarget != "" {
+						target={ props.LinkTarget }
+					}
+					if props.LinkRel != "" {
+						rel={ props.LinkRel }
+					}
+					class="btn shrink-0 w-full text-center"
+				>
+					{ props.LinkLabel }
+				</a>
+				if props.SecondaryLinkHref != "" {
+					<a href={ templ.URL(props.SecondaryLinkHref) } class="btn-outline shrink-0 w-full text-center">
+						{ props.SecondaryLinkLabel }
+					</a>
+				}
+			</div>
+		} else if props.SecondaryLinkHref != "" {
+			<div class="flex flex-col items-stretch gap-2 shrink-0 w-full sm:w-auto">
+				<a href={ templ.URL(props.SecondaryLinkHref) } class="btn-outline shrink-0 w-full text-center">
+					{ props.SecondaryLinkLabel }
+				</a>
+			</div>
 		}
 	</div>
 }

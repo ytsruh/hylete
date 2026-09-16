@@ -1,0 +1,188 @@
+package views
+
+// About renders the public about page at "/about".
+//
+// Overview plus FAQ. The FAQ uses the Basecoat accordion
+// component (native details/summary, single bundle in
+// public/js/basecoat.js) with data-multiple so visitors can
+// keep several answers open while comparing them.
+templ About() {
+	@Layout(PageData{Title: "About | Hylete"}) {
+		<section class="mx-auto flex max-w-3xl flex-col gap-8 py-10 sm:py-14">
+			<div class="flex flex-col items-start gap-4">
+				<span class="badge bg-primary text-primary-foreground border-primary px-3 py-1 text-sm h-auto">
+					About Hylete
+				</span>
+				<h1 class="text-3xl font-bold tracking-[-0.02em] leading-[1.05] sm:text-4xl">
+					Built for people who train.
+				</h1>
+				<p class="text-base leading-7 text-muted-foreground sm:text-[17px]">
+					Hylete is a free fitness training tracker for iPhone with a
+					read-only web companion. Log fast, see your progress clearly,
+					and keep owning your data.
+				</p>
+			</div>
+			<div class="flex flex-col gap-3">
+				<h2 class="text-xl font-semibold tracking-tight">Our background</h2>
+				<p class="text-[15px] leading-6 text-muted-foreground">
+					Hylete started from a simple frustration: most workout apps either
+					drown you in clutter or lock your own training history behind
+					subscriptions, trackers, and exports that never quite work. We
+					wanted the opposite — a quiet tool that gets out of the way
+					between sets and tells an honest story about your progress over
+					months and years.
+				</p>
+				<p class="text-[15px] leading-6 text-muted-foreground">
+					So logging lives where it should: on your iPhone, in the gym, in
+					seconds. Strength work is reps, weight, rest time, and notes;
+					cardio is duration and distance with optional heart rate and
+					calories. Every exercise entry builds personal bests,
+					progression charts, and per-exercise history automatically, so
+					seeing that you are improving never takes extra effort.
+				</p>
+				<p class="text-[15px] leading-6 text-muted-foreground">
+					The web app is a deliberate companion, not a second place to
+					type workouts. It keeps your history readable from anywhere:
+					dashboard, exercise history and charts, weigh-ins with optional
+					progress photos, goals with timers, and one-click bulk export
+					of everything. If you logged it, you can read it and take it
+					with you. If you didn't log it, we don't have it.
+				</p>
+				<p class="text-[15px] leading-6 text-muted-foreground">
+					Privacy is structural, not a promise in a popup. There are no
+					advertising trackers or third-party cookies, your data is never
+					sold or shared, and the infrastructure is kept small on purpose:
+					hosting, database sync, and the transactional emails you ask
+					for. Storing extra data would only cost us money, so we don't.
+					Our optional Coach reviews are entirely opt-in and off by
+					default, and you can export everything — every set, every
+					weigh-in, every photo — whenever you like.
+				</p>
+				<p class="text-[15px] leading-6 text-muted-foreground">
+					Hylete is an independent, iPhone-first project. We are keeping
+					the core tracker free while we grow, and the only things we
+					plan to charge for are the things that directly cost us: AI
+					reviews and tools for coaches who program training for their
+					clients. That keeps incentives aligned — we succeed when your
+					training succeeds, not when your attention is sold. Until
+					then, every decision favours the lifter logging today over
+					hypothetical revenue tomorrow, and the free tracker stays
+					free.
+				</p>
+			</div>
+			<div>
+				<div class="flex flex-col gap-y-2">
+					<h2 class="text-xl font-semibold tracking-tight">Frequently asked questions</h2>
+					<p class="text-muted-foreground">Short answers to the questions we hear most.</p>
+				</div>
+				<section class="accordion" data-multiple>
+					<details open>
+						<summary>
+							Is Hylete really free?
+							<svg class="lucide lucide-chevron-down" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+						</summary>
+						<section>
+							<p class="text-[15px] leading-6 text-muted-foreground">
+								Yes. Logging, history, charts, weigh-ins, goals, reminders,
+								and full data export are free. Hylete is cheap to run at our
+								current scale, so there is no paywall on the core tracker
+								and no ads or data-selling to work around. We intend to keep
+								it free forever.
+							</p>
+						</section>
+					</details>
+					<details>
+						<summary>
+							How does it make money?
+							<svg class="lucide lucide-chevron-down" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+						</summary>
+						<section>
+							<p class="text-[15px] leading-6 text-muted-foreground">
+								It doesn't yet — by design. The app is inexpensive to run
+								until user numbers grow significantly (thousands). In the future we plan
+								to charge for exactly two things that cost us money: AI
+								Coach reviews (model inference isn't free) and tools for
+								coaches who run their clients' training calendars. Individual
+								training tracking stays free.
+							</p>
+						</section>
+					</details>
+					<details>
+						<summary>
+							Why iOS only?
+							<svg class="lucide lucide-chevron-down" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+						</summary>
+						<section>
+							<p class="text-[15px] leading-6 text-muted-foreground">
+								Focus. Hylete is an independent project and the iPhone is
+								where logging happens — in the gym, between sets. Doing one
+								client well beats doing three badly. The web companion keeps
+								your history readable anywhere, and you can export everything
+								at any time, so your data is never trapped on one platform.
+							</p>
+							<p class="text-[15px] leading-6 text-muted-foreground">
+								We'll consider adding an Android app in the future. For now, we'll ensure our web companion works well on all devices and is an installable Progressive Web App (PWA). You can find out more about PWA's <a class="underline underline-offset-4 hover:text-foreground" href="https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps" target="_blank" rel="noopener noreferrer">here.</a>
+							</p>
+						</section>
+					</details>
+					<details>
+						<summary>
+							What is your AI policy?
+							<svg class="lucide lucide-chevron-down" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+						</summary>
+						<section>
+							<p class="text-[15px] leading-6 text-muted-foreground">
+								All AI features (called Coach) are entirely opt-in and off by
+								default. No training data is ever sent to AI models without
+								your express consent. If you opt in, your data goes to
+								Cloudflare Workers AI solely to generate your weekly review —
+								never for advertising, never sold or shared. You can opt out
+								at any time, which stops all future AI processing. Past
+								reviews stay visible until you ask us to delete your data.
+								Read the full detail on the <a href="/privacy" class="underline underline-offset-4 hover:text-foreground">privacy page</a>.
+							</p>
+						</section>
+					</details>
+					<details>
+						<summary>
+							How safe is my data?
+							<svg class="lucide lucide-chevron-down" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+						</summary>
+						<section>
+							<p class="text-[15px] leading-6 text-muted-foreground">
+								We store only what the app needs to work — your account,
+								exercise entries, weigh-ins, photos, goals, and reminder
+								preferences — and never sell or share it. There are no ads,
+								trackers, or third-party cookies. Anything that sends data
+								anywhere else is opt-in: Coach AI reviews and weight reminder
+								emails are both off by default and stop the moment you switch
+								them off. And everything stays yours to take with you: the
+								<a href="/export" class="underline underline-offset-4 hover:text-foreground">Data Export page</a>
+								downloads every exercise entry and weigh-in, photos included,
+								at any time. Read the full detail on the <a href="/privacy" class="underline underline-offset-4 hover:text-foreground">privacy page</a>.
+							</p>
+						</section>
+					</details>
+					<details>
+						<summary>
+							How can I download the app?
+							<svg class="lucide lucide-chevron-down" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+						</summary>
+						<section>
+							<p class="text-[15px] leading-6 text-muted-foreground">
+								For now we're in public beta so the app is not available in the App Store. If you sign up for an account you will find a link inside that allows you to register your device and download the app. All features are available in the public beta.
+							</p>
+						</section>
+					</details>
+				</section>
+			</div>
+			<div class="flex flex-col gap-3">
+				<h2 class="text-xl font-semibold tracking-tight">Contact</h2>
+				<p class="text-[15px] leading-6 text-muted-foreground">
+					Questions about Hylete or your data? Email
+					<a href="mailto:support@hyleteapp.com" class="underline underline-offset-4 hover:text-foreground">support@hyleteapp.com</a>.
+				</p>
+			</div>
+		</section>
+	}
+}

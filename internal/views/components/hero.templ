@@ -1,0 +1,78 @@
+package components
+
+// HeroProps configures the shared marketing hero: full-bleed
+// background image with dark overlay and centred white copy.
+//
+// Variant selects the height: "large" reproduces the homepage hero
+// (72–82vh); "compact" is the slimmer sibling (~32–36vh) used by
+// content pages like /features. Per-page calls to action render via
+// the children slot so each call site keeps its own buttons.
+type HeroProps struct {
+	Eyebrow string // Badge text, e.g. "Available for iPhone" / "Features"
+	Title   string
+	Sub     string
+	Image   string // Background image path, e.g. "/img/homepage-hero.jpg"
+	Variant string // "large" (default) or "compact"
+}
+
+// Hero renders a full-bleed image hero with overlay and centred copy.
+templ Hero(props HeroProps) {
+	<section class={ getHeroSectionClasses(props.Variant) }>
+		<div aria-hidden="true" class="absolute inset-0">
+			<img
+				src={ props.Image }
+				alt=""
+				class="h-full w-full object-cover object-center"
+				loading="eager"
+				decoding="async"
+			/>
+			<div class="absolute inset-0 bg-black/50 dark:bg-black/65"></div>
+			<div class="absolute inset-0 bg-linear-to-t from-black/30 dark:from-black/40 via-black/5 dark:via-black/10 to-black/15 dark:to-black/25"></div>
+		</div>
+		<div class={ getHeroInnerClasses(props.Variant) }>
+			<span class="badge bg-primary text-primary-foreground border-primary px-3 py-1 text-sm h-auto">
+				{ props.Eyebrow }
+			</span>
+			<h1 class={ getHeroTitleClasses(props.Variant) }>
+				{ props.Title }
+			</h1>
+			<p class={ getHeroSubClasses(props.Variant) }>
+				{ props.Sub }
+			</p>
+			{ children... }
+		</div>
+	</section>
+}
+
+// getHeroSectionClasses returns the outer section sizing for a variant.
+func getHeroSectionClasses(variant string) string {
+	base := "relative left-1/2 flex w-screen -translate-x-1/2 -mt-4 items-center justify-center overflow-hidden px-4 text-center md:-mt-8"
+	if variant == "compact" {
+		return base + " min-h-[32vh] py-10 sm:min-h-[36vh] sm:py-14"
+	}
+	return base + " min-h-[72vh] py-16 sm:min-h-[78vh] sm:py-20 lg:min-h-[82vh]"
+}
+
+// getHeroInnerClasses returns the copy container for a variant.
+func getHeroInnerClasses(variant string) string {
+	if variant == "compact" {
+		return "relative flex max-w-2xl flex-col items-center gap-5"
+	}
+	return "relative flex max-w-3xl flex-col items-center gap-6 sm:gap-7"
+}
+
+// getHeroTitleClasses returns the h1 sizing for a variant.
+func getHeroTitleClasses(variant string) string {
+	if variant == "compact" {
+		return "text-balance text-3xl font-bold tracking-[-0.02em] leading-[1.05] text-white sm:text-4xl lg:text-[2.5rem]"
+	}
+	return "text-4xl font-bold tracking-[-0.02em] leading-[1.05] text-white sm:text-5xl lg:text-[3.25rem]"
+}
+
+// getHeroSubClasses returns the sub-copy styling for a variant.
+func getHeroSubClasses(variant string) string {
+	if variant == "compact" {
+		return "max-w-2xl text-pretty text-base leading-7 text-white/80 sm:text-[17px]"
+	}
+	return "max-w-2xl text-base leading-relaxed text-white/80 sm:text-lg"
+}

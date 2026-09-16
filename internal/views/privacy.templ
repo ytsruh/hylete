@@ -1,0 +1,93 @@
+package views
+
+// Privacy renders the public privacy policy page at "/privacy".
+//
+// Deliberately short and plain-English: what we store, what we
+// don't do, your controls, and the opt-in AI section.
+templ Privacy() {
+	@Layout(PageData{Title: "Privacy | Hylete"}) {
+		<section class="mx-auto flex max-w-3xl flex-col gap-8 py-10 sm:py-14">
+			<div class="flex flex-col items-start gap-4">
+				<span class="badge bg-primary text-primary-foreground border-primary px-3 py-1 text-sm h-auto">
+					Privacy done right
+				</span>
+				<h1 class="text-3xl font-bold tracking-[-0.02em] leading-[1.05] sm:text-4xl">
+					Privacy, in plain English.
+				</h1>
+				<p class="text-base leading-7 text-muted-foreground sm:text-[17px]">
+					Hylete tracks your workouts so you can see your progress.
+					That's it. This page explains what we keep, what we never do,
+					and how to take your data with you.
+				</p>
+				<p class="text-sm text-muted-foreground">Last updated: September 2026</p>
+			</div>
+			<div class="card gap-3 p-5 sm:p-6">
+				<h2 class="text-lg font-semibold tracking-tight">The short version</h2>
+				<ul class="flex list-disc flex-col gap-2 pl-5 text-[15px] leading-6 text-muted-foreground">
+					<li>We store only what the app needs to work: your account and the workouts, weigh-ins, photos, and goals you log.</li>
+					<li>We don't sell or share your data. We don't run ads or trackers.</li>
+					<li>We don't use third-party cookies.</li>
+					<li>We keep third parties to a minimum (hosting, database sync, and sending emails you asked for).</li>
+					<li>We don't want to store extra data — storing data costs us money.</li>
+				</ul>
+			</div>
+			<div class="flex flex-col gap-3">
+				<h2 class="text-xl font-semibold tracking-tight">What we store</h2>
+				<ul class="flex list-disc flex-col gap-2 pl-5 text-[15px] leading-6 text-muted-foreground">
+					<li>Your account: name, email, and password (stored hashed, we can't read it).</li>
+					<li>Your training: exercise entries, weigh-ins, progress photos, goals, and reminder preferences.</li>
+					<li>Feedback you choose to send us.</li>
+				</ul>
+				<p class="text-[15px] leading-6 text-muted-foreground">
+					If you didn't type it in or log it in the app, we don't have it.
+				</p>
+			</div>
+			<div class="flex flex-col gap-3">
+				<h2 class="text-xl font-semibold tracking-tight">What we never do</h2>
+				<ul class="flex list-disc flex-col gap-2 pl-5 text-[15px] leading-6 text-muted-foreground">
+					<li>No selling or sharing your data with anyone else.</li>
+					<li>No advertising, analytics trackers, or third-party cookies.</li>
+					<li>No collecting data "just in case". Every field we store exists because a feature needs it.</li>
+				</ul>
+			</div>
+			<div class="flex flex-col gap-3">
+				<h2 class="text-xl font-semibold tracking-tight">Third parties</h2>
+				<p class="text-[15px] leading-6 text-muted-foreground">
+					We use a small number of infrastructure providers to run the service —
+					hosting, database sync, and sending transactional emails such as
+					password resets and the reminders you turn on. They only process
+					what's needed to deliver those functions, and never for advertising.
+				</p>
+			</div>
+			<div class="flex flex-col gap-3">
+				<h2 class="text-xl font-semibold tracking-tight">Your control</h2>
+				<ul class="flex list-disc flex-col gap-2 pl-5 text-[15px] leading-6 text-muted-foreground">
+					<li>Export everything at any time from the <a href="/export" class="underline underline-offset-4 hover:text-foreground">Data Export page</a> (exercise entries and weigh-ins, including photos).</li>
+					<li>To delete your data, export first if you want a copy, then email <a href="mailto:support@hyleteapp.com" class="underline underline-offset-4 hover:text-foreground">support@hyleteapp.com</a> and we'll delete your account and data.</li>
+					<li>Self-serve deletion in the app is coming soon.</li>
+				</ul>
+			</div>
+			<div class="card gap-3 border-info/40 p-5 sm:p-6">
+				<h2 class="text-xl font-semibold tracking-tight">AI Privacy</h2>
+				<p class="text-[15px] font-medium leading-6">
+					All AI features (called Coach) are entirely opt-in and can be disabled at any time.
+				</p>
+				<ul class="flex list-disc flex-col gap-2 pl-5 text-[15px] leading-6 text-muted-foreground">
+					<li>No data is ever sent to AI models or LLMs without your express consent — AI is off by default.</li>
+					<li>If you opt in, your training data is sent to Cloudflare Workers AI solely to generate your weekly review. It is not used for advertising and is not sold or shared.</li>
+					<li>You can opt out again at any time. Opting out stops all future AI processing — no new data is sent and no new reviews are generated.</li>
+					<li>We prefer open-source models for AI features — these typically run self-hosted — but we don't guarantee it.</li>
+					<li>We continually test new models, including proprietary ones, to improve your reviews. Your data only ever goes to whichever model is current, and only while you're opted in.</li>
+					<li>Past weekly reviews stay visible until you ask us to delete your data (email <a href="mailto:support@hyleteapp.com" class="underline underline-offset-4 hover:text-foreground">support@hyleteapp.com</a>).</li>
+				</ul>
+			</div>
+			<div class="flex flex-col gap-3">
+				<h2 class="text-xl font-semibold tracking-tight">Contact</h2>
+				<p class="text-[15px] leading-6 text-muted-foreground">
+					Questions about privacy or your data? Email
+					<a href="mailto:support@hyleteapp.com" class="underline underline-offset-4 hover:text-foreground">support@hyleteapp.com</a>.
+				</p>
+			</div>
+		</section>
+	}
+}
