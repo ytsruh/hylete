@@ -143,7 +143,8 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	e.POST("/profile", h.UpdateProfile)
 
 	// Feedback (user-facing form; submissions land in the admin
-	// feedback inbox). The dashboard's iOS banner links here.
+	// feedback inbox). The dashboard's iOS banner keeps this as a
+	// secondary "Get in touch" fallback.
 	e.GET("/feedback", h.FeedbackForm)
 	e.POST("/feedback", h.SubmitFeedback)
 

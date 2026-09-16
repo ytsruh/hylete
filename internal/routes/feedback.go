@@ -12,10 +12,10 @@ import (
 )
 
 // FeedbackForm renders the user-facing GET /feedback page. The
-// dashboard's iOS banner links here so web users can get in
-// touch (e.g. to request iOS access). Authentication is enforced
-// by the global auth middleware — /feedback is not in the public
-// route list.
+// dashboard's iOS banner keeps it as a secondary "Get in touch"
+// fallback (e.g. for users who need help with iOS access).
+// Authentication is enforced by the global auth middleware —
+// /feedback is not in the public route list.
 func (h *Handler) FeedbackForm(c echo.Context) error {
 	claims := GetClaims(c)
 	return render(c, feedback.FeedbackPage(claims.Name, true, claims.IsAdmin))

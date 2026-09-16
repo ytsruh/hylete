@@ -34,19 +34,31 @@ templ Dashboard(exerciseEntries []models.ExerciseEntry, userName string, isAuthe
 	}
 }
 
+// testFlightURL is the public TestFlight join link for the Hylete
+// iOS beta. It is only rendered inside the authenticated dashboard
+// banner (see iosAppBanner) — never on a public route — so only
+// logged-in users can discover it via the served HTML.
+const testFlightURL = "https://testflight.apple.com/join/QW2zzxcM"
+
 // iosAppBanner renders the "Hylete is on iPhone" promo banner at
 // the top of the dashboard (both the empty and populated states).
 // Exercise logging happens in the iOS client — the web is a
-// read-only companion — so the banner invites web users to get
-// in touch via the feedback form to be set up with iOS access.
-// Submissions land in the admin feedback inbox.
+// read-only companion — so the banner invites web users to join
+// the TestFlight beta themselves via testFlightURL (opened in a
+// new tab). The secondary "Get in touch" link keeps the feedback
+// form fallback for users who need help. Submissions land in the
+// admin feedback inbox.
 templ iosAppBanner() {
 	@components.Banner(components.BannerProps{
-		Title:       "Hylete is on iPhone",
-		Description: "Logging your sets happens in the Hylete iOS app. Want access? Get in touch and we'll set you up.",
-		LinkHref:    "/feedback",
-		LinkLabel:   "Get in touch",
-		IconName:    "smartphone",
+		Title:              "Hylete is on iPhone",
+		Description:        "Logging your sets happens in the Hylete iOS app. Join the TestFlight beta to install it yourself — or get in touch and we'll help.",
+		LinkHref:           testFlightURL,
+		LinkLabel:          "Join the Beta",
+		LinkTarget:         "_blank",
+		LinkRel:            "noopener noreferrer",
+		SecondaryLinkHref:  "/feedback",
+		SecondaryLinkLabel: "Get in touch",
+		IconName:           "smartphone",
 	})
 }
 

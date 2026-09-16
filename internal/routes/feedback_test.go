@@ -188,7 +188,17 @@ func TestDashboard_ShowsIOSBanner(t *testing.T) {
 		t.Fatalf("Dashboard failed: %v", err)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Hylete is on iPhone", `href="/feedback"`} {
+	for _, want := range []string{
+		"Hylete is on iPhone",
+		// Primary self-serve TestFlight CTA (external, new tab).
+		`href="https://testflight.apple.com/join/QW2zzxcM"`,
+		`target="_blank"`,
+		`rel="noopener noreferrer"`,
+		"Join the Beta",
+		// Secondary fallback to the feedback form.
+		`href="/feedback"`,
+		"Get in touch",
+	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("expected dashboard to contain banner text %q", want)
 		}
@@ -209,6 +219,9 @@ func TestDashboard_EmptyState_ShowsIOSBanner(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, "Hylete is on iPhone") {
 		t.Error("expected banner on empty dashboard too")
+	}
+	if !strings.Contains(body, `href="https://testflight.apple.com/join/QW2zzxcM"`) {
+		t.Error("expected TestFlight CTA on empty dashboard too")
 	}
 	if !strings.Contains(body, "No workouts in the last 7 days") {
 		t.Error("expected empty state alongside banner")

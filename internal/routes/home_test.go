@@ -59,6 +59,26 @@ func TestHome_AuthenticatedRedirectsToDashboard(t *testing.T) {
 	}
 }
 
+// TestHome_LandingHidesTestFlightURL guards the beta invite:
+// the TestFlight join link is only rendered inside the
+// authenticated dashboard banner, so the public landing page must
+// never leak it (or its join code) to anonymous visitors.
+func TestHome_LandingHidesTestFlightURL(t *testing.T) {
+	_, _, _, e := setupHandler(t)
+
+	rec := newRecorder()
+	e.ServeHTTP(rec, req("GET", "/"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, leaked := range []string{"testflight.apple.com", "QW2zzxcM"} {
+		if strings.Contains(body, leaked) {
+			t.Errorf("public landing page must not contain %q", leaked)
+		}
+	}
+}
+
 // TestDashboardRoute_RequiresAuth guards the route move itself:
 // the web app moved from "/" to /dashboard, so an unauthenticated
 // GET /dashboard must still be redirected to /login by the auth
