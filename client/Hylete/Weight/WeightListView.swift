@@ -22,12 +22,16 @@ struct WeightListView: View {
     @State private var showingNewWeight: Bool = false
     @State private var editingEntry: WeightEntryDTO?
     @State private var showingComparePicker: Bool = false
+    /// The compared pair driving the slider sheet via
+    /// `.sheet(item:)`. Item-based (not `isPresented` + `if let`)
+    /// so the sheet can never capture a nil comparison and present
+    /// blank, and swipe-to-dismiss nils the binding so retrying the
+    /// identical pair is always a nil → non-nil change.
     @State private var comparison: WeightCompareResponse?
-    @State private var showingComparison: Bool = false
     /// Holds the freshly-fetched pair while the picker dismisses.
-    /// Presenting the comparison sheet only after the picker's
-    /// dismissal completes avoids stacking two sheets, which
-    /// otherwise presents a blank sheet.
+    /// Assigned to `comparison` on the next runloop after the
+    /// picker's dismissal completes — presenting mid-dismissal
+    /// yields a blank sheet.
     @State private var pendingComparison: WeightCompareResponse?
 
     /// Sorted chart points (oldest-first) so the chart
@@ -100,14 +104,16 @@ struct WeightListView: View {
                     .environmentObject(authStore)
             }
             .sheet(isPresented: $showingComparePicker, onDismiss: {
-                // Present the slider only once the picker is fully
-                // gone — presenting mid-dismissal yields a blank
+                // Hand the pair to the slider only once the picker
+                // is fully gone, on the next runloop — presenting
+                // synchronously inside dismissal yields a blank
                 // sheet. Cancelling leaves pendingComparison nil so
                 // nothing presents.
                 if let pending = pendingComparison {
                     pendingComparison = nil
-                    comparison = pending
-                    showingComparison = true
+                    DispatchQueue.main.async {
+                        comparison = pending
+                    }
                 }
             }) {
                 WeightComparePickerView(
@@ -120,13 +126,12 @@ struct WeightListView: View {
                 )
                 .environmentObject(env)
             }
-            .sheet(isPresented: $showingComparison) {
-                if let comparison {
-                    WeightComparisonView(
-                        comparison: comparison,
-                        weightUnit: weightUnit
-                    )
-                }
+            .sheet(item: $comparison) { response in
+                WeightComparisonView(
+                    comparison: response,
+                    weightUnit: weightUnit
+                )
+                .id(response.id)
             }
             .task { await store.load() }
             .refreshable { await store.load() }

@@ -1908,11 +1908,16 @@ public struct WeightEntriesResponse: Decodable, Equatable {
 /// returns the pair in chronological order so the client can
 /// render `before` and `after` without duplicating that business
 /// rule. `angle` echoes the compared slot (front/side/back).
-public struct WeightCompareResponse: Decodable, Equatable {
+public struct WeightCompareResponse: Decodable, Equatable, Identifiable {
     public let before: WeightEntryDTO
     public let after: WeightEntryDTO
     public let angle: String
     public let deltaText: String
+
+    /// Stable sheet identity for `.sheet(item:)`: the chronological
+    /// pair plus the compared angle. A computed (non-stored) id so
+    /// the wire format is unchanged.
+    public var id: String { "\(before.id)|\(after.id)|\(angle)" }
 
     enum CodingKeys: String, CodingKey {
         case before
