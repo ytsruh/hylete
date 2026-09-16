@@ -111,7 +111,8 @@ var publicFS = http.Dir("public")
 //   - Named routes: "/" (the marketing landing page; the Home handler
 //     redirects anyone carrying a valid session cookie to the dashboard),
 //     the auth pages (/login, /register, /forgot, /reset) and their
-//     JSON API mirrors. /forgot and /reset must be reachable logged-out
+//     JSON API mirrors, plus the public content pages (/showcase,
+//     /privacy) which never redirect authenticated visitors away. /forgot and /reset must be reachable logged-out
 //     so a user can still request a reset link and follow it; the
 //     /reset POST handler additionally checks the token before mutating
 //     anything, so this is not a security hole. The /api/v1/auth/logout
@@ -136,6 +137,7 @@ func isPublicRoute(path string) bool {
 		"/forgot",
 		"/reset",
 		"/showcase",
+		"/privacy",
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
 		"/api/v1/auth/password-reset/request",

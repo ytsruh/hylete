@@ -136,6 +136,7 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	// the single source of truth for that URL across handlers.
 	e.GET("/", h.Home)
 	e.GET("/showcase", h.Showcase)
+	e.GET("/privacy", h.Privacy)
 	e.GET("/dashboard", h.Dashboard)
 
 	// User profile
