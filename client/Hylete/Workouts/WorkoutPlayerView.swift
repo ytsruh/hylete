@@ -1,3 +1,4 @@
+import HealthKit
 import SwiftUI
 
 /// Full-screen Workout Player. Presented from `WorkoutDetailView`'s
@@ -42,6 +43,12 @@ struct WorkoutPlayerView: View {
 
     @ObservedObject var workoutStore: WorkoutStore
     @StateObject private var player: WorkoutPlayerStore
+    /// Owner for the explicit-start Apple Health recording (live
+    /// `HKWorkoutSession`). Separate from `player` so a Health
+    /// denial or failure can never block set logging. Starts
+    /// with no inferred type; the real default is adopted once
+    /// items load (see the load task below).
+    @StateObject private var healthStore: PlayerHealthStore
     /// The player-scoped single shared timer. Block header
     /// chips start timers here; the sticky pill and expanded
     /// sheet render this store. Never persisted — a timer is
@@ -84,11 +91,20 @@ struct WorkoutPlayerView: View {
     /// (the task additionally re-checks `isComplete`, so only
     /// a genuine completion can hide the pill).
     @State private var pillDismissGeneration = 0
+    /// Paged player index: 0 = logging, 1 = Live Health stats.
+    /// Swipeable full-screen (`TabView` page style) with dots
+    /// plus an explicit link — swipe alone is undiscoverable
+    /// mid-workout.
+    @State private var selectedPage = 0
 
     init(workoutID: String, workoutStore: WorkoutStore, player: WorkoutPlayerStore) {
         self.workoutID = workoutID
         self.workoutStore = workoutStore
         _player = StateObject(wrappedValue: player)
+        _healthStore = StateObject(wrappedValue: PlayerHealthStore(
+            workoutID: workoutID,
+            items: []
+        ))
     }
 
     var body: some View {
@@ -137,7 +153,14 @@ struct WorkoutPlayerView: View {
                         collapsedBlockIDs = Set(workout.blocks
                             .filter { $0.status == .done || $0.status == .skipped }
                             .map(\.id))
+                        // Adopt the auto-inferred Health type once
+                        // the plan is known (no-op after Start or
+                        // an explicit override).
+                        healthStore.adoptInferredDefault(items: workout.blocks.flatMap(\.items))
                     }
+                    // Adopt the profile DOB for zone estimation
+                    // (no-op after Start; nil DOB hides the tile).
+                    healthStore.adoptProfile(dateOfBirth: authStore.currentUser?.dateOfBirth)
                 }
                 .onDisappear {
                     TimerWakeLock.release()
@@ -177,24 +200,22 @@ struct WorkoutPlayerView: View {
     }
 
     private func loadedView(_ workout: WorkoutWithItemsDTO) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DSSpacing.md) {
-                headerCard(workout)
-                if let error = player.errorMessage {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(DSColors.destructive)
-                        .padding(.horizontal, DSSpacing.xs)
-                }
-                ForEach(workout.blocks) { block in
-                    blockCard(block)
-                }
-                finishSection
+        // Paged player: page 0 logs sets, page 1 shows live
+        // Apple Health stats. Full-screen swipe (`TabView` page
+        // style) with dots plus explicit links — swipe alone is
+        // undiscoverable mid-workout. The toolbar (Close/Finish)
+        // and timer pill stay outside the pages so both share them.
+        TabView(selection: $selectedPage) {
+            logPage(workout)
+                .tag(0)
+            BetaFeature {
+                liveHealthPage
             }
-            .padding(DSSpacing.md)
+            .tag(1)
         }
+        .tabViewStyle(.page(indexDisplayMode: .automatic))
         // Sticky live timer, pinned under the nav bar while a
-        // timer runs. Outside the scroll content so logging
+        // timer runs. Outside the page content so logging
         // rows never shift under it; zero height when idle or
         // once a completed timer auto-dismisses below.
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -239,6 +260,285 @@ struct WorkoutPlayerView: View {
         }
         .animation(.easeInOut(duration: 0.25), value: hideCompletedPill)
         .background(DSColors.background.ignoresSafeArea())
+    }
+
+    // MARK: - Paged content
+
+    /// Page 0: the existing logging scroll (header + blocks +
+    /// finish). The Live page is reached by swiping (page dots
+    /// below indicate the second page).
+    private func logPage(_ workout: WorkoutWithItemsDTO) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: DSSpacing.md) {
+                headerCard(workout)
+                if let error = player.errorMessage {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(DSColors.destructive)
+                        .padding(.horizontal, DSSpacing.xs)
+                }
+                ForEach(workout.blocks) { block in
+                    blockCard(block)
+                }
+                finishSection
+            }
+            .padding(DSSpacing.md)
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    /// Page 1: live workout recording. Explicit-start only —
+    /// nothing records until the user taps Start — and
+    /// permission-gated: denial shows an inline note while
+    /// logging continues normally. Numbers-only v1 (no route
+    /// map). Glanceable from across the gym: hero clock plus
+    /// large tiles, no branding or instructional copy.
+    private var liveHealthPage: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: DSSpacing.md) {
+                if let error = healthStore.errorMessage {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(DSColors.destructive)
+                }
+                switch healthStore.recorderState {
+                case .idle:
+                    liveIdleView
+                case .active, .paused:
+                    liveActiveView
+                case .ended:
+                    liveStatsView
+                    Text("Saved")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(DSColors.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                case .failed(let message):
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(DSColors.destructive)
+                }
+            }
+            .padding(DSSpacing.md)
+        }
+        .background(DSColors.background.ignoresSafeArea())
+    }
+
+    /// Idle Live page: inferred type + override menu and Start.
+    /// One functional footnote (outdoor GPS vs indoor) so the
+    /// location prompt never surprises; no branding copy.
+    private var liveIdleView: some View {
+        VStack(alignment: .leading, spacing: DSSpacing.sm) {
+            Menu {
+                ForEach(WorkoutHealthActivityMapper.selectableTypes, id: \.rawValue) { type in
+                    Button {
+                        healthStore.selectedType = type
+                    } label: {
+                        Label(
+                            WorkoutHealthActivityMapper.displayName(for: type),
+                            systemImage: healthStore.selectedType == type ? "checkmark" : "circle"
+                        )
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(WorkoutHealthActivityMapper.displayName(for: healthStore.selectedType))
+                        .font(.title2)
+                        .foregroundStyle(DSColors.text)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(DSColors.textSecondary)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Workout type")
+            if healthStore.armsRouteOnStart {
+                Text("Outdoor — starting records a GPS route.")
+                    .font(.footnote)
+                    .foregroundStyle(DSColors.textSecondary)
+            }
+            Button {
+                Task { await healthStore.start() }
+            } label: {
+                if healthStore.isRequestingAuth {
+                    ProgressView().frame(maxWidth: .infinity).frame(height: 48)
+                } else {
+                    Text("Start tracking").frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.dsPrimary)
+            .disabled(healthStore.isRequestingAuth)
+            // Access denied (or restricted): logging is
+            // unaffected — this only explains why nothing is
+            // recording, with a way back.
+            if healthStore.healthSkipped {
+                Text("Recording is off, so this workout isn't being tracked.")
+                    .font(.footnote)
+                    .foregroundStyle(DSColors.textSecondary)
+                Button("Try again") {
+                    Task { await healthStore.start() }
+                }
+                .buttonStyle(.dsSecondary)
+            }
+        }
+        .padding(DSSpacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous)
+                .fill(DSColors.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous)
+                .stroke(DSColors.separator, lineWidth: 0.5)
+        )
+    }
+
+    /// Active Live page: hero clock plus large tiles, readable
+    /// at arm's length mid-set. Pause/Resume only — saving
+    /// happens through Finish, so this page carries no
+    /// instructional copy.
+    private var liveActiveView: some View {
+        VStack(spacing: DSSpacing.md) {
+            liveStatsView
+            if healthStore.recorderState == .active {
+                Button("Pause") { healthStore.pause() }
+                    .buttonStyle(.dsSecondary)
+            } else {
+                Button("Resume") { healthStore.resume() }
+                    .buttonStyle(.dsSecondary)
+            }
+        }
+    }
+
+    /// Hero elapsed clock over a 2-column tile grid: zone,
+    /// heart rate, pace (outdoor, while moving), calories,
+    /// distance when available. Values use monospaced digits so
+    /// they never jump width as they tick.
+    private var liveStatsView: some View {
+        let stats = healthStore.liveStats
+        let zone = HeartRateZones.zone(bpm: stats.heartRateBpm, maxHeartRate: healthStore.maxHeartRate)
+        return VStack(spacing: DSSpacing.md) {
+            Text(Self.elapsedLabel(stats.elapsedSeconds))
+                .font(DSFont.monospacedDigits(64, weight: .bold))
+                .foregroundStyle(DSColors.text)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            StatsGrid {
+                if let zone {
+                    liveTile(
+                        label: "Zone",
+                        value: "\(zone)",
+                        icon: "speedometer",
+                        tint: Self.zoneTint(zone),
+                        caption: HeartRateZones.name(for: zone)
+                    )
+                }
+                liveTile(
+                    label: "Heart rate",
+                    value: stats.heartRateBpm.map { HealthMetric.heartRate.formatted(value: $0) } ?? "—",
+                    icon: "heart.fill"
+                )
+                if healthStore.armsRouteOnStart, let pace = stats.currentPaceSecPerKm {
+                    liveTile(
+                        label: "Pace",
+                        value: Self.paceLabel(secPerKm: pace, distanceUnit: distanceUnit),
+                        icon: "gauge.with.dots.needle.67percent"
+                    )
+                }
+                liveTile(
+                    label: "Calories",
+                    value: stats.activeEnergyKcal.map { HealthMetric.activeEnergy.formatted(value: $0) } ?? "—",
+                    icon: "flame.fill"
+                )
+                if let meters = stats.distanceMeters {
+                    liveTile(
+                        label: "Distance",
+                        value: HealthMetric.distance.formatted(value: meters, distanceUnit: distanceUnit),
+                        icon: "map"
+                    )
+                }
+            }
+        }
+    }
+
+    /// Zone dot tint, mapped onto existing tokens only (no new
+    /// colorsets): cool → hot across Z1…Z5. Light/dark variants
+    /// come free with the tokens.
+    private static func zoneTint(_ zone: Int) -> Color {
+        switch zone {
+        case 1: return DSColors.info
+        case 2: return DSColors.success
+        case 3: return DSColors.accent
+        case 4: return DSColors.chart2
+        default: return DSColors.destructive
+        }
+    }
+
+    /// Oversized `StatCard`: same surface + tinted-disk idiom,
+    /// but a 34pt monospaced value for gym-glance readability.
+    private func liveTile(
+        label: String,
+        value: String,
+        icon: String,
+        tint: Color? = nil,
+        caption: String? = nil
+    ) -> some View {
+        let color = tint ?? DSColors.accent
+        return VStack(alignment: .leading, spacing: DSSpacing.xs) {
+            HStack(spacing: DSSpacing.xs) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        Circle()
+                            .fill(color.opacity(0.12))
+                    )
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(DSColors.text)
+            }
+            Text(value)
+                .font(DSFont.monospacedDigits(34, weight: .bold))
+                .foregroundStyle(DSColors.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            if let caption {
+                Text(caption)
+                    .font(.caption2)
+                    .foregroundStyle(DSColors.textSecondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(DSSpacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous)
+                .fill(DSColors.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous)
+                .stroke(DSColors.separator, lineWidth: 0.5)
+        )
+    }
+
+    /// Current-pace label in profile units ("5:24 /km",
+    /// "8:41 /mi"). Callers hide the tile when pace is nil
+    /// (standing still), so this never formats an infinity.
+    static func paceLabel(secPerKm: Double, distanceUnit: String) -> String {
+        let perUnit = distanceUnit.lowercased() == "mi" ? secPerKm * 1.609_344 : secPerKm
+        let total = max(0, Int(perUnit.rounded()))
+        let suffix = distanceUnit.lowercased() == "mi" ? "/mi" : "/km"
+        return String(format: "%d:%02d %@", total / 60, total % 60, suffix)
+    }
+
+    /// Elapsed label: M:SS under an hour (e.g. 90 → "1:30"),
+    /// H:MM:SS beyond (e.g. 3720 → "1:02:00").
+    static func elapsedLabel(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds))
+        if total >= 3_600 {
+            return String(format: "%d:%02d:%02d", total / 3_600, (total % 3_600) / 60, total % 60)
+        }
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     // MARK: - Header
@@ -786,11 +1086,13 @@ struct WorkoutPlayerView: View {
     /// Marks the workout completed via the status-only endpoint
     /// (plan and block check-offs untouched), clears the on-device
     /// drafts, and dismisses. Partial completion is allowed —
-    /// pending blocks stay pending.
+    /// pending blocks stay pending. Ends the Health session first
+    /// (best-effort: a Health failure never blocks the Hylete save).
     private func finish() async {
         guard !isFinishing else { return }
         isFinishing = true
         defer { isFinishing = false }
+        await healthStore.endAndSave()
         await workoutStore.setStatus(id: workoutID, status: .completed)
         if workoutStore.errorMessage == nil {
             player.clearSnapshot()

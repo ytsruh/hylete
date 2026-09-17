@@ -607,5 +607,13 @@ private struct ThrowingHealthStore: HealthDataProvider {
             userInfo: [NSLocalizedDescriptionKey: "simulated failure"]
         )
     }
+    func writeAuthorizationStatus() -> HealthAuthStatus { .notRequested }
+    func requestWriteAuthorization() async throws {
+        throw NSError(
+            domain: "HealthTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "simulated failure"]
+        )
+    }
     func fetchReadings() async -> [HealthMetric: HealthSample] { [:] }
 }

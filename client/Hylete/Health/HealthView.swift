@@ -99,7 +99,7 @@ public struct HealthView: View {
                 ])
                 metricSection(title: "Recovery", metrics: [.sleep])
                 if let updated = viewModel.lastUpdated {
-                    Text("Updated \(updated.formatted(date: .omitted, time: .shortened)) · Apple Health, read-only")
+                    Text("Updated \(updated.formatted(date: .omitted, time: .shortened)) · Apple Health")
                         .font(.caption)
                         .foregroundStyle(DSColors.textSecondary)
                         .padding(.horizontal, DSSpacing.xs)

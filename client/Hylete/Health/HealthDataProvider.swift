@@ -47,6 +47,17 @@ public protocol HealthDataProvider {
     /// error — re-check `authorizationStatus()` afterwards.
     func requestAuthorization() async throws
 
+    /// Coarse write authorization state across the workout
+    /// share types (see `LiveHealthStore.writeTypes`). Advisory
+    /// only, like `authorizationStatus()`.
+    func writeAuthorizationStatus() -> HealthAuthStatus
+
+    /// Presents the system sheet for workout recording (share /
+    /// write access). Requests share types plus the read types
+    /// so one sheet covers both directions. Denial is NOT an
+    /// error — the player treats it as "skip Health saving".
+    func requestWriteAuthorization() async throws
+
     /// Fetches every metric best-effort. Per-metric failures
     /// are swallowed (that metric is simply absent), so one
     /// missing type never fails the whole grid.
