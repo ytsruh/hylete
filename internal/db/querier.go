@@ -245,6 +245,11 @@ type Querier interface {
 	// CreateWorkoutBlock.
 	UpdateWorkout(ctx context.Context, arg UpdateWorkoutParams) error
 	UpdateWorkoutBlockStatus(ctx context.Context, arg UpdateWorkoutBlockStatusParams) error
+	// Type-only update for the Apple Health activity type (workout
+	// editor type row, detail type picker). Touches the type alone
+	// so block check-offs survive (same rationale as
+	// UpdateWorkoutStatusScoped). Scoped to the user directly.
+	UpdateWorkoutHealthActivityTypeScoped(ctx context.Context, arg UpdateWorkoutHealthActivityTypeScopedParams) error
 	// Status-only update for the player lifecycle: first linked set flips
 	// planned to in_progress, and the last block flip to done/skipped
 	// auto-completes the workout. Bumps updated_at. Scoping to the

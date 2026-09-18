@@ -675,29 +675,34 @@ type WorkoutBlockDTO struct {
 
 // WorkoutDTO is the JSON shape for a full workout with its blocks
 // (detail view, create/update/duplicate responses).
+// HealthActivityType is the opaque Apple Health activity-type key
+// (HKWorkoutActivityType case name); the client owns validity and
+// falls back to block-mix inference for empty/unknown values.
 type WorkoutDTO struct {
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	Description   string            `json:"description"`
-	ScheduledDate string            `json:"scheduled_date"`
-	Status        string            `json:"status"`
-	Blocks        []WorkoutBlockDTO `json:"blocks"`
-	CreatedAt     time.Time         `json:"created_at"`
-	UpdatedAt     time.Time         `json:"updated_at"`
+	ID                 string            `json:"id"`
+	Name               string            `json:"name"`
+	Description        string            `json:"description"`
+	ScheduledDate      string            `json:"scheduled_date"`
+	Status             string            `json:"status"`
+	HealthActivityType string            `json:"health_activity_type"`
+	Blocks             []WorkoutBlockDTO `json:"blocks"`
+	CreatedAt          time.Time         `json:"created_at"`
+	UpdatedAt          time.Time         `json:"updated_at"`
 }
 
 // WorkoutSummaryDTO is the list-view shape: the workout without
 // blocks plus block/done counts ("3/5 blocks").
 type WorkoutSummaryDTO struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	ScheduledDate string    `json:"scheduled_date"`
-	Status        string    `json:"status"`
-	BlockCount    int       `json:"block_count"`
-	DoneCount     int       `json:"done_count"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID                 string    `json:"id"`
+	Name               string    `json:"name"`
+	Description        string    `json:"description"`
+	ScheduledDate      string    `json:"scheduled_date"`
+	Status             string    `json:"status"`
+	HealthActivityType string    `json:"health_activity_type"`
+	BlockCount         int       `json:"block_count"`
+	DoneCount          int       `json:"done_count"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // CreateWorkoutBlockRequest is one planned block in a workout
@@ -708,23 +713,27 @@ type CreateWorkoutBlockRequest struct {
 
 // CreateWorkoutRequest is the body for POST /api/v1/workouts. Status
 // defaults to planned when empty; scheduled_date is YYYY-MM-DD.
+// health_activity_type is optional and normalizes to the blanket
+// default server-side when empty.
 type CreateWorkoutRequest struct {
-	Name          string                      `json:"name" validate:"required,min=1,max=100"`
-	Description   string                      `json:"description" validate:"max=1000"`
-	ScheduledDate string                      `json:"scheduled_date" validate:"required"`
-	Status        string                      `json:"status" validate:"omitempty,oneof=planned in_progress completed skipped"`
-	Blocks        []CreateWorkoutBlockRequest `json:"blocks" validate:"required,min=1,max=20,dive"`
+	Name               string                      `json:"name" validate:"required,min=1,max=100"`
+	Description        string                      `json:"description" validate:"max=1000"`
+	ScheduledDate      string                      `json:"scheduled_date" validate:"required"`
+	Status             string                      `json:"status" validate:"omitempty,oneof=planned in_progress completed skipped"`
+	HealthActivityType string                      `json:"health_activity_type" validate:"max=64"`
+	Blocks             []CreateWorkoutBlockRequest `json:"blocks" validate:"required,min=1,max=20,dive"`
 }
 
 // UpdateWorkoutRequest is the body for PUT /api/v1/workouts/:id.
 // Blocks are fully replaced with statuses reset to pending (same
 // semantics as create).
 type UpdateWorkoutRequest struct {
-	Name          string                      `json:"name" validate:"required,min=1,max=100"`
-	Description   string                      `json:"description" validate:"max=1000"`
-	ScheduledDate string                      `json:"scheduled_date" validate:"required"`
-	Status        string                      `json:"status" validate:"omitempty,oneof=planned in_progress completed skipped"`
-	Blocks        []CreateWorkoutBlockRequest `json:"blocks" validate:"required,min=1,max=20,dive"`
+	Name               string                      `json:"name" validate:"required,min=1,max=100"`
+	Description        string                      `json:"description" validate:"max=1000"`
+	ScheduledDate      string                      `json:"scheduled_date" validate:"required"`
+	Status             string                      `json:"status" validate:"omitempty,oneof=planned in_progress completed skipped"`
+	HealthActivityType string                      `json:"health_activity_type" validate:"max=64"`
+	Blocks             []CreateWorkoutBlockRequest `json:"blocks" validate:"required,min=1,max=20,dive"`
 }
 
 // UpdateWorkoutBlockStatusRequest is the body for PATCH
@@ -740,6 +749,15 @@ type UpdateWorkoutBlockStatusRequest struct {
 // status picker.
 type UpdateWorkoutStatusRequest struct {
 	Status string `json:"status" validate:"required,oneof=planned in_progress completed skipped"`
+}
+
+// UpdateWorkoutHealthActivityTypeRequest is the body for PATCH
+// /api/v1/workouts/:id/health-activity-type. Type-only by design:
+// unlike PUT it never replaces blocks, so the editor type row and
+// detail type picker save without resetting check-offs. Empty
+// normalizes to the blanket default server-side.
+type UpdateWorkoutHealthActivityTypeRequest struct {
+	HealthActivityType string `json:"health_activity_type" validate:"max=64"`
 }
 
 // DuplicateWorkoutRequest is the body for POST
@@ -790,14 +808,15 @@ type WorkoutBlockDetailDTO struct {
 // WorkoutWithItemsDTO is the player-fetch shape: the full workout with
 // every block's items embedded. Blocks stay in position order.
 type WorkoutWithItemsDTO struct {
-	ID            string                  `json:"id"`
-	Name          string                  `json:"name"`
-	Description   string                  `json:"description"`
-	ScheduledDate string                  `json:"scheduled_date"`
-	Status        string                  `json:"status"`
-	Blocks        []WorkoutBlockDetailDTO `json:"blocks"`
-	CreatedAt     time.Time               `json:"created_at"`
-	UpdatedAt     time.Time               `json:"updated_at"`
+	ID                 string                  `json:"id"`
+	Name               string                  `json:"name"`
+	Description        string                  `json:"description"`
+	ScheduledDate      string                  `json:"scheduled_date"`
+	Status             string                  `json:"status"`
+	HealthActivityType string                  `json:"health_activity_type"`
+	Blocks             []WorkoutBlockDetailDTO `json:"blocks"`
+	CreatedAt          time.Time               `json:"created_at"`
+	UpdatedAt          time.Time               `json:"updated_at"`
 }
 
 // WorkoutWithItemsFromModel converts a models.WorkoutWithItems into its
@@ -820,14 +839,15 @@ func WorkoutWithItemsFromModel(w models.WorkoutWithItems) WorkoutWithItemsDTO {
 		})
 	}
 	return WorkoutWithItemsDTO{
-		ID:            w.ID,
-		Name:          w.Name,
-		Description:   w.Description,
-		ScheduledDate: w.ScheduledDate,
-		Status:        string(w.Status),
-		Blocks:        blocks,
-		CreatedAt:     w.CreatedAt,
-		UpdatedAt:     w.UpdatedAt,
+		ID:                 w.ID,
+		Name:               w.Name,
+		Description:        w.Description,
+		ScheduledDate:      w.ScheduledDate,
+		Status:             string(w.Status),
+		HealthActivityType: w.HealthActivityType,
+		Blocks:             blocks,
+		CreatedAt:          w.CreatedAt,
+		UpdatedAt:          w.UpdatedAt,
 	}
 }
 
@@ -839,29 +859,31 @@ func WorkoutFromModel(w models.Workout) WorkoutDTO {
 		blocks = append(blocks, WorkoutBlockFromModel(b))
 	}
 	return WorkoutDTO{
-		ID:            w.ID,
-		Name:          w.Name,
-		Description:   w.Description,
-		ScheduledDate: w.ScheduledDate,
-		Status:        string(w.Status),
-		Blocks:        blocks,
-		CreatedAt:     w.CreatedAt,
-		UpdatedAt:     w.UpdatedAt,
+		ID:                 w.ID,
+		Name:               w.Name,
+		Description:        w.Description,
+		ScheduledDate:      w.ScheduledDate,
+		Status:             string(w.Status),
+		HealthActivityType: w.HealthActivityType,
+		Blocks:             blocks,
+		CreatedAt:          w.CreatedAt,
+		UpdatedAt:          w.UpdatedAt,
 	}
 }
 
 // WorkoutSummaryFromModel converts a models.WorkoutSummary into its DTO.
 func WorkoutSummaryFromModel(s models.WorkoutSummary) WorkoutSummaryDTO {
 	return WorkoutSummaryDTO{
-		ID:            s.ID,
-		Name:          s.Name,
-		Description:   s.Description,
-		ScheduledDate: s.ScheduledDate,
-		Status:        string(s.Status),
-		BlockCount:    s.BlockCount,
-		DoneCount:     s.DoneCount,
-		CreatedAt:     s.CreatedAt,
-		UpdatedAt:     s.UpdatedAt,
+		ID:                 s.ID,
+		Name:               s.Name,
+		Description:        s.Description,
+		ScheduledDate:      s.ScheduledDate,
+		Status:             string(s.Status),
+		HealthActivityType: s.HealthActivityType,
+		BlockCount:         s.BlockCount,
+		DoneCount:          s.DoneCount,
+		CreatedAt:          s.CreatedAt,
+		UpdatedAt:          s.UpdatedAt,
 	}
 }
 

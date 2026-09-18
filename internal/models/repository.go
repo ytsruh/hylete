@@ -256,6 +256,9 @@ type WorkoutRepo interface {
 	// SetWorkoutStatus overwrites only the workout status, leaving
 	// blocks untouched. Scoped to the user.
 	SetWorkoutStatus(workoutID, userID string, status WorkoutStatus) error
+	// SetHealthActivityType overwrites only the Apple Health
+	// activity type, leaving blocks untouched. Scoped to the user.
+	SetHealthActivityType(workoutID, userID, activityType string) error
 }
 
 // Compile-time check to ensure WorkoutRepository implements WorkoutRepo.

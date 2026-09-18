@@ -262,6 +262,7 @@ func registerAPIRoutes(e *echo.Echo, h *Handler) {
 	e.GET("/api/v1/workouts/:id", h.APIGetWorkout)
 	e.PUT("/api/v1/workouts/:id", h.APIUpdateWorkout)
 	e.PATCH("/api/v1/workouts/:id/status", h.APIUpdateWorkoutStatus)
+	e.PATCH("/api/v1/workouts/:id/health-activity-type", h.APIUpdateWorkoutHealthActivityType)
 	e.DELETE("/api/v1/workouts/:id", h.APIDeleteWorkout)
 	e.PATCH("/api/v1/workouts/:id/blocks/:blockId", h.APIUpdateWorkoutBlockStatus)
 	e.POST("/api/v1/workouts/:id/duplicate", h.APIDuplicateWorkout)

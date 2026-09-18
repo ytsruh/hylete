@@ -883,6 +883,17 @@ private func amrapCapSummary(_ timeCapSeconds: Int) -> String {
     return "\(number) min\(mins == 1 ? "" : "s")"
 }
 
+/// EMOM summary ("12 minutes · change every 60s"). The stored
+/// `rounds` value is minutes on the server (`block.go`: "for
+/// Rounds minutes") and the block editor already labels the
+/// field "Minutes" — so only the display wording was wrong.
+/// Shared by `BlockDTO.configSummary`,
+/// `WorkoutBlockDetailDTO.timingSummary`, and the player's
+/// programmed-timer menu row so the three never drift apart.
+func emomSummary(minutes: Int, intervalSeconds: Int) -> String {
+    "\(minutes) minute\(minutes == 1 ? "" : "s") · change every \(intervalSeconds)s"
+}
+
 public enum BlockTypeDTO: String, Codable, Equatable, CaseIterable, Hashable {
     case standard
     case circuit
@@ -999,7 +1010,8 @@ public struct BlockDTO: Codable, Equatable, Identifiable, Hashable {
 
     /// One-line summary of the kind-specific config for the
     /// detail header ("4 rounds · 90s rest", "10 mins",
-    /// "12 rounds × Every 60s", or "" for standard blocks).
+    /// "12 minutes · change every 60s", or "" for standard
+    /// blocks).
     public var configSummary: String {
         switch type {
         case .standard:
@@ -1009,7 +1021,7 @@ public struct BlockDTO: Codable, Equatable, Identifiable, Hashable {
         case .amrap:
             return amrapCapSummary(timeCapSeconds)
         case .emom:
-            return "\(rounds) rounds × Every \(intervalSeconds)s"
+            return emomSummary(minutes: rounds, intervalSeconds: intervalSeconds)
         }
     }
 }
@@ -1284,12 +1296,15 @@ public struct WorkoutBlockDTO: Codable, Equatable, Identifiable, Hashable {
 /// A full workout with its planned blocks. Mirrors the server's
 /// `WorkoutDTO` (detail view, create/update/duplicate responses).
 /// `scheduledDate` is a device-local calendar date (YYYY-MM-DD).
+/// `healthActivityType` is the opaque Apple Health activity-type key
+/// (nil on pre-feature servers — callers fall back to inference).
 public struct WorkoutDTO: Codable, Equatable, Identifiable, Hashable {
     public let id: String
     public let name: String
     public let description: String
     public let scheduledDate: String
     public let status: WorkoutStatusDTO
+    public let healthActivityType: String?
     public let blocks: [WorkoutBlockDTO]
     public let createdAt: Date
     public let updatedAt: Date
@@ -1300,6 +1315,7 @@ public struct WorkoutDTO: Codable, Equatable, Identifiable, Hashable {
         case description
         case scheduledDate = "scheduled_date"
         case status
+        case healthActivityType = "health_activity_type"
         case blocks
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -1311,6 +1327,7 @@ public struct WorkoutDTO: Codable, Equatable, Identifiable, Hashable {
         description: String,
         scheduledDate: String,
         status: WorkoutStatusDTO,
+        healthActivityType: String? = nil,
         blocks: [WorkoutBlockDTO],
         createdAt: Date,
         updatedAt: Date
@@ -1320,6 +1337,7 @@ public struct WorkoutDTO: Codable, Equatable, Identifiable, Hashable {
         self.description = description
         self.scheduledDate = scheduledDate
         self.status = status
+        self.healthActivityType = healthActivityType
         self.blocks = blocks
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -1421,10 +1439,10 @@ public struct WorkoutBlockDetailDTO: Codable, Equatable, Identifiable, Hashable 
 
     /// One-line summary of the kind-specific time config for the
     /// player header ("4 rounds · 90s rest", "10 mins",
-    /// "12 rounds × Every 60s", or "" for standard blocks).
-    /// Mirrors `BlockDTO.configSummary` — server validation
-    /// guarantees which fields apply per type, so no zero-guards
-    /// needed.
+    /// "12 minutes · change every 60s", or "" for standard
+    /// blocks). Mirrors `BlockDTO.configSummary` — server
+    /// validation guarantees which fields apply per type, so no
+    /// zero-guards needed.
     public var timingSummary: String {
         switch blockType {
         case .standard:
@@ -1434,7 +1452,7 @@ public struct WorkoutBlockDetailDTO: Codable, Equatable, Identifiable, Hashable 
         case .amrap:
             return amrapCapSummary(timeCapSeconds)
         case .emom:
-            return "\(rounds) rounds × Every \(intervalSeconds)s"
+            return emomSummary(minutes: rounds, intervalSeconds: intervalSeconds)
         }
     }
 
@@ -1457,6 +1475,7 @@ public struct WorkoutWithItemsDTO: Codable, Equatable, Identifiable, Hashable {
     public let description: String
     public let scheduledDate: String
     public let status: WorkoutStatusDTO
+    public let healthActivityType: String?
     public let blocks: [WorkoutBlockDetailDTO]
     public let createdAt: Date
     public let updatedAt: Date
@@ -1467,6 +1486,7 @@ public struct WorkoutWithItemsDTO: Codable, Equatable, Identifiable, Hashable {
         case description
         case scheduledDate = "scheduled_date"
         case status
+        case healthActivityType = "health_activity_type"
         case blocks
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -1478,6 +1498,7 @@ public struct WorkoutWithItemsDTO: Codable, Equatable, Identifiable, Hashable {
         description: String,
         scheduledDate: String,
         status: WorkoutStatusDTO,
+        healthActivityType: String? = nil,
         blocks: [WorkoutBlockDetailDTO],
         createdAt: Date,
         updatedAt: Date
@@ -1487,6 +1508,7 @@ public struct WorkoutWithItemsDTO: Codable, Equatable, Identifiable, Hashable {
         self.description = description
         self.scheduledDate = scheduledDate
         self.status = status
+        self.healthActivityType = healthActivityType
         self.blocks = blocks
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -1507,6 +1529,7 @@ public struct WorkoutSummaryDTO: Codable, Equatable, Identifiable, Hashable {
     public let description: String
     public let scheduledDate: String
     public let status: WorkoutStatusDTO
+    public let healthActivityType: String?
     public let blockCount: Int
     public let doneCount: Int
     public let createdAt: Date
@@ -1518,6 +1541,7 @@ public struct WorkoutSummaryDTO: Codable, Equatable, Identifiable, Hashable {
         case description
         case scheduledDate = "scheduled_date"
         case status
+        case healthActivityType = "health_activity_type"
         case blockCount = "block_count"
         case doneCount = "done_count"
         case createdAt = "created_at"
@@ -1530,6 +1554,7 @@ public struct WorkoutSummaryDTO: Codable, Equatable, Identifiable, Hashable {
         description: String,
         scheduledDate: String,
         status: WorkoutStatusDTO,
+        healthActivityType: String? = nil,
         blockCount: Int,
         doneCount: Int,
         createdAt: Date,
@@ -1540,6 +1565,7 @@ public struct WorkoutSummaryDTO: Codable, Equatable, Identifiable, Hashable {
         self.description = description
         self.scheduledDate = scheduledDate
         self.status = status
+        self.healthActivityType = healthActivityType
         self.blockCount = blockCount
         self.doneCount = doneCount
         self.createdAt = createdAt
@@ -1577,6 +1603,7 @@ public struct CreateWorkoutRequest: Encodable, Equatable {
     public let description: String
     public let scheduledDate: String
     public let status: WorkoutStatusDTO?
+    public let healthActivityType: String?
     public let blocks: [WorkoutBlockRequest]
 
     enum CodingKeys: String, CodingKey {
@@ -1584,6 +1611,7 @@ public struct CreateWorkoutRequest: Encodable, Equatable {
         case description
         case scheduledDate = "scheduled_date"
         case status
+        case healthActivityType = "health_activity_type"
         case blocks
     }
 
@@ -1592,12 +1620,14 @@ public struct CreateWorkoutRequest: Encodable, Equatable {
         description: String = "",
         scheduledDate: String,
         status: WorkoutStatusDTO? = nil,
+        healthActivityType: String? = nil,
         blocks: [WorkoutBlockRequest]
     ) {
         self.name = name
         self.description = description
         self.scheduledDate = scheduledDate
         self.status = status
+        self.healthActivityType = healthActivityType
         self.blocks = blocks
     }
 }
@@ -1609,6 +1639,7 @@ public struct UpdateWorkoutRequest: Encodable, Equatable {
     public let description: String
     public let scheduledDate: String
     public let status: WorkoutStatusDTO?
+    public let healthActivityType: String?
     public let blocks: [WorkoutBlockRequest]
 
     enum CodingKeys: String, CodingKey {
@@ -1616,6 +1647,7 @@ public struct UpdateWorkoutRequest: Encodable, Equatable {
         case description
         case scheduledDate = "scheduled_date"
         case status
+        case healthActivityType = "health_activity_type"
         case blocks
     }
 
@@ -1624,12 +1656,14 @@ public struct UpdateWorkoutRequest: Encodable, Equatable {
         description: String = "",
         scheduledDate: String,
         status: WorkoutStatusDTO? = nil,
+        healthActivityType: String? = nil,
         blocks: [WorkoutBlockRequest]
     ) {
         self.name = name
         self.description = description
         self.scheduledDate = scheduledDate
         self.status = status
+        self.healthActivityType = healthActivityType
         self.blocks = blocks
     }
 }
@@ -1685,6 +1719,21 @@ public struct UpdateWorkoutStatusRequest: Encodable, Equatable {
 
     public init(status: WorkoutStatusDTO) {
         self.status = status
+    }
+}
+
+/// JSON body for `PATCH /api/v1/workouts/:id/health-activity-type`.
+/// Type-only by design (blocks untouched). Empty normalizes to the
+/// blanket default server-side.
+public struct UpdateWorkoutHealthActivityTypeRequest: Encodable, Equatable {
+    public let healthActivityType: String
+
+    enum CodingKeys: String, CodingKey {
+        case healthActivityType = "health_activity_type"
+    }
+
+    public init(healthActivityType: String) {
+        self.healthActivityType = healthActivityType
     }
 }
 

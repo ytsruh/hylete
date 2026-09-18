@@ -1,11 +1,18 @@
 import SwiftUI
 
 /// Filled primary button — used for the most important
-/// action on a screen (login, save, submit).
+/// action on a screen (login, save, submit). `cornerRadius`
+/// defaults to the standard button radius; pass
+/// `DSSpacing.cornerRadiusSmall` for tighter surfaces like
+/// the recording sheet's side-by-side rows.
 public struct DSPrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
-    public init() {}
+    private let cornerRadius: CGFloat
+
+    public init(cornerRadius: CGFloat = DSSpacing.cornerRadius) {
+        self.cornerRadius = cornerRadius
+    }
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -14,7 +21,7 @@ public struct DSPrimaryButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity)
             .frame(height: 48)
             .background(isEnabled ? DSColors.accent : DSColors.accent.opacity(0.4))
-            .clipShape(RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .opacity(configuration.isPressed ? 0.85 : 1)
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
@@ -22,11 +29,17 @@ public struct DSPrimaryButtonStyle: ButtonStyle {
 
 /// Bordered secondary button — used for cancel / alternate
 /// actions. Same size as the primary button so the two can
-/// stack without visual imbalance.
+/// stack without visual imbalance. `cornerRadius` defaults
+/// to the standard button radius (see `DSPrimaryButtonStyle`
+/// for when to pass the small variant).
 public struct DSSecondaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
-    public init() {}
+    private let cornerRadius: CGFloat
+
+    public init(cornerRadius: CGFloat = DSSpacing.cornerRadius) {
+        self.cornerRadius = cornerRadius
+    }
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -36,10 +49,10 @@ public struct DSSecondaryButtonStyle: ButtonStyle {
             .frame(height: 48)
             .background(DSColors.surface)
             .overlay(
-                RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(DSColors.accent, lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .opacity(configuration.isPressed ? 0.85 : 1)
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
@@ -108,10 +121,18 @@ public struct DSTextButtonStyle: ButtonStyle {
 
 public extension ButtonStyle where Self == DSPrimaryButtonStyle {
     static var dsPrimary: DSPrimaryButtonStyle { DSPrimaryButtonStyle() }
+
+    static func dsPrimary(cornerRadius: CGFloat) -> DSPrimaryButtonStyle {
+        DSPrimaryButtonStyle(cornerRadius: cornerRadius)
+    }
 }
 
 public extension ButtonStyle where Self == DSSecondaryButtonStyle {
     static var dsSecondary: DSSecondaryButtonStyle { DSSecondaryButtonStyle() }
+
+    static func dsSecondary(cornerRadius: CGFloat) -> DSSecondaryButtonStyle {
+        DSSecondaryButtonStyle(cornerRadius: cornerRadius)
+    }
 }
 
 public extension ButtonStyle where Self == DSCompactSecondaryButtonStyle {

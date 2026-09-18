@@ -228,6 +228,7 @@ CREATE TABLE workouts (
     description    TEXT NOT NULL DEFAULT '',
     scheduled_date TEXT NOT NULL,
     status         TEXT NOT NULL DEFAULT 'planned',
+    health_activity_type TEXT NOT NULL DEFAULT 'traditionalStrengthTraining',
     created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

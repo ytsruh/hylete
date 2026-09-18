@@ -20,12 +20,21 @@ import SwiftUI
 /// weight PR; cardio plots fastest-pace-per-day with the
 /// best-pace PR, and rows/stat cards render duration ·
 /// distance instead of reps × weight.
+///
+/// `allowsEntryActions` hides the New Set button and the
+/// swipe-to-edit/delete actions while keeping every
+/// read surface (details, stats, chart, history). The
+/// Workout Player opens the view this way: session logging
+/// and session edits belong to the player's own rows and
+/// "X logged" sheet, so the detail sheet is reference-only
+/// and can never desync the player's session buckets.
 struct ExerciseHistoryView: View {
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var authStore: AuthStore
     @Environment(\.openURL) private var openURL
 
     let exercise: ExerciseDTO
+    var allowsEntryActions: Bool = true
 
     /// `true` when this screen belongs to a cardio exercise —
     /// drives the stat cards, chart metric, and row rendering.
@@ -48,14 +57,19 @@ struct ExerciseHistoryView: View {
             .navigationTitle(exercise.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isPresentingNewSet = true
-                    } label: {
-                        Image(systemName: Icons.addSet)
-                            .font(.body.weight(.semibold))
+                // Reference-only callers (the Workout Player)
+                // hide logging: new session entries belong to
+                // the player's own rows, not this sheet.
+                if allowsEntryActions {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            isPresentingNewSet = true
+                        } label: {
+                            Image(systemName: Icons.addSet)
+                                .font(.body.weight(.semibold))
+                        }
+                        .accessibilityLabel("Add set")
                     }
-                    .accessibilityLabel("Add set")
                 }
             }
             .sheet(isPresented: $isPresentingNewSet) {
@@ -162,35 +176,44 @@ struct ExerciseHistoryView: View {
                 chartSection
                 Section(isCardio ? "Sessions" : "History") {
                     ForEach(page?.entries ?? []) { entry in
-                        HistorySetRow(entry: entry, weightUnit: weightUnit, distanceUnit: distanceUnit)
-                            // Leading edge → Edit. Neutral
-                            // grey tint (not the brand
-                            // accent) so the two swipe
-                            // directions read as
-                            // left=neutral-edit,
-                            // right=destructive-delete.
-                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                Button {
-                                    editingEntry = entry
-                                } label: {
-                                    Label("Edit", systemImage: Icons.edit)
-                                        .labelStyle(.iconOnly)
+                        if allowsEntryActions {
+                            HistorySetRow(entry: entry, weightUnit: weightUnit, distanceUnit: distanceUnit)
+                                // Leading edge → Edit. Neutral
+                                // grey tint (not the brand
+                                // accent) so the two swipe
+                                // directions read as
+                                // left=neutral-edit,
+                                // right=destructive-delete.
+                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                    Button {
+                                        editingEntry = entry
+                                    } label: {
+                                        Label("Edit", systemImage: Icons.edit)
+                                            .labelStyle(.iconOnly)
+                                    }
+                                    .tint(Color(.systemGray2))
                                 }
-                                .tint(Color(.systemGray2))
-                            }
-                            // Trailing edge → Delete. Full
-                            // swipe goes through the
-                            // confirmation dialog below —
-                            // never deletes directly.
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    entryPendingDelete = entry
-                                    showingDeleteConfirm = true
-                                } label: {
-                                    Label("Delete", systemImage: Icons.trash)
-                                        .labelStyle(.iconOnly)
+                                // Trailing edge → Delete. Full
+                                // swipe goes through the
+                                // confirmation dialog below —
+                                // never deletes directly.
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        entryPendingDelete = entry
+                                        showingDeleteConfirm = true
+                                    } label: {
+                                        Label("Delete", systemImage: Icons.trash)
+                                            .labelStyle(.iconOnly)
+                                    }
                                 }
-                            }
+                        } else {
+                            // Reference-only (Workout Player
+                            // sheet): history reads without
+                            // swipe actions, so a global edit
+                            // or delete can never desync the
+                            // player's session buckets.
+                            HistorySetRow(entry: entry, weightUnit: weightUnit, distanceUnit: distanceUnit)
+                        }
                     }
                 }
                 paginationSection

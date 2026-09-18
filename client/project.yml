@@ -46,8 +46,10 @@ targets:
     # HealthKit key (proven with checksums: this broke HealthKit
     # auth twice before the cause was found). With only the
     # build setting referencing it, neither `make gen` nor the
-    # build touches the file's contents. Read-only Apple Health
-    # vitals (display-only, no workouts).
+    # build touches the file's contents. Apple Health vitals
+    # are read-only display; live workout recording writes
+    # HKWorkouts (+ HR/energy/distance/route) via
+    # WorkoutHealthRecorder.
     # Fails the build early when the HealthKit entitlement goes
     # missing from Hylete.entitlements (Xcode's Signing &
     # Capabilities editor has stripped it before), or when either
@@ -55,11 +57,13 @@ targets:
     # Without the entitlement key the app still compiles but every
     # HealthKit authorization throws at runtime and the Health link
     # fails silently. Without BOTH plist keys App Store Connect
-    # rejects the upload with ITMS-90683 — even though the app is
-    # read-only (`toShare: []` in LiveHealthStore), Apple still
-    # requires NSHealthUpdateUsageDescription when the HealthKit
-    # capability is enabled. These checks turn both failures into
-    # loud build errors naming the fix instead.
+    # rejects the upload with ITMS-90683 — Apple requires
+    # NSHealthUpdateUsageDescription when the HealthKit
+    # capability is on (the app now writes workouts, so the
+    # update string must disclose saving). Outdoor routes also
+    # require NSLocationWhenInUseUsageDescription. These checks
+    # turn both failures into loud build errors naming the fix
+    # instead.
     preBuildScripts:
       - script: |
           if ! grep -q "com.apple.developer.healthkit" "${SRCROOT}/Hylete/Hylete.entitlements"; then
@@ -71,7 +75,15 @@ targets:
             exit 1
           fi
           if ! grep -q "NSHealthUpdateUsageDescription" "${SRCROOT}/Hylete/Info.plist"; then
-            echo "error: Hylete/Info.plist is missing NSHealthUpdateUsageDescription. App Store Connect rejects HealthKit builds without it (ITMS-90683), even for read-only apps. Restore the key (see project.yml info.properties), re-run make gen, then rebuild."
+            echo "error: Hylete/Info.plist is missing NSHealthUpdateUsageDescription. App Store Connect rejects HealthKit builds without it (ITMS-90683). Restore the key (see project.yml info.properties), re-run make gen, then rebuild."
+            exit 1
+          fi
+          if ! grep -q "NSLocationWhenInUseUsageDescription" "${SRCROOT}/Hylete/Info.plist"; then
+            echo "error: Hylete/Info.plist is missing NSLocationWhenInUseUsageDescription. Outdoor Health workout routes require it. Restore the key (see project.yml info.properties), re-run make gen, then rebuild."
+            exit 1
+          fi
+          if ! grep -q "workout-processing" "${SRCROOT}/Hylete/Info.plist"; then
+            echo "error: Hylete/Info.plist is missing the workout-processing UIBackgroundMode. Live Health workouts suspend on lock without it. Restore the key (see project.yml info.properties), re-run make gen, then rebuild."
             exit 1
           fi
         name: Verify HealthKit entitlement
@@ -84,16 +96,24 @@ targets:
     info:
       path: Hylete/Info.plist
       properties:
-        # Read-only Apple Health vitals (display-only, no workouts).
-        # BOTH keys are required: the app only reads (LiveHealthStore
-        # uses `toShare: []`), but App Store Connect rejects any
-        # HealthKit-enabled build missing either one with
-        # ITMS-90683. The update string honestly states we don't
-        # write — it exists because iOS mandates it when the
-        # HealthKit capability is on. Wrapped behind BetaFeature
-        # until validated.
-        NSHealthShareUsageDescription: Hylete reads steps, heart rate, and body measurements from Apple Health to show your daily activity alongside your workouts.
-        NSHealthUpdateUsageDescription: Hylete only reads activity from Apple Health to show alongside your workouts and does not save data to Health. iOS requires this description when HealthKit is enabled.
+        # Apple Health: vitals are read-only display; live workout
+        # recording writes HKWorkouts (+ HR/energy/distance and an
+        # outdoor-only GPS route) via WorkoutHealthRecorder.
+        # BOTH Health keys are required: App Store Connect rejects
+        # any HealthKit-enabled build missing either one with
+        # ITMS-90683. Wrapped behind BetaFeature until validated.
+        NSHealthShareUsageDescription: Hylete reads steps, heart rate, workouts, and body measurements from Apple Health to show your daily activity alongside your workouts.
+        NSHealthUpdateUsageDescription: Hylete saves workouts you explicitly start in the workout player to Apple Health, including heart rate, calories, distance, and route where applicable.
+        # Outdoor-only GPS route for distance-type Health workouts.
+        # Requested only when the user starts an outdoor running /
+        # cycling / walking session; indoor lifting never triggers it.
+        NSLocationWhenInUseUsageDescription: Hylete uses your location to record the route of outdoor workouts you explicitly start in the workout player.
+        # Live Health workouts must survive lock/background:
+        # workout-processing keeps the HKWorkoutSession alive,
+        # location allows outdoor route tracking while backgrounded.
+        UIBackgroundModes:
+          - workout-processing
+          - location
         # Resolved per build configuration from the xcconfig
         # files (Hylete/Configs/*.xcconfig): "Hylete Dev" in
         # Debug, "Hylete" in Release — so dev and prod installs

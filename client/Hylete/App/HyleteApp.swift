@@ -47,6 +47,15 @@ struct RootView: View {
     }
 }
 
+/// Reopen request for a recorded workout's player, fired
+/// from the global recording pill's mini sheet. `Identifiable`
+/// (fresh UUID per tap) so every tap presents a new player
+/// instance with a fresh fetch.
+struct PlayerReopenRequest: Identifiable {
+    let id = UUID()
+    let workoutID: String
+}
+
 /// Lightweight splash shown while `restoreSession` is
 /// running. Avoids the flash-of-login-screen on cold start
 /// for users who already have a valid token.
@@ -89,6 +98,16 @@ struct MainTabView: View {
     @StateObject private var coachStore: CoachStore
     @StateObject private var blockStore: BlockStore
     @StateObject private var workoutStore: WorkoutStore
+    /// Shared Apple Health recording. App-scoped (not player-
+    /// scoped) so closing the Workout Player never kills a
+    /// live recording — the global pill below keeps it
+    /// visible, and reopening the player reattaches to it.
+    @StateObject private var healthStore = PlayerHealthStore()
+    /// Mini-sheet visibility for the global recording pill.
+    @State private var showingRecordingSheet = false
+    /// Reopen request for the recorded workout's player
+    /// (from the pill sheet's "Open workout").
+    @State private var reopenRequest: PlayerReopenRequest?
 
     init() {
         // Construct with a stub API; swapped to the real
@@ -138,6 +157,45 @@ struct MainTabView: View {
             }
             .tabItem { Label("More", systemImage: Icons.more) }
         }
+        // Global recording pill: visible on every tab while an
+        // Apple Health session is live, including after the
+        // player was closed. A presented player covers the tabs
+        // (and this pill) with its own Live page, so the two
+        // never show together.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if healthStore.isRecording {
+                HealthRecordingPill(store: healthStore) {
+                    showingRecordingSheet = true
+                }
+            }
+        }
+        .sheet(isPresented: $showingRecordingSheet) {
+            HealthRecordingSheet(
+                store: healthStore,
+                onOpenWorkout: {
+                    showingRecordingSheet = false
+                    reopenRequest = PlayerReopenRequest(workoutID: healthStore.claimedWorkoutID)
+                }
+            )
+            .environmentObject(env)
+            .environmentObject(env.authStore)
+        }
+        .fullScreenCover(item: $reopenRequest) { request in
+            WorkoutPlayerView(
+                workoutID: request.workoutID,
+                workoutStore: workoutStore,
+                player: WorkoutPlayerStore(
+                    workoutID: request.workoutID,
+                    api: env.api,
+                    weightUnit: env.authStore.currentUser?.weightUnit ?? "kg",
+                    distanceUnit: env.authStore.currentUser?.distanceUnit ?? "km"
+                ),
+                healthStore: healthStore
+            )
+            .environmentObject(env)
+            .environmentObject(env.authStore)
+        }
+        .environmentObject(healthStore)
         .onAppear {
             // The stores need the real `APIClient` (which
             // reads the JWT from the auth store on each

@@ -1,3 +1,4 @@
+import HealthKit
 import SwiftUI
 
 /// Detail view for one workout. Header carries the name, scheduled
@@ -7,14 +8,15 @@ import SwiftUI
 ///
 /// The workout loads via `WorkoutStore.detail(id:)` (cached, so
 /// returning from the editor is instant and already fresh —
-/// `update` rewrites the cache). Edit opens the editor sheet;
-/// delete confirms then pops back to the list. The "Logged sets"
+/// `update` rewrites the cache). Edit opens the editor sheet
+/// (which also carries the workout delete action). The "Logged sets"
 /// section lists everything logged against the workout (grouped
 /// under their blocks, collapsed) with swipe-to-edit and delete —
 /// the same row actions as the per-exercise history screen.
 struct WorkoutDetailView: View {
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var authStore: AuthStore
+    @EnvironmentObject private var healthStore: PlayerHealthStore
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var store: WorkoutStore
     @ObservedObject var blockStore: BlockStore
@@ -23,7 +25,6 @@ struct WorkoutDetailView: View {
 
     @State private var showingEditor: Bool = false
     @State private var showingDuplicate: Bool = false
-    @State private var showingDelete: Bool = false
     /// Player presentation request. `Identifiable` (fresh UUID per
     /// tap) so every Start opens a new player instance with a fresh
     /// fetch — re-presenting must never reuse a stale session whose
@@ -102,19 +103,6 @@ struct WorkoutDetailView: View {
                     .environmentObject(env)
                 }
             }
-            .alert("Delete this workout?", isPresented: $showingDelete) {
-                Button("Delete", role: .destructive) {
-                    Task {
-                        await store.delete(id: workoutID)
-                        if store.errorMessage == nil {
-                            dismiss()
-                        }
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This permanently removes the workout and its plan. Logged sets are unaffected.")
-            }
             // History entry sheet + delete confirmation live at
             // root level (not on the History section): sheets
             // attached inside a List section can drop on list
@@ -150,7 +138,8 @@ struct WorkoutDetailView: View {
                         api: env.api,
                         weightUnit: authStore.currentUser?.weightUnit ?? "kg",
                         distanceUnit: authStore.currentUser?.distanceUnit ?? "km"
-                    )
+                    ),
+                    healthStore: healthStore
                 )
                 .environmentObject(env)
                 .environmentObject(authStore)
@@ -223,26 +212,83 @@ struct WorkoutDetailView: View {
                         Text(status.displayName).tag(status)
                     }
                 }
+                // Apple Health activity type: menu writes through
+                // the type-only PATCH endpoint so block check-offs
+                // survive (the editor's PUT would reset them).
+                // Unknown/missing keys read as the blanket default.
+                Menu {
+                    ForEach(WorkoutHealthActivityMapper.selectableTypes, id: \.rawValue) { type in
+                        Button {
+                            Task {
+                                await store.setHealthActivityType(
+                                    id: workout.id,
+                                    healthActivityType: WorkoutHealthActivityMapper.key(for: type)
+                                )
+                            }
+                        } label: {
+                            Label(
+                                WorkoutHealthActivityMapper.displayName(for: type),
+                                systemImage: resolvedHealthActivityType(for: workout) == type ? "checkmark" : "circle"
+                            )
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text("Activity type")
+                            .foregroundStyle(DSColors.textSecondary)
+                        Spacer()
+                        Text(WorkoutHealthActivityMapper.displayName(for: resolvedHealthActivityType(for: workout)))
+                            .foregroundStyle(DSColors.text)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Apple Health activity type")
             }
 
-            // Primary entry to the Workout Player: full-screen
-            // session that walks through every block, logging sets
-            // as exercise entries. "Start" is UI state only — the
-            // workout flips to in_progress on the first logged set.
-            // Hidden once the workout is completed or skipped (the
-            // status picker above reopens it when more logging is
-            // needed). Deliberately chromeless — no card
-            // background, tight insets — so the button sits close
-            // to the sections around it instead of floating in its
-            // own card like Duplicate/Delete below.
-            if workout.status == .planned || workout.status == .inProgress {
-                Section {
-                    Button {
-                        playerRequest = PlayerRequest(workoutID: workout.id)
-                    } label: {
-                        Text(workout.status == .inProgress ? "Resume workout" : "Start workout")
+            // Primary actions: Start/Resume opens the full-screen
+            // player session that walks through every block, logging
+            // sets as exercise entries. "Start" is UI state only —
+            // the workout flips to in_progress on the first logged
+            // set. Hidden once the workout is completed or skipped
+            // (the status picker above reopens it when more logging
+            // is needed) — Duplicate then spans the row alone.
+            // Duplicate is the safe, reversible action (secondary
+            // chrome) beside the primary Start. Deliberately
+            // chromeless — no card background, tight insets — so
+            // the buttons sit close to the sections around them.
+            // Workout delete lives in the editor sheet, not here.
+            Section {
+                if workout.status == .planned || workout.status == .inProgress {
+                    HStack(spacing: DSSpacing.sm) {
+                        Button {
+                            playerRequest = PlayerRequest(workoutID: workout.id)
+                        } label: {
+                            Text(workout.status == .inProgress ? "Resume workout" : "Start workout")
+                        }
+                        .buttonStyle(.dsPrimary)
+
+                        Button {
+                            showingDuplicate = true
+                        } label: {
+                            Text("Duplicate")
+                        }
+                        .buttonStyle(.dsSecondary)
                     }
-                    .buttonStyle(.dsPrimary)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(
+                        top: DSSpacing.xxs,
+                        leading: DSSpacing.md,
+                        bottom: DSSpacing.xxs,
+                        trailing: DSSpacing.md
+                    ))
+                    .listRowSeparator(.hidden)
+                } else {
+                    Button {
+                        showingDuplicate = true
+                    } label: {
+                        Text("Duplicate workout")
+                    }
+                    .buttonStyle(.dsSecondary)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(
                         top: DSSpacing.xxs,
@@ -380,36 +426,6 @@ struct WorkoutDetailView: View {
                         .foregroundStyle(DSColors.destructive)
                 }
             }
-
-            // Full-width action buttons in the DesignSystem
-            // primary/secondary idiom: Duplicate is the safe,
-            // reversible action (secondary chrome), Delete is
-            // filled destructive. Both live in a single row so
-            // no list separator or inter-row padding sits
-            // between them — just a tight stack spacing.
-            Section {
-                VStack(spacing: DSSpacing.xs) {
-                    Button {
-                        showingDuplicate = true
-                    } label: {
-                        Text("Duplicate workout")
-                    }
-                    .buttonStyle(.dsSecondary)
-
-                    Button(role: .destructive) {
-                        showingDelete = true
-                    } label: {
-                        Text("Delete workout")
-                    }
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(DSColors.destructive)
-                    .clipShape(RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous))
-                }
-                .listRowSeparator(.hidden)
-            }
         }
         .listStyle(.automatic)
     }
@@ -517,6 +533,14 @@ struct WorkoutDetailView: View {
         return "\(block.blockType.displayName) · \(exercises)"
     }
 
+    /// Effective Apple Health activity type: the server key wins,
+    /// unknown/missing keys read as the blanket default (never
+    /// inference here — detail has no planned items to infer from).
+    private func resolvedHealthActivityType(for workout: WorkoutDTO) -> HKWorkoutActivityType {
+        WorkoutHealthActivityMapper.activityType(forKey: workout.healthActivityType)
+            ?? .traditionalStrengthTraining
+    }
+
 
 
     private func statusIcon(for status: WorkoutBlockStatusDTO) -> String {
@@ -548,4 +572,5 @@ struct WorkoutDetailView: View {
         baseURL: URL(string: "http://localhost:8080/api/v1")!,
         tokenProvider: { nil }
     )))
+    .environmentObject(PlayerHealthStore())
 }

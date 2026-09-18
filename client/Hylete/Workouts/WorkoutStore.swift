@@ -235,6 +235,28 @@ public final class WorkoutStore: ObservableObject {
         }
     }
 
+    /// Changes only a workout's Apple Health activity type (plan
+    /// and block check-offs untouched). Backs the editor type row
+    /// and the detail type picker — both must preserve block
+    /// progress, which the full-replacement `update` resets.
+    /// Refreshes the cached detail, the summary row, and the
+    /// calendar cache.
+    public func setHealthActivityType(id: String, healthActivityType: String) async {
+        errorMessage = nil
+        do {
+            let updated = try await api.setWorkoutHealthActivityType(id: id, healthActivityType: healthActivityType)
+            details[id] = updated
+            if let index = summaries.firstIndex(where: { $0.id == id }) {
+                summaries[index] = summary(of: updated)
+            }
+            invalidateCalendarCache()
+        } catch let error as APIError {
+            errorMessage = error.errorDescription
+        } catch {
+            errorMessage = "Could not update the workout."
+        }
+    }
+
     /// Hard-deletes a workout. Optimistic remove; rolls back by
     /// re-inserting the summary on failure.
     public func delete(id: String) async {
@@ -332,6 +354,7 @@ public final class WorkoutStore: ObservableObject {
             description: workout.description,
             scheduledDate: workout.scheduledDate,
             status: workout.status,
+            healthActivityType: workout.healthActivityType,
             blockCount: workout.blocks.count,
             doneCount: workout.blocks.filter { $0.status == .done }.count,
             createdAt: workout.createdAt,

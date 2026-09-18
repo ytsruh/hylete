@@ -3,6 +3,7 @@ package controllers
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -172,6 +173,15 @@ func (f *fakeWorkoutRepo) SetWorkoutStatus(workoutID, userID string, status mode
 	defer f.mu.Unlock()
 	if w, ok := f.workouts[workoutID]; ok && w.UserID == userID {
 		w.Status = status
+	}
+	return nil
+}
+
+func (f *fakeWorkoutRepo) SetHealthActivityType(workoutID, userID, activityType string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if w, ok := f.workouts[workoutID]; ok && w.UserID == userID {
+		w.HealthActivityType = models.NormalizeHealthActivityType(activityType)
 	}
 	return nil
 }
@@ -495,6 +505,56 @@ func TestSetWorkoutStatus_PreservesBlocks(t *testing.T) {
 	}
 }
 
+// TestSetWorkoutHealthActivityType_PreservesBlocks mirrors the
+// status-only regression test: a type-only change must leave the
+// plan (blocks and their check-offs) untouched. Also covers empty
+// normalizing to the blanket default, oversized keys, and
+// missing/cross-user 404s.
+func TestSetWorkoutHealthActivityType_PreservesBlocks(t *testing.T) {
+	ctrl, _ := setupWorkoutsController()
+	in := validWorkoutInput()
+	in.Blocks = []WorkoutBlockInput{{BlockID: "blk-1"}, {BlockID: "blk-2"}}
+	w, err := ctrl.CreateWorkout("u1", in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.HealthActivityType != models.DefaultHealthActivityType {
+		t.Errorf("type = %q, want blanket default %q", w.HealthActivityType, models.DefaultHealthActivityType)
+	}
+	if _, err := ctrl.SetWorkoutBlockStatus(w.ID, w.Blocks[0].ID, "u1", models.WorkoutBlockDone); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := ctrl.SetWorkoutHealthActivityType(w.ID, "u1", "running")
+	if err != nil {
+		t.Fatalf("SetWorkoutHealthActivityType failed: %v", err)
+	}
+	if updated.HealthActivityType != "running" {
+		t.Errorf("type = %q, want running", updated.HealthActivityType)
+	}
+	if len(updated.Blocks) != 2 {
+		t.Fatalf("blocks = %d, want 2 (plan must survive)", len(updated.Blocks))
+	}
+	if updated.Blocks[0].Status != models.WorkoutBlockDone || updated.Blocks[1].Status != models.WorkoutBlockPending {
+		t.Errorf("block statuses = %q/%q, want done/pending", updated.Blocks[0].Status, updated.Blocks[1].Status)
+	}
+	emptied, err := ctrl.SetWorkoutHealthActivityType(w.ID, "u1", "  ")
+	if err != nil {
+		t.Fatalf("empty type failed: %v", err)
+	}
+	if emptied.HealthActivityType != models.DefaultHealthActivityType {
+		t.Errorf("empty type = %q, want default %q", emptied.HealthActivityType, models.DefaultHealthActivityType)
+	}
+	if _, err := ctrl.SetWorkoutHealthActivityType(w.ID, "u1", strings.Repeat("x", 65)); !errors.Is(err, ErrWorkoutHealthActivityTypeLong) {
+		t.Errorf("err = %v, want ErrWorkoutHealthActivityTypeLong", err)
+	}
+	if _, err := ctrl.SetWorkoutHealthActivityType("missing", "u1", "running"); !errors.Is(err, ErrWorkoutNotFound) {
+		t.Errorf("err = %v, want ErrWorkoutNotFound", err)
+	}
+	if _, err := ctrl.SetWorkoutHealthActivityType(w.ID, "u2", "running"); !errors.Is(err, ErrWorkoutNotFound) {
+		t.Errorf("wrong-user err = %v, want ErrWorkoutNotFound", err)
+	}
+}
+
 func TestDuplicateWorkout(t *testing.T) {
 	ctrl, _ := setupWorkoutsController()
 	in := validWorkoutInput()
@@ -521,6 +581,9 @@ func TestDuplicateWorkout(t *testing.T) {
 	}
 	if cp.Status != models.WorkoutStatusPlanned {
 		t.Errorf("status = %q, want planned", cp.Status)
+	}
+	if cp.HealthActivityType != w.HealthActivityType {
+		t.Errorf("type = %q, want source %q carried over", cp.HealthActivityType, w.HealthActivityType)
 	}
 	if cp.Blocks[0].Status != models.WorkoutBlockPending {
 		t.Errorf("block status = %q, want pending", cp.Blocks[0].Status)

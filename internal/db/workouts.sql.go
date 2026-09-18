@@ -50,20 +50,21 @@ func (q *Queries) CountWorkoutsUsingBlock(ctx context.Context, arg CountWorkouts
 
 const createWorkout = `-- name: CreateWorkout :one
 
-INSERT INTO workouts (id, user_id, name, description, scheduled_date, status, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, user_id, name, description, scheduled_date, status, created_at, updated_at
+INSERT INTO workouts (id, user_id, name, description, scheduled_date, status, health_activity_type, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, user_id, name, description, scheduled_date, status, health_activity_type, created_at, updated_at
 `
 
 type CreateWorkoutParams struct {
-	ID            string
-	UserID        string
-	Name          string
-	Description   string
-	ScheduledDate string
-	Status        string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID                 string
+	UserID             string
+	Name               string
+	Description        string
+	ScheduledDate      string
+	Status             string
+	HealthActivityType string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 // Workouts are user-owned scheduled collections of blocks. Every
@@ -77,6 +78,7 @@ func (q *Queries) CreateWorkout(ctx context.Context, arg CreateWorkoutParams) (W
 		arg.Description,
 		arg.ScheduledDate,
 		arg.Status,
+		arg.HealthActivityType,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -88,6 +90,7 @@ func (q *Queries) CreateWorkout(ctx context.Context, arg CreateWorkoutParams) (W
 		&i.Description,
 		&i.ScheduledDate,
 		&i.Status,
+		&i.HealthActivityType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -159,7 +162,7 @@ func (q *Queries) DeleteWorkoutBlocks(ctx context.Context, workoutID string) err
 }
 
 const getWorkout = `-- name: GetWorkout :one
-SELECT id, user_id, name, description, scheduled_date, status, created_at, updated_at FROM workouts
+SELECT id, user_id, name, description, scheduled_date, status, health_activity_type, created_at, updated_at FROM workouts
 WHERE id = ? AND user_id = ?
 `
 
@@ -178,6 +181,7 @@ func (q *Queries) GetWorkout(ctx context.Context, arg GetWorkoutParams) (Workout
 		&i.Description,
 		&i.ScheduledDate,
 		&i.Status,
+		&i.HealthActivityType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -345,7 +349,7 @@ func (q *Queries) ListWorkoutBlocksWithBlock(ctx context.Context, workoutID stri
 }
 
 const listWorkouts = `-- name: ListWorkouts :many
-SELECT id, user_id, name, description, scheduled_date, status, created_at, updated_at FROM workouts
+SELECT id, user_id, name, description, scheduled_date, status, health_activity_type, created_at, updated_at FROM workouts
 WHERE user_id = ?
 ORDER BY scheduled_date DESC, created_at DESC, rowid DESC
 `
@@ -368,6 +372,7 @@ func (q *Queries) ListWorkouts(ctx context.Context, userID string) ([]Workout, e
 			&i.Description,
 			&i.ScheduledDate,
 			&i.Status,
+			&i.HealthActivityType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -385,7 +390,7 @@ func (q *Queries) ListWorkouts(ctx context.Context, userID string) ([]Workout, e
 }
 
 const listWorkoutsInRange = `-- name: ListWorkoutsInRange :many
-SELECT id, user_id, name, description, scheduled_date, status, created_at, updated_at FROM workouts
+SELECT id, user_id, name, description, scheduled_date, status, health_activity_type, created_at, updated_at FROM workouts
 WHERE user_id = ? AND scheduled_date >= ? AND scheduled_date <= ?
 ORDER BY scheduled_date ASC, created_at ASC, rowid ASC
 `
@@ -415,6 +420,7 @@ func (q *Queries) ListWorkoutsInRange(ctx context.Context, arg ListWorkoutsInRan
 			&i.Description,
 			&i.ScheduledDate,
 			&i.Status,
+			&i.HealthActivityType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -432,7 +438,7 @@ func (q *Queries) ListWorkoutsInRange(ctx context.Context, arg ListWorkoutsInRan
 }
 
 const listWorkoutsInRangeWithBlockCounts = `-- name: ListWorkoutsInRangeWithBlockCounts :many
-SELECT w.id, w.user_id, w.name, w.description, w.scheduled_date, w.status, w.created_at, w.updated_at,
+SELECT w.id, w.user_id, w.name, w.description, w.scheduled_date, w.status, w.health_activity_type, w.created_at, w.updated_at,
        COUNT(wb.id) AS block_count,
        COUNT(CASE WHEN wb.status = 'done' THEN 1 END) AS done_count
 FROM workouts w
@@ -449,16 +455,17 @@ type ListWorkoutsInRangeWithBlockCountsParams struct {
 }
 
 type ListWorkoutsInRangeWithBlockCountsRow struct {
-	ID            string
-	UserID        string
-	Name          string
-	Description   string
-	ScheduledDate string
-	Status        string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	BlockCount    int64
-	DoneCount     int64
+	ID                 string
+	UserID             string
+	Name               string
+	Description        string
+	ScheduledDate      string
+	Status             string
+	HealthActivityType string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	BlockCount         int64
+	DoneCount          int64
 }
 
 // Range variant of the list view (calendar weeks).
@@ -478,6 +485,7 @@ func (q *Queries) ListWorkoutsInRangeWithBlockCounts(ctx context.Context, arg Li
 			&i.Description,
 			&i.ScheduledDate,
 			&i.Status,
+			&i.HealthActivityType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.BlockCount,
@@ -497,7 +505,7 @@ func (q *Queries) ListWorkoutsInRangeWithBlockCounts(ctx context.Context, arg Li
 }
 
 const listWorkoutsWithBlockCounts = `-- name: ListWorkoutsWithBlockCounts :many
-SELECT w.id, w.user_id, w.name, w.description, w.scheduled_date, w.status, w.created_at, w.updated_at,
+SELECT w.id, w.user_id, w.name, w.description, w.scheduled_date, w.status, w.health_activity_type, w.created_at, w.updated_at,
        COUNT(wb.id) AS block_count,
        COUNT(CASE WHEN wb.status = 'done' THEN 1 END) AS done_count
 FROM workouts w
@@ -508,16 +516,17 @@ ORDER BY w.scheduled_date DESC, w.created_at DESC, w.rowid DESC
 `
 
 type ListWorkoutsWithBlockCountsRow struct {
-	ID            string
-	UserID        string
-	Name          string
-	Description   string
-	ScheduledDate string
-	Status        string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	BlockCount    int64
-	DoneCount     int64
+	ID                 string
+	UserID             string
+	Name               string
+	Description        string
+	ScheduledDate      string
+	Status             string
+	HealthActivityType string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	BlockCount         int64
+	DoneCount          int64
 }
 
 // List view needs per-workout block + done counts without N+1.
@@ -537,6 +546,7 @@ func (q *Queries) ListWorkoutsWithBlockCounts(ctx context.Context, userID string
 			&i.Description,
 			&i.ScheduledDate,
 			&i.Status,
+			&i.HealthActivityType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.BlockCount,
@@ -572,17 +582,19 @@ SET name = ?,
     description = ?,
     scheduled_date = ?,
     status = ?,
+    health_activity_type = ?,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = ? AND user_id = ?
 `
 
 type UpdateWorkoutParams struct {
-	Name          string
-	Description   string
-	ScheduledDate string
-	Status        string
-	ID            string
-	UserID        string
+	Name               string
+	Description        string
+	ScheduledDate      string
+	Status             string
+	HealthActivityType string
+	ID                 string
+	UserID             string
 }
 
 // Overwrites the editable workout fields and bumps updated_at.
@@ -594,6 +606,7 @@ func (q *Queries) UpdateWorkout(ctx context.Context, arg UpdateWorkoutParams) er
 		arg.Description,
 		arg.ScheduledDate,
 		arg.Status,
+		arg.HealthActivityType,
 		arg.ID,
 		arg.UserID,
 	)
@@ -614,6 +627,25 @@ type UpdateWorkoutBlockStatusParams struct {
 
 func (q *Queries) UpdateWorkoutBlockStatus(ctx context.Context, arg UpdateWorkoutBlockStatusParams) error {
 	_, err := q.db.ExecContext(ctx, updateWorkoutBlockStatus, arg.Status, arg.ID, arg.WorkoutID)
+	return err
+}
+
+const updateWorkoutHealthActivityTypeScoped = `-- name: UpdateWorkoutHealthActivityTypeScoped :exec
+UPDATE workouts SET health_activity_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?
+`
+
+type UpdateWorkoutHealthActivityTypeScopedParams struct {
+	HealthActivityType string
+	ID                 string
+	UserID             string
+}
+
+// Type-only update for the Apple Health activity type (workout
+// editor type row, detail type picker). Touches the type alone
+// so block check-offs survive (same rationale as
+// UpdateWorkoutStatusScoped). Scoped to the user directly.
+func (q *Queries) UpdateWorkoutHealthActivityTypeScoped(ctx context.Context, arg UpdateWorkoutHealthActivityTypeScopedParams) error {
+	_, err := q.db.ExecContext(ctx, updateWorkoutHealthActivityTypeScoped, arg.HealthActivityType, arg.ID, arg.UserID)
 	return err
 }
 

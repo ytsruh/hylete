@@ -383,6 +383,14 @@ public final class APIClient: @unchecked Sendable {
         try await send("PATCH", "workouts/\(id)/status", body: UpdateWorkoutStatusRequest(status: status))
     }
 
+    /// Changes only a workout's Apple Health activity type (plan,
+    /// blocks, and their check-offs untouched). Use for the editor
+    /// type row and the detail type picker — both must preserve
+    /// block progress, which the full-replacement `PUT` resets.
+    public func setWorkoutHealthActivityType(id: String, healthActivityType: String) async throws -> WorkoutDTO {
+        try await send("PATCH", "workouts/\(id)/health-activity-type", body: UpdateWorkoutHealthActivityTypeRequest(healthActivityType: healthActivityType))
+    }
+
     public func deleteWorkout(id: String) async throws {
         try await sendVoid("DELETE", "workouts/\(id)")
     }

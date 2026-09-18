@@ -3,8 +3,8 @@
 -- never read or mutate another user's training schedule.
 
 -- name: CreateWorkout :one
-INSERT INTO workouts (id, user_id, name, description, scheduled_date, status, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO workouts (id, user_id, name, description, scheduled_date, status, health_activity_type, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetWorkout :one
@@ -57,8 +57,16 @@ SET name = ?,
     description = ?,
     scheduled_date = ?,
     status = ?,
+    health_activity_type = ?,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = ? AND user_id = ?;
+
+-- name: UpdateWorkoutHealthActivityTypeScoped :exec
+-- Type-only update for the Apple Health activity type (workout
+-- editor type row, detail type picker). Touches the type alone
+-- so block check-offs survive (same rationale as
+-- UpdateWorkoutStatusScoped). Scoped to the user directly.
+UPDATE workouts SET health_activity_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?;
 
 -- name: DeleteWorkout :exec
 DELETE FROM workouts

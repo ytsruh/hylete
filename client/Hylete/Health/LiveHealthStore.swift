@@ -58,6 +58,50 @@ public final class LiveHealthStore: HealthDataProvider {
         try await store.requestAuthorization(toShare: [], read: types)
     }
 
+    /// Every type the workout recorder writes. Centralised so
+    /// the permission sheet and any future preflight checks
+    /// can't drift. Route is included for outdoor-only GPS
+    /// traces; indoor sessions simply never start a route
+    /// builder, so the type goes unused.
+    ///
+    /// NOTE: `.appleExerciseTime` is deliberately absent —
+    /// HealthKit forbids third-party writes to it (requesting
+    /// share access throws "Authorization to share the following
+    /// types is disallowed" and crashes). The system credits
+    /// exercise minutes from the saved `HKWorkout` itself, so
+    /// nothing is lost.
+    static var writeTypes: [HKSampleType?] {
+        var types: [HKSampleType?] = [HKObjectType.workoutType()]
+        let quantityIDs: [HKQuantityTypeIdentifier] = [
+            .activeEnergyBurned, .basalEnergyBurned,
+            .heartRate, .distanceWalkingRunning,
+        ]
+        types += quantityIDs.map { HKQuantityType.quantityType(forIdentifier: $0) }
+        types.append(HKSeriesType.workoutRoute())
+        return types
+    }
+
+    /// Coarse write state across `writeTypes`, same union
+    /// semantics as `authorizationStatus()`: granted when any
+    /// share type is authorized, denied only when nothing is.
+    /// Advisory only — a finished `HKWorkout` (or its absence
+    /// with an error) is ground truth.
+    public func writeAuthorizationStatus() -> HealthAuthStatus {
+        guard isAvailable() else { return .unavailable }
+        let types = Self.writeTypes.compactMap { $0 }
+        guard !types.isEmpty else { return .unavailable }
+        let statuses = types.map { store.authorizationStatus(for: $0) }
+        if statuses.contains(.sharingAuthorized) { return .granted }
+        if statuses.allSatisfy({ $0 == .notDetermined }) { return .notRequested }
+        return .denied
+    }
+
+    public func requestWriteAuthorization() async throws {
+        let read = Set(Self.readTypes.compactMap { $0 })
+        let share = Set(Self.writeTypes.compactMap { $0 })
+        try await store.requestAuthorization(toShare: share, read: read)
+    }
+
     public func fetchReadings() async -> [HealthMetric: HealthSample] {
         guard isAvailable() else { return [:] }
         var out: [HealthMetric: HealthSample] = [:]
@@ -243,15 +287,18 @@ public final class LiveHealthStore: HealthDataProvider {
 /// touches HealthKit.
 public final class MockHealthStore: HealthDataProvider, HealthHistoryProvider {
     private let status: HealthAuthStatus
+    private let writeStatus: HealthAuthStatus
     private let readings: [HealthMetric: HealthSample]
     private let history: [DailyHealthSnapshot]
 
     public init(
         status: HealthAuthStatus = .granted,
+        writeStatus: HealthAuthStatus? = nil,
         readings: [HealthMetric: HealthSample] = [:],
         history: [DailyHealthSnapshot] = []
     ) {
         self.status = status
+        self.writeStatus = writeStatus ?? status
         self.readings = readings
         self.history = history
     }
@@ -259,6 +306,8 @@ public final class MockHealthStore: HealthDataProvider, HealthHistoryProvider {
     public func isAvailable() -> Bool { status != .unavailable }
     public func authorizationStatus() -> HealthAuthStatus { status }
     public func requestAuthorization() async throws {}
+    public func writeAuthorizationStatus() -> HealthAuthStatus { writeStatus }
+    public func requestWriteAuthorization() async throws {}
     public func fetchReadings() async -> [HealthMetric: HealthSample] { readings }
     /// Returns only the canned snapshots falling inside the
     /// requested days — like the live store, which returns

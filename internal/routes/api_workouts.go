@@ -51,6 +51,8 @@ func workoutValidationError(err error) (string, bool) {
 		return "block not found", true
 	case controllers.ErrWorkoutBlockStatusInvalid:
 		return "block status must be pending, done or skipped", true
+	case controllers.ErrWorkoutHealthActivityTypeLong:
+		return "health activity type must be 64 characters or less", true
 	case controllers.ErrWorkoutRangeInvalid:
 		return "from date must not be after to date", true
 	case controllers.ErrWorkoutBulkRequired:
@@ -105,11 +107,12 @@ func (h *Handler) APICreateWorkout(c echo.Context) error {
 
 	claims := GetClaims(c)
 	created, err := h.workoutsCtrl.CreateWorkout(claims.UserID, controllers.CreateWorkoutInput{
-		Name:          in.Name,
-		Description:   in.Description,
-		ScheduledDate: in.ScheduledDate,
-		Status:        models.WorkoutStatus(in.Status),
-		Blocks:        workoutBlocksToInputs(in.Blocks),
+		Name:               in.Name,
+		Description:        in.Description,
+		ScheduledDate:      in.ScheduledDate,
+		Status:             models.WorkoutStatus(in.Status),
+		HealthActivityType: in.HealthActivityType,
+		Blocks:             workoutBlocksToInputs(in.Blocks),
 	})
 	if err != nil {
 		if msg, ok := workoutValidationError(err); ok {
@@ -189,11 +192,12 @@ func (h *Handler) APIUpdateWorkout(c echo.Context) error {
 	claims := GetClaims(c)
 	id := c.Param("id")
 	updated, err := h.workoutsCtrl.UpdateWorkout(id, claims.UserID, controllers.UpdateWorkoutInput{
-		Name:          in.Name,
-		Description:   in.Description,
-		ScheduledDate: in.ScheduledDate,
-		Status:        models.WorkoutStatus(in.Status),
-		Blocks:        workoutBlocksToInputs(in.Blocks),
+		Name:               in.Name,
+		Description:        in.Description,
+		ScheduledDate:      in.ScheduledDate,
+		Status:             models.WorkoutStatus(in.Status),
+		HealthActivityType: in.HealthActivityType,
+		Blocks:             workoutBlocksToInputs(in.Blocks),
 	})
 	if err != nil {
 		if errors.Is(err, controllers.ErrWorkoutNotFound) {
@@ -279,6 +283,39 @@ func (h *Handler) APIUpdateWorkoutStatus(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, APIError{Error: msg})
 		}
 		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to update workout status"})
+	}
+	return c.JSON(http.StatusOK, WorkoutFromModel(*updated))
+}
+
+// APIUpdateWorkoutHealthActivityType handles PATCH
+// /api/v1/workouts/:id/health-activity-type. Changes only the Apple
+// Health activity type (plan, blocks and their check-offs
+// untouched) and returns the refreshed workout. Backs the editor
+// type row and the detail type picker — both must preserve block
+// progress, which the full-replacement PUT intentionally resets.
+// Empty normalizes to the blanket default server-side. Returns 404
+// when missing or owned by another user.
+func (h *Handler) APIUpdateWorkoutHealthActivityType(c echo.Context) error {
+	var in UpdateWorkoutHealthActivityTypeRequest
+	if err := c.Bind(&in); err != nil {
+		return c.JSON(http.StatusBadRequest, APIError{Error: "invalid request body"})
+	}
+	if err := h.validator.ValidateStruct(&in); err != nil {
+		return c.JSON(http.StatusBadRequest, APIError{Error: friendlyValidationError(err)})
+	}
+
+	claims := GetClaims(c)
+	updated, err := h.workoutsCtrl.SetWorkoutHealthActivityType(
+		c.Param("id"), claims.UserID, in.HealthActivityType,
+	)
+	if err != nil {
+		if errors.Is(err, controllers.ErrWorkoutNotFound) {
+			return c.JSON(http.StatusNotFound, APIError{Error: "workout not found"})
+		}
+		if msg, ok := workoutValidationError(err); ok {
+			return c.JSON(http.StatusBadRequest, APIError{Error: msg})
+		}
+		return c.JSON(http.StatusInternalServerError, APIError{Error: "failed to update workout health activity type"})
 	}
 	return c.JSON(http.StatusOK, WorkoutFromModel(*updated))
 }

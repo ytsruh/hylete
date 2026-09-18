@@ -619,7 +619,7 @@ final class WorkoutPlayerTests: XCTestCase {
         let block = workout.blocks[0]
         XCTAssertEqual(block.rounds, 12)
         XCTAssertEqual(block.intervalSeconds, 60)
-        XCTAssertEqual(block.timingSummary, "12 rounds × Every 60s")
+        XCTAssertEqual(block.timingSummary, "12 minutes · change every 60s")
     }
 
     func testBlockTimingMissingKeysDefaultToZero() throws {
@@ -645,7 +645,8 @@ final class WorkoutPlayerTests: XCTestCase {
         }
         XCTAssertEqual(block(type: .circuit, rounds: 4, rest: 90, cap: 0, interval: 0).timingSummary, "4 rounds · 90s rest")
         XCTAssertEqual(block(type: .amrap, rounds: 0, rest: 0, cap: 600, interval: 0).timingSummary, "10 mins")
-        XCTAssertEqual(block(type: .emom, rounds: 12, rest: 0, cap: 0, interval: 60).timingSummary, "12 rounds × Every 60s")
+        XCTAssertEqual(block(type: .emom, rounds: 12, rest: 0, cap: 0, interval: 60).timingSummary, "12 minutes · change every 60s")
+        XCTAssertEqual(block(type: .emom, rounds: 1, rest: 0, cap: 0, interval: 60).timingSummary, "1 minute · change every 60s")
         XCTAssertEqual(block(type: .standard, rounds: 0, rest: 0, cap: 0, interval: 0).timingSummary, "")
     }
 
