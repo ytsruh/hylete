@@ -84,6 +84,78 @@ final class PlayerHealthStoreTests: XCTestCase {
         XCTAssertFalse(store.errorMessage!.isEmpty)
     }
 
+    /// Idle attach claims the store and runs adoption
+    /// (server key wins over inference).
+    func testAttachClaimsIdleAndAdopts() {
+        let store = PlayerHealthStore(
+            recorder: MockWorkoutHealthRecorder(),
+            provider: MockHealthStore(status: .granted)
+        )
+        let result = store.attach(
+            workoutID: "w1",
+            items: strengthItems(),
+            serverKey: "running",
+            dateOfBirth: "1996-03-04"
+        )
+        XCTAssertEqual(result, .claimed)
+        XCTAssertEqual(store.claimedWorkoutID, "w1")
+        XCTAssertEqual(store.selectedType, .running)
+        XCTAssertNotNil(store.maxHeartRate)
+    }
+
+    /// Attaching the same workout mid-session reattaches
+    /// without restarting or clobbering the running type.
+    func testAttachReattachesSameWorkout() async {
+        let recorder = MockWorkoutHealthRecorder()
+        let store = PlayerHealthStore(
+            recorder: recorder,
+            provider: MockHealthStore(status: .granted)
+        )
+        XCTAssertEqual(store.attach(workoutID: "w1", items: strengthItems(), serverKey: nil, dateOfBirth: nil), .claimed)
+        await store.start()
+        XCTAssertEqual(recorder.starts.count, 1)
+        let result = store.attach(workoutID: "w1", items: [], serverKey: "running", dateOfBirth: nil)
+        XCTAssertEqual(result, .reattached)
+        XCTAssertEqual(recorder.starts.count, 1)
+        XCTAssertEqual(store.selectedType, .traditionalStrengthTraining)
+        XCTAssertTrue(store.isRecording)
+    }
+
+    /// Attaching a different workout mid-session is blocked
+    /// and leaves the running session untouched.
+    func testAttachBlocksDifferentWorkout() async {
+        let recorder = MockWorkoutHealthRecorder()
+        let store = PlayerHealthStore(
+            recorder: recorder,
+            provider: MockHealthStore(status: .granted)
+        )
+        XCTAssertEqual(store.attach(workoutID: "w1", items: strengthItems(), serverKey: nil, dateOfBirth: nil), .claimed)
+        await store.start()
+        let result = store.attach(workoutID: "w2", items: strengthItems(), serverKey: "running", dateOfBirth: nil)
+        XCTAssertEqual(result, .busy)
+        XCTAssertEqual(recorder.starts.count, 1)
+        XCTAssertEqual(store.claimedWorkoutID, "w1")
+        XCTAssertEqual(store.selectedType, .traditionalStrengthTraining)
+    }
+
+    /// A finished session resets on the next attach, so the
+    /// shared store serves successive workouts.
+    func testAttachAfterEndClaimsNewWorkout() async {
+        let recorder = MockWorkoutHealthRecorder()
+        let store = PlayerHealthStore(
+            recorder: recorder,
+            provider: MockHealthStore(status: .granted)
+        )
+        XCTAssertEqual(store.attach(workoutID: "w1", items: strengthItems(), serverKey: nil, dateOfBirth: nil), .claimed)
+        await store.start()
+        await store.endAndSave()
+        let result = store.attach(workoutID: "w2", items: strengthItems(), serverKey: "running", dateOfBirth: nil)
+        XCTAssertEqual(result, .claimed)
+        XCTAssertEqual(store.claimedWorkoutID, "w2")
+        XCTAssertEqual(store.selectedType, .running)
+        XCTAssertFalse(store.isRecording)
+    }
+
     func testEndAndSaveIsNoopWhenIdle() async {
         let recorder = MockWorkoutHealthRecorder()
         let store = PlayerHealthStore(

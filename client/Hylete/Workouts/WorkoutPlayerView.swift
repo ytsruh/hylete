@@ -43,12 +43,12 @@ struct WorkoutPlayerView: View {
 
     @ObservedObject var workoutStore: WorkoutStore
     @StateObject private var player: WorkoutPlayerStore
-    /// Owner for the explicit-start Apple Health recording (live
-    /// `HKWorkoutSession`). Separate from `player` so a Health
-    /// denial or failure can never block set logging. Starts
-    /// with no inferred type; the real default is adopted once
-    /// items load (see the load task below).
-    @StateObject private var healthStore: PlayerHealthStore
+    /// Shared app-scoped Health recording (owned by
+    /// `MainTabView`, so a recording survives closing this
+    /// player). This view only attaches to it per workout —
+    /// see the load task. Separate from `player` so a Health
+    /// denial or failure can never block set logging.
+    @ObservedObject var healthStore: PlayerHealthStore
     /// The player-scoped single shared timer. Block header
     /// chips start timers here; the sticky pill and expanded
     /// sheet render this store. Never persisted — a timer is
@@ -63,6 +63,11 @@ struct WorkoutPlayerView: View {
     let workoutID: String
 
     @State private var didRequestLoad: Bool = false
+    /// Set when this player opened while the shared Health
+    /// store is recording a different workout. Auto-start is
+    /// skipped and the banner below explains how to switch
+    /// (end the active recording from the global pill).
+    @State private var healthBusy: Bool = false
     @State private var showingFinishConfirm: Bool = false
     @State private var isFinishing: Bool = false
     /// Collapsed block ids (tap the chevron to fold long blocks).
@@ -74,6 +79,20 @@ struct WorkoutPlayerView: View {
     /// `BlockItemDTO` is `Identifiable`, so the sheet binds by
     /// item and always reads live buckets from the store.
     @State private var historyItem: BlockItemDTO?
+    /// Exercise whose reference detail sheet is open (full
+    /// `ExerciseHistoryView` in read-only mode: details,
+    /// stats, chart, history — no entry actions). Set
+    /// immediately to a lightweight fallback built from the
+    /// planned item so the sheet opens without waiting for
+    /// the catalogue; upgraded to the rich catalogue match
+    /// in the background when it arrives (same id, so the
+    /// history load is unaffected).
+    @State private var exerciseDetail: ExerciseDTO?
+    /// Catalogue cache for resolving planned items to full
+    /// `ExerciseDTO`s. Loaded lazily on first tap (one fetch
+    /// per player session) — there is no single-exercise GET
+    /// endpoint, so the list is the only source.
+    @State private var exerciseCatalog: [String: ExerciseDTO]?
     /// Expanded timer sheet visibility.
     @State private var showingTimerSheet: Bool = false
     /// Block whose plan config prefills the timer sheet's
@@ -97,14 +116,11 @@ struct WorkoutPlayerView: View {
     /// mid-workout.
     @State private var selectedPage = 0
 
-    init(workoutID: String, workoutStore: WorkoutStore, player: WorkoutPlayerStore) {
+    init(workoutID: String, workoutStore: WorkoutStore, player: WorkoutPlayerStore, healthStore: PlayerHealthStore) {
         self.workoutID = workoutID
         self.workoutStore = workoutStore
         _player = StateObject(wrappedValue: player)
-        _healthStore = StateObject(wrappedValue: PlayerHealthStore(
-            workoutID: workoutID,
-            items: []
-        ))
+        self.healthStore = healthStore
     }
 
     var body: some View {
@@ -137,6 +153,13 @@ struct WorkoutPlayerView: View {
                         .environmentObject(env)
                         .environmentObject(authStore)
                 }
+                .sheet(item: $exerciseDetail) { exercise in
+                    NavigationStack {
+                        ExerciseHistoryView(exercise: exercise, allowsEntryActions: false)
+                            .environmentObject(env)
+                            .environmentObject(authStore)
+                    }
+                }
                 .task {
                     // Long rests between sets can outlast the
                     // user's autolock — keep the screen awake while
@@ -153,21 +176,33 @@ struct WorkoutPlayerView: View {
                         collapsedBlockIDs = Set(workout.blocks
                             .filter { $0.status == .done || $0.status == .skipped }
                             .map(\.id))
-                        // Server-backed type wins; inference covers
-                        // unset/unknown keys. Both are no-ops after
-                        // Start or an explicit override.
-                        healthStore.adoptServerType(workout.healthActivityType)
-                        healthStore.adoptInferredDefault(items: workout.blocks.flatMap(\.items))
-                    }
-                    // Adopt the profile DOB for zone estimation
-                    // (no-op after Start; nil DOB hides the tile).
-                    healthStore.adoptProfile(dateOfBirth: authStore.currentUser?.dateOfBirth)
-                    // Auto-start tracking unless opted out in
-                    // Profile. Runs once per player instance
-                    // (didRequestLoad guard above); denial lands on
-                    // the existing inline note, never a block.
-                    if HealthAutoStart.isEnabled {
-                        await healthStore.start()
+                        // Claim the shared Health store for this
+                        // workout (type/DOB adoption runs inside
+                        // on first claim). Reattaching to our own
+                        // running session starts nothing new; a
+                        // session for another workout blocks us
+                        // with a banner instead of auto-starting.
+                        switch healthStore.attach(
+                            workoutID: workoutID,
+                            items: workout.blocks.flatMap(\.items),
+                            serverKey: workout.healthActivityType,
+                            dateOfBirth: authStore.currentUser?.dateOfBirth
+                        ) {
+                        case .claimed:
+                            // Auto-start tracking unless opted
+                            // out in Profile. Runs once per
+                            // player instance (didRequestLoad
+                            // guard above); denial lands on the
+                            // existing inline note, never a
+                            // block.
+                            if HealthAutoStart.isEnabled {
+                                await healthStore.start()
+                            }
+                        case .reattached:
+                            break
+                        case .busy:
+                            healthBusy = true
+                        }
                     }
                 }
                 .onDisappear {
@@ -278,6 +313,20 @@ struct WorkoutPlayerView: View {
     private func logPage(_ workout: WorkoutWithItemsDTO) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DSSpacing.md) {
+                // Another workout owns the shared Health
+                // recording — this player tracks nothing until
+                // that session ends (see the global pill).
+                if healthBusy && healthStore.isRecording && healthStore.claimedWorkoutID != workoutID {
+                    Text("Apple Health is recording another workout. End it from the recording pill to track this one.")
+                        .font(.footnote)
+                        .foregroundStyle(DSColors.textSecondary)
+                        .padding(DSSpacing.sm)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: DSSpacing.cornerRadius, style: .continuous)
+                                .fill(DSColors.surface)
+                        )
+                }
                 headerCard(workout)
                 if let error = player.errorMessage {
                     Text(error)
@@ -691,23 +740,24 @@ struct WorkoutPlayerView: View {
             // unsubmitted drafts: reopening a finished workout
             // leaves its blocks done (only the workout status
             // flips), so without this, sets typed into a done
-            // block could never be posted. Compact solid-primary
-            // chrome — prominent, but one size below the
-            // full-size "Finish workout" button.
+            // block could never be posted. Compact secondary
+            // chrome — the full-size "Finish workout" button
+            // below stays the screen's only filled primary
+            // action, so the two can never be confused.
             if block.status != .done || player.hasValidDrafts(in: block) {
                 Button {
                     Task { await markBlockDone(block) }
                 } label: {
                     if markingBlockIDs.contains(block.id) || player.isLoggingAny(in: block) {
                         ProgressView()
-                            .tint(.white)
+                            .tint(DSColors.accent)
                             .frame(maxWidth: .infinity)
                     } else {
                         Text(block.status == .done ? "Log additional sets" : "Mark as Done")
                             .frame(maxWidth: .infinity)
                     }
                 }
-                .buttonStyle(.dsPrimaryCompact)
+                .buttonStyle(.dsSecondaryCompact)
                 .disabled(markingBlockIDs.contains(block.id) || player.isLoggingAny(in: block))
             }
         }
@@ -805,7 +855,7 @@ struct WorkoutPlayerView: View {
         // duplicate row when the plan rest IS 30/60/90).
         return Menu {
             if block.blockType == .emom, block.rounds > 0, block.intervalSeconds > 0 {
-                Button("EMOM \(block.rounds) × every \(block.intervalSeconds)s (plan)") {
+                Button("\(emomSummary(minutes: block.rounds, intervalSeconds: block.intervalSeconds)) (plan)") {
                     timerStore.startEMOM(
                         rounds: block.rounds,
                         intervalSeconds: block.intervalSeconds,
@@ -923,9 +973,28 @@ struct WorkoutPlayerView: View {
             // a row below the counts.
             HStack(alignment: .top, spacing: DSSpacing.xs) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(item.exerciseName)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(DSColors.text)
+                    // The exercise name opens its reference
+                    // detail sheet (details + stats + chart +
+                    // full history, read-only). Name plus
+                    // chevron marks it tappable; the target
+                    // text below stays static.
+                    Button {
+                        openExerciseDetail(for: item)
+                    } label: {
+                        HStack(spacing: 2) {
+                            Text(item.exerciseName)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(DSColors.text)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(DSColors.textSecondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Show details and history for \(item.exerciseName)")
+                    .accessibilityHint("Opens the exercise details and full history")
                     if !item.targetText.isEmpty {
                         Text(item.targetText)
                             .font(.subheadline)
@@ -1001,6 +1070,51 @@ struct WorkoutPlayerView: View {
             get: { player.notes[itemID] ?? "" },
             set: { player.setNotes($0, for: itemID) }
         )
+    }
+
+    /// Opens the exercise reference sheet for a planned item.
+    /// Presents a fallback built from the item immediately
+    /// (id + name + type are enough for the history/chart
+    /// endpoints), then upgrades it to the rich catalogue
+    /// match in the background when the lazy catalogue load
+    /// lands. Catalogue failure simply leaves the fallback —
+    /// the history view surfaces its own load errors.
+    private func openExerciseDetail(for item: BlockItemDTO) {
+        // One sheet at a time: a logged-sets sheet never
+        // underlaps the detail sheet or vice versa.
+        historyItem = nil
+        if let cached = exerciseCatalog?[item.exerciseID] {
+            exerciseDetail = cached
+            return
+        }
+        exerciseDetail = ExerciseDTO(
+            id: item.exerciseID,
+            name: item.exerciseName,
+            description: "",
+            videoURL: "",
+            imgURL: "",
+            imageURL: "",
+            type: item.exerciseType
+        )
+        Task {
+            do {
+                if exerciseCatalog == nil {
+                    let exercises = try await env.api.listExercises()
+                    exerciseCatalog = Dictionary(
+                        uniqueKeysWithValues: exercises.map { ($0.id, $0) }
+                    )
+                }
+                if let match = exerciseCatalog?[item.exerciseID] {
+                    exerciseDetail = match
+                }
+            } catch let error as APIError {
+                if case .unauthorized = error { return }
+                // Non-fatal: the fallback stays and the
+                // history view reports its own errors.
+            } catch {
+                // Non-fatal — see above.
+            }
+        }
     }
 
     private func editorRows(_ item: BlockItemDTO) -> some View {
@@ -1081,6 +1195,11 @@ struct WorkoutPlayerView: View {
         }
         .buttonStyle(.dsPrimary)
         .disabled(isFinishing)
+        // Extra breathing room above the workout-level action:
+        // the last block's outlined "Mark as Done" sits just
+        // above, and the added 8pt (24pt total with the stack
+        // spacing) keeps the two from reading as one group.
+        .padding(.top, DSSpacing.sm)
     }
 
     private var weightUnit: String {
@@ -1216,6 +1335,213 @@ private struct WorkoutLoggedSetsSheet: View {
     }
 }
 
+/// Global Apple Health recording pill. Rendered by
+/// `MainTabView` on every tab while a session is live —
+/// including after the player was closed — so a recording
+/// is never invisible (and never silently lost). Chrome
+/// mirrors `PlayerTimerPill` (surface card, bottom divider,
+/// full-width tap target, quick pause/resume + expand).
+struct HealthRecordingPill: View {
+    @ObservedObject var store: PlayerHealthStore
+    var onExpand: () -> Void
+
+    private var activityName: String {
+        let type = store.activityTypeMirror ?? store.selectedType
+        return WorkoutHealthActivityMapper.displayName(for: type)
+    }
+
+    var body: some View {
+        HStack(spacing: DSSpacing.sm) {
+            Circle()
+                .fill(Color.red)
+                .frame(width: 10, height: 10)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Recording workout")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DSColors.textSecondary)
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    Text("\(activityName) · \(WorkoutPlayerView.elapsedLabel(store.liveStats.elapsedSeconds))")
+                        .font(.headline.monospacedDigit())
+                        .foregroundStyle(DSColors.text)
+                        .contentTransition(.numericText())
+                }
+            }
+            Spacer()
+            Button {
+                if store.recorderState == .active {
+                    store.pause()
+                } else {
+                    store.resume()
+                }
+            } label: {
+                Image(systemName: store.recorderState == .active ? "pause.fill" : "play.fill")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(DSColors.accent)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(store.recorderState == .active ? "Pause recording" : "Resume recording")
+            Button {
+                onExpand()
+            } label: {
+                Image(systemName: "chevron.up")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(DSColors.textSecondary)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open recording details")
+        }
+        .padding(.horizontal, DSSpacing.md)
+        .padding(.vertical, DSSpacing.sm)
+        .background(DSColors.surface)
+        .overlay(Divider().background(DSColors.separator), alignment: .bottom)
+        .contentShape(Rectangle())
+        .onTapGesture { onExpand() }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Recording \(activityName)")
+        .accessibilityHint("Opens the recording details")
+    }
+}
+
+/// Mini sheet for the global recording pill: live status,
+/// pause/resume, End & Save, Discard, and a jump back into
+/// the recorded workout's player. Entry-point only — no set
+/// logging lives here, so player session state is untouched.
+struct HealthRecordingSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var authStore: AuthStore
+
+    @ObservedObject var store: PlayerHealthStore
+    var onOpenWorkout: () -> Void
+
+    @State private var showingDiscardConfirm = false
+
+    private var activityName: String {
+        let type = store.activityTypeMirror ?? store.selectedType
+        return WorkoutHealthActivityMapper.displayName(for: type)
+    }
+
+    private var distanceUnit: String {
+        authStore.currentUser?.distanceUnit ?? "km"
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                List {
+                    Section("Status") {
+                        statusRow("Activity", activityName)
+                        statusRow("State", store.recorderState == .paused ? "Paused" : "Recording")
+                        TimelineView(.periodic(from: .now, by: 1)) { _ in
+                            statusRow("Elapsed", WorkoutPlayerView.elapsedLabel(store.liveStats.elapsedSeconds))
+                        }
+                        if let hr = store.liveStats.heartRateBpm {
+                            statusRow("Heart rate", "\(Int(hr)) bpm")
+                        }
+                        if let kcal = store.liveStats.activeEnergyKcal {
+                            statusRow("Calories", String(format: "%.0f kcal", kcal))
+                        }
+                        if let meters = store.liveStats.distanceMeters {
+                            statusRow("Distance", formattedDistance(meters))
+                        }
+                    }
+                }
+                // Actions live outside the List: a grouped
+                // section card would wrap and clip them (its
+                // own corner radius sliced the secondary
+                // outlines). Out here they render exactly as
+                // drawn — and stay on screen without scrolling.
+                VStack(spacing: DSSpacing.sm) {
+                    // Controls share one row, both secondary —
+                    // neither competes with the full-width
+                    // End & Save below.
+                    HStack(spacing: DSSpacing.sm) {
+                        Button(store.recorderState == .paused ? "Resume" : "Pause") {
+                            if store.recorderState == .paused {
+                                store.resume()
+                            } else {
+                                store.pause()
+                            }
+                        }
+                        .buttonStyle(.dsSecondary(cornerRadius: DSSpacing.cornerRadiusSmall))
+                        Button("Open workout") {
+                            onOpenWorkout()
+                        }
+                        .buttonStyle(.dsSecondary(cornerRadius: DSSpacing.cornerRadiusSmall))
+                    }
+                    Button {
+                        Task {
+                            await store.endAndSave()
+                            dismiss()
+                        }
+                    } label: {
+                        if store.isSaving {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("End & Save")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(.dsPrimary(cornerRadius: DSSpacing.cornerRadiusSmall))
+                    .disabled(store.isSaving)
+                }
+                .padding(DSSpacing.md)
+                .background(DSColors.background)
+            }
+            .navigationTitle("Recording")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // Discard lives in the header opposite Done —
+                // destructive role keeps it out of the action
+                // rows and impossible to tap by accident.
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Discard", role: .destructive) {
+                        showingDiscardConfirm = true
+                    }
+                    .disabled(store.isSaving)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            // Centered confirmation, matching the Delete
+            // workout/block pattern elsewhere in the app
+            // (a confirmationDialog would dock to the bottom
+            // of the screen instead).
+            .alert("Discard this recording?", isPresented: $showingDiscardConfirm) {
+                Button("Discard", role: .destructive) {
+                    store.discard()
+                    dismiss()
+                }
+                Button("Keep recording", role: .cancel) {}
+            } message: {
+                Text("The Apple Health workout is abandoned without saving. Logged sets are unaffected.")
+            }
+        }
+    }
+
+    private func statusRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(DSColors.textSecondary)
+            Spacer()
+            Text(value)
+                .monospacedDigit()
+                .foregroundStyle(DSColors.text)
+        }
+        .font(.body)
+    }
+
+    private func formattedDistance(_ meters: Double) -> String {
+        if distanceUnit.lowercased() == "mi" {
+            return String(format: "%.2f mi", meters / 1_609.344)
+        }
+        return String(format: "%.2f km", meters / 1_000)
+    }
+}
+
 #Preview {
     WorkoutPlayerView(
         workoutID: "preview",
@@ -1229,7 +1555,8 @@ private struct WorkoutLoggedSetsSheet: View {
                 baseURL: URL(string: "http://localhost:8080/api/v1")!,
                 tokenProvider: { nil }
             )
-        )
+        ),
+        healthStore: PlayerHealthStore()
     )
     .environmentObject(AppEnvironment.live(baseURL: URL(string: "http://localhost:8080/api/v1")!))
     .environmentObject(AuthStore(api: APIClient(

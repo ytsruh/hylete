@@ -883,6 +883,17 @@ private func amrapCapSummary(_ timeCapSeconds: Int) -> String {
     return "\(number) min\(mins == 1 ? "" : "s")"
 }
 
+/// EMOM summary ("12 minutes · change every 60s"). The stored
+/// `rounds` value is minutes on the server (`block.go`: "for
+/// Rounds minutes") and the block editor already labels the
+/// field "Minutes" — so only the display wording was wrong.
+/// Shared by `BlockDTO.configSummary`,
+/// `WorkoutBlockDetailDTO.timingSummary`, and the player's
+/// programmed-timer menu row so the three never drift apart.
+func emomSummary(minutes: Int, intervalSeconds: Int) -> String {
+    "\(minutes) minute\(minutes == 1 ? "" : "s") · change every \(intervalSeconds)s"
+}
+
 public enum BlockTypeDTO: String, Codable, Equatable, CaseIterable, Hashable {
     case standard
     case circuit
@@ -999,7 +1010,8 @@ public struct BlockDTO: Codable, Equatable, Identifiable, Hashable {
 
     /// One-line summary of the kind-specific config for the
     /// detail header ("4 rounds · 90s rest", "10 mins",
-    /// "12 rounds × Every 60s", or "" for standard blocks).
+    /// "12 minutes · change every 60s", or "" for standard
+    /// blocks).
     public var configSummary: String {
         switch type {
         case .standard:
@@ -1009,7 +1021,7 @@ public struct BlockDTO: Codable, Equatable, Identifiable, Hashable {
         case .amrap:
             return amrapCapSummary(timeCapSeconds)
         case .emom:
-            return "\(rounds) rounds × Every \(intervalSeconds)s"
+            return emomSummary(minutes: rounds, intervalSeconds: intervalSeconds)
         }
     }
 }
@@ -1427,10 +1439,10 @@ public struct WorkoutBlockDetailDTO: Codable, Equatable, Identifiable, Hashable 
 
     /// One-line summary of the kind-specific time config for the
     /// player header ("4 rounds · 90s rest", "10 mins",
-    /// "12 rounds × Every 60s", or "" for standard blocks).
-    /// Mirrors `BlockDTO.configSummary` — server validation
-    /// guarantees which fields apply per type, so no zero-guards
-    /// needed.
+    /// "12 minutes · change every 60s", or "" for standard
+    /// blocks). Mirrors `BlockDTO.configSummary` — server
+    /// validation guarantees which fields apply per type, so no
+    /// zero-guards needed.
     public var timingSummary: String {
         switch blockType {
         case .standard:
@@ -1440,7 +1452,7 @@ public struct WorkoutBlockDetailDTO: Codable, Equatable, Identifiable, Hashable 
         case .amrap:
             return amrapCapSummary(timeCapSeconds)
         case .emom:
-            return "\(rounds) rounds × Every \(intervalSeconds)s"
+            return emomSummary(minutes: rounds, intervalSeconds: intervalSeconds)
         }
     }
 

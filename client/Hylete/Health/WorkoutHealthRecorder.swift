@@ -192,9 +192,13 @@ public final class LiveWorkoutHealthRecorder: NSObject, WorkoutHealthRecording {
             let events = pauseIntervals.map {
                 HKWorkoutEvent(type: .pause, dateInterval: $0, metadata: nil)
             }
+            // HealthKit rejects a sync identifier without a
+            // sync version, so both ride together (version 1 =
+            // this metadata schema; bump if it ever changes).
             let metadata: [String: Any] = [
                 Self.hyleteWorkoutIDKey: hyleteWorkoutID,
                 HKMetadataKeySyncIdentifier: hyleteWorkoutID,
+                HKMetadataKeySyncVersion: NSNumber(value: 1),
                 HKMetadataKeyWorkoutBrandName: "Hylete",
                 Self.hyleteAppVersionKey: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1",
             ]

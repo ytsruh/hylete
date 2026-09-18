@@ -16,6 +16,7 @@ import SwiftUI
 struct WorkoutDetailView: View {
     @EnvironmentObject private var env: AppEnvironment
     @EnvironmentObject private var authStore: AuthStore
+    @EnvironmentObject private var healthStore: PlayerHealthStore
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var store: WorkoutStore
     @ObservedObject var blockStore: BlockStore
@@ -151,7 +152,8 @@ struct WorkoutDetailView: View {
                         api: env.api,
                         weightUnit: authStore.currentUser?.weightUnit ?? "kg",
                         distanceUnit: authStore.currentUser?.distanceUnit ?? "km"
-                    )
+                    ),
+                    healthStore: healthStore
                 )
                 .environmentObject(env)
                 .environmentObject(authStore)
@@ -588,4 +590,5 @@ struct WorkoutDetailView: View {
         baseURL: URL(string: "http://localhost:8080/api/v1")!,
         tokenProvider: { nil }
     )))
+    .environmentObject(PlayerHealthStore())
 }
