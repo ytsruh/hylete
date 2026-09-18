@@ -153,14 +153,22 @@ struct WorkoutPlayerView: View {
                         collapsedBlockIDs = Set(workout.blocks
                             .filter { $0.status == .done || $0.status == .skipped }
                             .map(\.id))
-                        // Adopt the auto-inferred Health type once
-                        // the plan is known (no-op after Start or
-                        // an explicit override).
+                        // Server-backed type wins; inference covers
+                        // unset/unknown keys. Both are no-ops after
+                        // Start or an explicit override.
+                        healthStore.adoptServerType(workout.healthActivityType)
                         healthStore.adoptInferredDefault(items: workout.blocks.flatMap(\.items))
                     }
                     // Adopt the profile DOB for zone estimation
                     // (no-op after Start; nil DOB hides the tile).
                     healthStore.adoptProfile(dateOfBirth: authStore.currentUser?.dateOfBirth)
+                    // Auto-start tracking unless opted out in
+                    // Profile. Runs once per player instance
+                    // (didRequestLoad guard above); denial lands on
+                    // the existing inline note, never a block.
+                    if HealthAutoStart.isEnabled {
+                        await healthStore.start()
+                    }
                 }
                 .onDisappear {
                     TimerWakeLock.release()

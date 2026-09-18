@@ -1,8 +1,10 @@
+import HealthKit
 import SwiftUI
 
 /// Create / edit sheet for a workout. Sections: details (name,
-/// scheduled date, description, status on edit), and the ordered
-/// block list (each row = block name + kind subtitle, reorderable).
+/// scheduled date, description, status on edit, Health activity
+/// type), and the ordered block list (each row = block name +
+/// kind subtitle, reorderable).
 ///
 /// Save POSTs (create) or PUTs (edit, blocks fully replaced with
 /// statuses reset to pending) via the shared `WorkoutStore`.
@@ -45,6 +47,11 @@ struct WorkoutEditorView: View {
     @State private var scheduledDate: Date = Date()
     @State private var description: String = ""
     @State private var status: WorkoutStatusDTO = .planned
+    /// Apple Health activity type, saved with the workout so the
+    /// player auto-starts the right session. Seeded from the
+    /// server value on edit (blanket default on create, matching
+    /// the server).
+    @State private var healthActivityType: HKWorkoutActivityType = .traditionalStrengthTraining
     @State private var drafts: [DraftBlock] = []
 
     @State private var showingPicker: Bool = false
@@ -160,6 +167,11 @@ struct WorkoutEditorView: View {
                     }
                 }
             }
+            Picker("Activity type", selection: $healthActivityType) {
+                ForEach(WorkoutHealthActivityMapper.selectableTypes, id: \.rawValue) { type in
+                    Text(WorkoutHealthActivityMapper.displayName(for: type)).tag(type)
+                }
+            }
         } header: {
             Text("Details")
         } footer: {
@@ -258,6 +270,7 @@ struct WorkoutEditorView: View {
                 description: trimmedDescription,
                 scheduledDate: dayString,
                 status: nil,
+                healthActivityType: WorkoutHealthActivityMapper.key(for: healthActivityType),
                 blocks: blocks
             ))
             if created == nil {
@@ -270,6 +283,7 @@ struct WorkoutEditorView: View {
                 description: trimmedDescription,
                 scheduledDate: dayString,
                 status: status,
+                healthActivityType: WorkoutHealthActivityMapper.key(for: healthActivityType),
                 blocks: blocks
             ))
             if let msg = store.errorMessage {
@@ -312,6 +326,11 @@ struct WorkoutEditorView: View {
         name = workout.name
         description = workout.description
         status = workout.status
+        // Server key wins; unknown/missing keys fall back to the
+        // blanket default (never inference here — the explicit
+        // row must round-trip exactly what the server holds).
+        healthActivityType = WorkoutHealthActivityMapper.activityType(forKey: workout.healthActivityType)
+            ?? .traditionalStrengthTraining
         if let date = WorkoutDates.date(from: workout.scheduledDate) {
             scheduledDate = date
         }

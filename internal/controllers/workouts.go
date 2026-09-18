@@ -11,22 +11,23 @@ import (
 // Workout validation sentinels. Routes map these to 400s; anything
 // else is a 500.
 var (
-	ErrWorkoutNotFound           = errors.New("workout not found")
-	ErrWorkoutNameRequired       = errors.New("workout name is required")
-	ErrWorkoutNameTooLong        = errors.New("workout name must be 100 characters or less")
-	ErrWorkoutDescriptionLong    = errors.New("workout description must be 1000 characters or less")
-	ErrWorkoutDateRequired       = errors.New("scheduled date is required")
-	ErrWorkoutDateInvalid        = errors.New("scheduled date must be YYYY-MM-DD")
-	ErrWorkoutStatusInvalid      = errors.New("workout status must be planned, in_progress, completed or skipped")
-	ErrWorkoutBlocksRequired     = errors.New("a workout needs at least 1 block")
-	ErrWorkoutBlocksTooMany      = errors.New("a workout can hold at most 20 blocks")
-	ErrWorkoutBlockRequired      = errors.New("workout block is required")
-	ErrWorkoutBlockNotFound      = errors.New("block not found")
-	ErrWorkoutBlockStatusInvalid = errors.New("block status must be pending, done or skipped")
-	ErrWorkoutRangeInvalid       = errors.New("from date must not be after to date")
-	ErrWorkoutBulkRequired       = errors.New("at least 1 date is required")
-	ErrWorkoutBulkTooMany        = errors.New("at most 50 workouts can be created per batch")
-	ErrWorkoutBulkDuplicateDate  = errors.New("duplicate dates are not allowed in a batch")
+	ErrWorkoutNotFound               = errors.New("workout not found")
+	ErrWorkoutNameRequired           = errors.New("workout name is required")
+	ErrWorkoutNameTooLong            = errors.New("workout name must be 100 characters or less")
+	ErrWorkoutDescriptionLong        = errors.New("workout description must be 1000 characters or less")
+	ErrWorkoutDateRequired           = errors.New("scheduled date is required")
+	ErrWorkoutDateInvalid            = errors.New("scheduled date must be YYYY-MM-DD")
+	ErrWorkoutStatusInvalid          = errors.New("workout status must be planned, in_progress, completed or skipped")
+	ErrWorkoutBlocksRequired         = errors.New("a workout needs at least 1 block")
+	ErrWorkoutBlocksTooMany          = errors.New("a workout can hold at most 20 blocks")
+	ErrWorkoutBlockRequired          = errors.New("workout block is required")
+	ErrWorkoutBlockNotFound          = errors.New("block not found")
+	ErrWorkoutBlockStatusInvalid     = errors.New("block status must be pending, done or skipped")
+	ErrWorkoutHealthActivityTypeLong = errors.New("health activity type must be 64 characters or less")
+	ErrWorkoutRangeInvalid           = errors.New("from date must not be after to date")
+	ErrWorkoutBulkRequired           = errors.New("at least 1 date is required")
+	ErrWorkoutBulkTooMany            = errors.New("at most 50 workouts can be created per batch")
+	ErrWorkoutBulkDuplicateDate      = errors.New("duplicate dates are not allowed in a batch")
 )
 
 // Workout limits.
@@ -69,23 +70,27 @@ type WorkoutBlockInput struct {
 }
 
 // CreateWorkoutInput bundles the editable workout fields for create.
+// HealthActivityType is the opaque Apple Health activity-type key
+// (empty normalizes to the blanket default server-side).
 type CreateWorkoutInput struct {
-	Name          string
-	Description   string
-	ScheduledDate string
-	Status        models.WorkoutStatus
-	Blocks        []WorkoutBlockInput
+	Name               string
+	Description        string
+	ScheduledDate      string
+	Status             models.WorkoutStatus
+	HealthActivityType string
+	Blocks             []WorkoutBlockInput
 }
 
 // UpdateWorkoutInput is the same shape as CreateWorkoutInput. Blocks
 // are fully replaced on update (simplest correct V1 semantic) with
 // statuses reset to pending.
 type UpdateWorkoutInput struct {
-	Name          string
-	Description   string
-	ScheduledDate string
-	Status        models.WorkoutStatus
-	Blocks        []WorkoutBlockInput
+	Name               string
+	Description        string
+	ScheduledDate      string
+	Status             models.WorkoutStatus
+	HealthActivityType string
+	Blocks             []WorkoutBlockInput
 }
 
 // ListWorkouts returns every workout summary for the user, or the
@@ -135,12 +140,13 @@ func (wc *WorkoutsController) CreateWorkout(userID string, in CreateWorkoutInput
 		status = models.WorkoutStatusPlanned
 	}
 	w := &models.Workout{
-		UserID:        userID,
-		Name:          strings.TrimSpace(in.Name),
-		Description:   strings.TrimSpace(in.Description),
-		ScheduledDate: strings.TrimSpace(in.ScheduledDate),
-		Status:        status,
-		Blocks:        blocks,
+		UserID:             userID,
+		Name:               strings.TrimSpace(in.Name),
+		Description:        strings.TrimSpace(in.Description),
+		ScheduledDate:      strings.TrimSpace(in.ScheduledDate),
+		Status:             status,
+		HealthActivityType: models.NormalizeHealthActivityType(in.HealthActivityType),
+		Blocks:             blocks,
 	}
 	if err := validateWorkoutFields(w); err != nil {
 		return nil, err
@@ -174,6 +180,7 @@ func (wc *WorkoutsController) UpdateWorkout(id, userID string, in UpdateWorkoutI
 	existing.Description = strings.TrimSpace(in.Description)
 	existing.ScheduledDate = strings.TrimSpace(in.ScheduledDate)
 	existing.Status = status
+	existing.HealthActivityType = models.NormalizeHealthActivityType(in.HealthActivityType)
 	existing.Blocks = blocks
 	if err := validateWorkoutFields(existing); err != nil {
 		return nil, err
@@ -203,6 +210,31 @@ func (wc *WorkoutsController) SetWorkoutStatus(workoutID, userID string, status 
 		return nil, ErrWorkoutNotFound
 	}
 	if err := wc.repo.SetWorkoutStatus(workoutID, userID, status); err != nil {
+		return nil, err
+	}
+	return wc.repo.GetByID(workoutID, userID)
+}
+
+// SetWorkoutHealthActivityType changes only the Apple Health
+// activity type, leaving the plan (name, date, blocks and their
+// check-offs) untouched. This is the path for the editor type row
+// and the detail type picker — both must never reset block
+// progress, which is what the full replacement UpdateWorkout does
+// by design. Returns ErrWorkoutNotFound when missing or owned by
+// another user, ErrWorkoutHealthActivityTypeLong for oversized keys.
+func (wc *WorkoutsController) SetWorkoutHealthActivityType(workoutID, userID, activityType string) (*models.Workout, error) {
+	activityType = models.NormalizeHealthActivityType(activityType)
+	if len(activityType) > models.HealthActivityTypeMaxLen {
+		return nil, ErrWorkoutHealthActivityTypeLong
+	}
+	existing, err := wc.repo.GetByID(workoutID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, ErrWorkoutNotFound
+	}
+	if err := wc.repo.SetHealthActivityType(workoutID, userID, activityType); err != nil {
 		return nil, err
 	}
 	return wc.repo.GetByID(workoutID, userID)
@@ -331,12 +363,13 @@ func (wc *WorkoutsController) DuplicateWorkout(id, userID, scheduledDate string)
 		})
 	}
 	cp := &models.Workout{
-		UserID:        userID,
-		Name:          src.Name,
-		Description:   src.Description,
-		ScheduledDate: scheduledDate,
-		Status:        models.WorkoutStatusPlanned,
-		Blocks:        blocks,
+		UserID:             userID,
+		Name:               src.Name,
+		Description:        src.Description,
+		ScheduledDate:      scheduledDate,
+		Status:             models.WorkoutStatusPlanned,
+		HealthActivityType: src.HealthActivityType,
+		Blocks:             blocks,
 	}
 	if err := validateWorkoutFields(cp); err != nil {
 		return nil, err
@@ -406,12 +439,13 @@ func (wc *WorkoutsController) DuplicateWorkoutBatch(id, userID string, dates []s
 			})
 		}
 		cp := &models.Workout{
-			UserID:        userID,
-			Name:          src.Name,
-			Description:   src.Description,
-			ScheduledDate: date,
-			Status:        models.WorkoutStatusPlanned,
-			Blocks:        blocks,
+			UserID:             userID,
+			Name:               src.Name,
+			Description:        src.Description,
+			ScheduledDate:      date,
+			Status:             models.WorkoutStatusPlanned,
+			HealthActivityType: src.HealthActivityType,
+			Blocks:             blocks,
 		}
 		if err := validateWorkoutFields(cp); err != nil {
 			return nil, err
@@ -480,6 +514,9 @@ func validateWorkoutFields(w *models.Workout) error {
 	}
 	if !w.Status.IsValid() {
 		return ErrWorkoutStatusInvalid
+	}
+	if len(w.HealthActivityType) > models.HealthActivityTypeMaxLen {
+		return ErrWorkoutHealthActivityTypeLong
 	}
 	return nil
 }

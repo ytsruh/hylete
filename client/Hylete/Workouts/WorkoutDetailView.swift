@@ -1,3 +1,4 @@
+import HealthKit
 import SwiftUI
 
 /// Detail view for one workout. Header carries the name, scheduled
@@ -223,6 +224,37 @@ struct WorkoutDetailView: View {
                         Text(status.displayName).tag(status)
                     }
                 }
+                // Apple Health activity type: menu writes through
+                // the type-only PATCH endpoint so block check-offs
+                // survive (the editor's PUT would reset them).
+                // Unknown/missing keys read as the blanket default.
+                Menu {
+                    ForEach(WorkoutHealthActivityMapper.selectableTypes, id: \.rawValue) { type in
+                        Button {
+                            Task {
+                                await store.setHealthActivityType(
+                                    id: workout.id,
+                                    healthActivityType: WorkoutHealthActivityMapper.key(for: type)
+                                )
+                            }
+                        } label: {
+                            Label(
+                                WorkoutHealthActivityMapper.displayName(for: type),
+                                systemImage: resolvedHealthActivityType(for: workout) == type ? "checkmark" : "circle"
+                            )
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text("Activity type")
+                            .foregroundStyle(DSColors.textSecondary)
+                        Spacer()
+                        Text(WorkoutHealthActivityMapper.displayName(for: resolvedHealthActivityType(for: workout)))
+                            .foregroundStyle(DSColors.text)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Apple Health activity type")
             }
 
             // Primary entry to the Workout Player: full-screen
@@ -515,6 +547,14 @@ struct WorkoutDetailView: View {
     private func blockSubtitle(for block: WorkoutBlockDTO) -> String {
         let exercises = block.itemCount == 1 ? "1 exercise" : "\(block.itemCount) exercises"
         return "\(block.blockType.displayName) · \(exercises)"
+    }
+
+    /// Effective Apple Health activity type: the server key wins,
+    /// unknown/missing keys read as the blanket default (never
+    /// inference here — detail has no planned items to infer from).
+    private func resolvedHealthActivityType(for workout: WorkoutDTO) -> HKWorkoutActivityType {
+        WorkoutHealthActivityMapper.activityType(forKey: workout.healthActivityType)
+            ?? .traditionalStrengthTraining
     }
 
 

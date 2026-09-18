@@ -61,12 +61,26 @@ public final class PlayerHealthStore: ObservableObject {
         WorkoutHealthActivityMapper.isOutdoorRouteEligible(selectedType)
     }
 
+    /// Whether a server type was adopted (beats inference).
+    private var serverTypeAdopted = false
+
+    /// Adopts the server-backed workout type. Precedence: server
+    /// value wins over block-mix inference; nil/unknown keys leave
+    /// the picker for inference. Only applies before Start.
+    public func adoptServerType(_ key: String?) {
+        guard recorderState == .idle else { return }
+        guard let type = WorkoutHealthActivityMapper.activityType(forKey: key) else { return }
+        selectedType = type
+        serverTypeAdopted = true
+    }
+
     /// Adopts the inferred default once items load. Only applies
-    /// while no session has started and the picker still holds
-    /// the initial `.other` placeholder, so an explicit user
-    /// override is never clobbered.
+    /// while no session has started, no server type was adopted,
+    /// and the picker still holds the initial `.other`
+    /// placeholder, so an explicit value is never clobbered.
     public func adoptInferredDefault(items: [BlockItemDTO]) {
-        guard recorderState == .idle, selectedType == .other, !items.isEmpty else { return }
+        guard recorderState == .idle, !serverTypeAdopted,
+              selectedType == .other, !items.isEmpty else { return }
         selectedType = WorkoutHealthActivityMapper.infer(items: items)
     }
 

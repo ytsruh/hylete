@@ -74,4 +74,22 @@ final class WorkoutHealthActivityMapperTests: XCTestCase {
         XCTAssertTrue(types.contains(.running))
         XCTAssertTrue(types.contains(.traditionalStrengthTraining))
     }
+
+    func testKeyRoundTrips() {
+        for type in WorkoutHealthActivityMapper.selectableTypes {
+            XCTAssertEqual(
+                WorkoutHealthActivityMapper.activityType(forKey: WorkoutHealthActivityMapper.key(for: type)),
+                type
+            )
+        }
+        XCTAssertEqual(WorkoutHealthActivityMapper.key(for: .traditionalStrengthTraining), "traditionalStrengthTraining")
+    }
+
+    func testUnknownKeysFallBackToNil() {
+        XCTAssertNil(WorkoutHealthActivityMapper.activityType(forKey: nil))
+        XCTAssertNil(WorkoutHealthActivityMapper.activityType(forKey: ""))
+        XCTAssertNil(WorkoutHealthActivityMapper.activityType(forKey: "  "))
+        XCTAssertNil(WorkoutHealthActivityMapper.activityType(forKey: "strength"))
+        XCTAssertNil(WorkoutHealthActivityMapper.activityType(forKey: "nope"))
+    }
 }

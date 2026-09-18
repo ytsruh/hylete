@@ -181,14 +181,15 @@ type WeightEntry struct {
 }
 
 type Workout struct {
-	ID            string
-	UserID        string
-	Name          string
-	Description   string
-	ScheduledDate string
-	Status        string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID                 string
+	UserID             string
+	Name               string
+	Description        string
+	ScheduledDate      string
+	Status             string
+	HealthActivityType string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type WorkoutBlock struct {

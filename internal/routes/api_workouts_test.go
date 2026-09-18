@@ -3,6 +3,7 @@ package routes
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 
@@ -184,6 +185,15 @@ func (m *mockWorkoutRepository) SetWorkoutStatus(workoutID, userID string, statu
 	defer m.mu.Unlock()
 	if w, ok := m.workouts[workoutID]; ok && w.UserID == userID {
 		w.Status = status
+	}
+	return nil
+}
+
+func (m *mockWorkoutRepository) SetHealthActivityType(workoutID, userID, activityType string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if w, ok := m.workouts[workoutID]; ok && w.UserID == userID {
+		w.HealthActivityType = models.NormalizeHealthActivityType(activityType)
 	}
 	return nil
 }
@@ -654,6 +664,52 @@ func TestAPIWorkout_StatusPatch(t *testing.T) {
 		UpdateWorkoutStatusRequest{Status: "completed"})
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("missing status = %d, want 404", rec.Code)
+	}
+}
+
+// TestAPIWorkout_HealthActivityTypePatch covers the type-only PATCH:
+// round trip, blocks preserved, empty normalizing to the default,
+// oversized key (400), missing workout and cross-user (404).
+func TestAPIWorkout_HealthActivityTypePatch(t *testing.T) {
+	h, _, mockUser, _, e := setupWorkoutsHandler(t)
+	token, _ := loginUser(t, h, mockUser, "hat@example.com", "HAT")
+
+	created := decodeAPI[WorkoutDTO](t, apiDo(t, e, http.MethodPost, "/api/v1/workouts", token, validCreateWorkoutRequest()), http.StatusCreated)
+	if created.HealthActivityType != "traditionalStrengthTraining" {
+		t.Errorf("type = %q, want blanket default", created.HealthActivityType)
+	}
+
+	updated := decodeAPI[WorkoutDTO](t, apiDo(t, e, http.MethodPatch, "/api/v1/workouts/"+created.ID+"/health-activity-type", token,
+		UpdateWorkoutHealthActivityTypeRequest{HealthActivityType: "running"}), http.StatusOK)
+	if updated.HealthActivityType != "running" {
+		t.Errorf("type = %q, want running", updated.HealthActivityType)
+	}
+	if len(updated.Blocks) != len(created.Blocks) {
+		t.Errorf("blocks = %d, want %d preserved", len(updated.Blocks), len(created.Blocks))
+	}
+
+	emptied := decodeAPI[WorkoutDTO](t, apiDo(t, e, http.MethodPatch, "/api/v1/workouts/"+created.ID+"/health-activity-type", token,
+		UpdateWorkoutHealthActivityTypeRequest{HealthActivityType: ""}), http.StatusOK)
+	if emptied.HealthActivityType != "traditionalStrengthTraining" {
+		t.Errorf("empty type = %q, want default", emptied.HealthActivityType)
+	}
+
+	rec := apiDo(t, e, http.MethodPatch, "/api/v1/workouts/"+created.ID+"/health-activity-type", token,
+		UpdateWorkoutHealthActivityTypeRequest{HealthActivityType: strings.Repeat("x", 65)})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("oversized type code = %d, want 400", rec.Code)
+	}
+	rec = apiDo(t, e, http.MethodPatch, "/api/v1/workouts/missing/health-activity-type", token,
+		UpdateWorkoutHealthActivityTypeRequest{HealthActivityType: "running"})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("missing type = %d, want 404", rec.Code)
+	}
+
+	otherToken, _ := loginUser(t, h, mockUser, "hat-other@example.com", "HATO")
+	rec = apiDo(t, e, http.MethodPatch, "/api/v1/workouts/"+created.ID+"/health-activity-type", otherToken,
+		UpdateWorkoutHealthActivityTypeRequest{HealthActivityType: "running"})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("cross-user type = %d, want 404", rec.Code)
 	}
 }
 

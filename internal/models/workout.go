@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"hylete/internal/db"
@@ -54,21 +55,46 @@ func (s WorkoutBlockStatus) IsValid() bool {
 	}, s)
 }
 
+// DefaultHealthActivityType is the blanket Apple Health activity
+// type for workouts (HKWorkoutActivityType case-name key). New
+// feature, accepted risk: every workout records as Strength until
+// re-picked in the editor. The server treats the value as opaque
+// (length-checked only); the iOS allowlist owns validity.
+const DefaultHealthActivityType = "traditionalStrengthTraining"
+
+// HealthActivityTypeMaxLen caps the opaque activity-type key.
+const HealthActivityTypeMaxLen = 64
+
+// NormalizeHealthActivityType trims the key and falls back to the
+// blanket default when empty, so old clients (which send no key)
+// and duplicates of unset rows keep the default instead of
+// persisting "".
+func NormalizeHealthActivityType(s string) string {
+	if s = strings.TrimSpace(s); s == "" {
+		return DefaultHealthActivityType
+	}
+	return s
+}
+
 // Workout is a user-owned scheduled collection of blocks. The Blocks
 // slice holds live references to the block catalog (see
 // WorkoutBlock) — editing a block propagates to every workout
 // referencing it. ScheduledDate is a device-local calendar date
 // (YYYY-MM-DD, same convention as HealthSnapshot.SnapshotDate).
+// HealthActivityType is the Apple Health workout type key
+// (HKWorkoutActivityType case name); empty normalizes to
+// DefaultHealthActivityType on write.
 type Workout struct {
-	ID            string
-	UserID        string
-	Name          string
-	Description   string
-	ScheduledDate string
-	Status        WorkoutStatus
-	Blocks        []WorkoutBlock
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID                 string
+	UserID             string
+	Name               string
+	Description        string
+	ScheduledDate      string
+	Status             WorkoutStatus
+	HealthActivityType string
+	Blocks             []WorkoutBlock
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 // WorkoutBlock is a single planned block inside a Workout, with its
@@ -219,14 +245,15 @@ func insertWorkout(ctx context.Context, q *db.Queries, w *Workout) error {
 	id := uuid.New().String()
 	now := time.Now()
 	row, err := q.CreateWorkout(ctx, db.CreateWorkoutParams{
-		ID:            id,
-		UserID:        w.UserID,
-		Name:          w.Name,
-		Description:   w.Description,
-		ScheduledDate: w.ScheduledDate,
-		Status:        string(w.Status),
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:                 id,
+		UserID:             w.UserID,
+		Name:               w.Name,
+		Description:        w.Description,
+		ScheduledDate:      w.ScheduledDate,
+		Status:             string(w.Status),
+		HealthActivityType: NormalizeHealthActivityType(w.HealthActivityType),
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create workout: %w", err)
@@ -302,14 +329,15 @@ func (r *WorkoutRepository) ListRange(userID, from, to string) ([]WorkoutSummary
 	for _, row := range rows {
 		out = append(out, WorkoutSummary{
 			Workout: Workout{
-				ID:            row.ID,
-				UserID:        row.UserID,
-				Name:          row.Name,
-				Description:   row.Description,
-				ScheduledDate: row.ScheduledDate,
-				Status:        WorkoutStatus(row.Status),
-				CreatedAt:     row.CreatedAt,
-				UpdatedAt:     row.UpdatedAt,
+				ID:                 row.ID,
+				UserID:             row.UserID,
+				Name:               row.Name,
+				Description:        row.Description,
+				ScheduledDate:      row.ScheduledDate,
+				Status:             WorkoutStatus(row.Status),
+				HealthActivityType: row.HealthActivityType,
+				CreatedAt:          row.CreatedAt,
+				UpdatedAt:          row.UpdatedAt,
 			},
 			BlockCount: int(row.BlockCount),
 			DoneCount:  int(row.DoneCount),
@@ -325,12 +353,13 @@ func (r *WorkoutRepository) ListRange(userID, from, to string) ([]WorkoutSummary
 func (r *WorkoutRepository) Update(w *Workout, userID string) error {
 	ctx := context.Background()
 	if err := r.queries.UpdateWorkout(ctx, db.UpdateWorkoutParams{
-		Name:          w.Name,
-		Description:   w.Description,
-		ScheduledDate: w.ScheduledDate,
-		Status:        string(w.Status),
-		ID:            w.ID,
-		UserID:        userID,
+		Name:               w.Name,
+		Description:        w.Description,
+		ScheduledDate:      w.ScheduledDate,
+		Status:             string(w.Status),
+		HealthActivityType: NormalizeHealthActivityType(w.HealthActivityType),
+		ID:                 w.ID,
+		UserID:             userID,
 	}); err != nil {
 		return fmt.Errorf("failed to update workout: %w", err)
 	}
@@ -461,6 +490,20 @@ func (r *WorkoutRepository) SetWorkoutStatus(workoutID, userID string, status Wo
 	})
 }
 
+// SetHealthActivityType overwrites only the Apple Health activity
+// type (bumps updated_at). Like SetWorkoutStatus it never touches
+// the blocks, so the editor type row and detail type picker can
+// save without resetting check-offs (which the full-replacement
+// Update intentionally resets). Scoped to the user.
+func (r *WorkoutRepository) SetHealthActivityType(workoutID, userID, activityType string) error {
+	ctx := context.Background()
+	return r.queries.UpdateWorkoutHealthActivityTypeScoped(ctx, db.UpdateWorkoutHealthActivityTypeScopedParams{
+		HealthActivityType: NormalizeHealthActivityType(activityType),
+		ID:                 workoutID,
+		UserID:             userID,
+	})
+}
+
 // SweepStalePlannedWorkouts auto-skips every still-planned workout
 // scheduled before today (YYYY-MM-DD) that has zero linked exercise
 // entries, and flips each one's still-pending blocks to skipped.
@@ -574,14 +617,15 @@ func mapWorkoutSummaryRows(rows []db.ListWorkoutsWithBlockCountsRow) []WorkoutSu
 	for _, row := range rows {
 		out = append(out, WorkoutSummary{
 			Workout: Workout{
-				ID:            row.ID,
-				UserID:        row.UserID,
-				Name:          row.Name,
-				Description:   row.Description,
-				ScheduledDate: row.ScheduledDate,
-				Status:        WorkoutStatus(row.Status),
-				CreatedAt:     row.CreatedAt,
-				UpdatedAt:     row.UpdatedAt,
+				ID:                 row.ID,
+				UserID:             row.UserID,
+				Name:               row.Name,
+				Description:        row.Description,
+				ScheduledDate:      row.ScheduledDate,
+				Status:             WorkoutStatus(row.Status),
+				HealthActivityType: row.HealthActivityType,
+				CreatedAt:          row.CreatedAt,
+				UpdatedAt:          row.UpdatedAt,
 			},
 			BlockCount: int(row.BlockCount),
 			DoneCount:  int(row.DoneCount),
@@ -594,13 +638,14 @@ func mapWorkoutSummaryRows(rows []db.ListWorkoutsWithBlockCountsRow) []WorkoutSu
 // without blocks (callers load blocks separately).
 func mapWorkoutRow(row db.Workout) Workout {
 	return Workout{
-		ID:            row.ID,
-		UserID:        row.UserID,
-		Name:          row.Name,
-		Description:   row.Description,
-		ScheduledDate: row.ScheduledDate,
-		Status:        WorkoutStatus(row.Status),
-		CreatedAt:     row.CreatedAt,
-		UpdatedAt:     row.UpdatedAt,
+		ID:                 row.ID,
+		UserID:             row.UserID,
+		Name:               row.Name,
+		Description:        row.Description,
+		ScheduledDate:      row.ScheduledDate,
+		Status:             WorkoutStatus(row.Status),
+		HealthActivityType: row.HealthActivityType,
+		CreatedAt:          row.CreatedAt,
+		UpdatedAt:          row.UpdatedAt,
 	}
 }

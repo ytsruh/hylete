@@ -28,6 +28,39 @@ public enum WorkoutHealthActivityMapper {
         .other,
     ]
 
+    /// Server key for one activity type (the case name, e.g.
+    /// "traditionalStrengthTraining"). The server stores the key
+    /// opaquely; this is the contract between client and server.
+    /// Unknown types collapse to "other" rather than persisting a
+    /// value no client understands.
+    public static func key(for type: HKWorkoutActivityType) -> String {
+        switch type {
+        case .traditionalStrengthTraining: return "traditionalStrengthTraining"
+        case .highIntensityIntervalTraining: return "highIntensityIntervalTraining"
+        case .running: return "running"
+        case .cycling: return "cycling"
+        case .walking: return "walking"
+        case .rowing: return "rowing"
+        default: return "other"
+        }
+    }
+
+    /// Resolves a server key to an activity type. Nil, blank, and
+    /// unknown keys yield nil so callers fall back to inference —
+    /// the safety net for pre-feature servers and corrupt values.
+    public static func activityType(forKey key: String?) -> HKWorkoutActivityType? {
+        switch key?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "traditionalStrengthTraining": return .traditionalStrengthTraining
+        case "highIntensityIntervalTraining": return .highIntensityIntervalTraining
+        case "running": return .running
+        case "cycling": return .cycling
+        case "walking": return .walking
+        case "rowing": return .rowing
+        case "other": return .other
+        default: return nil
+        }
+    }
+
     /// User-facing label for the picker and Live page. HealthKit
     /// provides no display strings, so these are Hylete-owned.
     public static func displayName(for type: HKWorkoutActivityType) -> String {

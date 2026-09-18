@@ -114,6 +114,46 @@ final class PlayerHealthStoreTests: XCTestCase {
         XCTAssertNil(store.maxHeartRate)
     }
 
+    /// Server type wins over inference; inference stays a
+    /// fallback for nil/unknown keys.
+    func testAdoptServerTypeBeatsInference() {
+        let store = PlayerHealthStore(
+            workoutID: "w1",
+            items: strengthItems(),
+            recorder: MockWorkoutHealthRecorder(),
+            provider: MockHealthStore(status: .granted)
+        )
+        store.adoptServerType("running")
+        XCTAssertEqual(store.selectedType, .running)
+        store.adoptInferredDefault(items: strengthItems())
+        XCTAssertEqual(store.selectedType, .running)
+    }
+
+    func testAdoptServerTypeNilAndUnknownFallBack() {
+        for key: String? in [nil, "", "nope", "strength"] {
+            let store = PlayerHealthStore(
+                workoutID: "w1",
+                items: strengthItems(),
+                recorder: MockWorkoutHealthRecorder(),
+                provider: MockHealthStore(status: .granted)
+            )
+            store.adoptServerType(key)
+            store.adoptInferredDefault(items: strengthItems())
+            XCTAssertEqual(store.selectedType, .traditionalStrengthTraining, "key: \(key ?? "nil")")
+        }
+    }
+
+    /// Opt-out toggle defaults ON (first launch / never written).
+    func testAutoStartDefaultsOn() {
+        UserDefaults.standard.removeObject(forKey: HealthAutoStart.enabledKey)
+        XCTAssertTrue(HealthAutoStart.isEnabled)
+        HealthAutoStart.setEnabled(false)
+        XCTAssertFalse(HealthAutoStart.isEnabled)
+        HealthAutoStart.setEnabled(true)
+        XCTAssertTrue(HealthAutoStart.isEnabled)
+        UserDefaults.standard.removeObject(forKey: HealthAutoStart.enabledKey)
+    }
+
     func testPauseResumeMirror() async {
         let recorder = MockWorkoutHealthRecorder()
         let store = PlayerHealthStore(
